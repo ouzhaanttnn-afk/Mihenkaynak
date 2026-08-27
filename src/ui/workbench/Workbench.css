@@ -1153,3 +1153,376 @@
     display: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* SERVİS KABUL AKIŞI (GDD 23.14)                                      */
+/* Dört adım da aynı Workbench yüzeyini kullanır; ayrı ekran açılmaz.   */
+/* ------------------------------------------------------------------ */
+
+.svc {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.svc__hero {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.svc__silhouette {
+  flex: 0 0 auto;
+  width: 94px;
+  height: 94px;
+  border-radius: var(--r-card);
+  background:
+    radial-gradient(70% 60% at 50% 40%, rgba(201, 160, 74, 0.12) 0%, transparent 70%),
+    var(--ink-900);
+  border: 1px solid var(--line-dark);
+  color: var(--brass-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.svc__heroBody {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.svc__typeHead {
+  flex: 0 0 auto;
+}
+
+.svc__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+  line-height: var(--lh-tight);
+}
+
+.svc__meta {
+  margin-top: 3px;
+  font-size: var(--fs-caption);
+  color: var(--text-dark-2);
+  line-height: 1.35;
+}
+
+.svc__target {
+  color: var(--positive-soft);
+  font-weight: var(--fw-semibold);
+}
+
+.svc__danger {
+  color: var(--negative-soft);
+}
+
+/* Tanılanan sorun — tek satır, ekran kırmızıya dönmez (GDD 23.7 ilkesi). */
+.svc__problem {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: rgba(201, 130, 46, 0.1);
+  border-left: 2px solid var(--warning);
+  font-size: var(--fs-caption);
+  color: var(--text-dark-2);
+}
+
+.svc__problemIcon {
+  flex: 0 0 auto;
+  color: var(--warning);
+  display: inline-flex;
+}
+
+.svc__note {
+  flex: 0 0 auto;
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  line-height: 1.45;
+}
+
+/* İkon akan metnin içinde satır kırmaz. */
+.svc__note svg {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
+.svc__note--center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* --- Teklif: kendi atölye vs dış usta (GDD 17.2) --- */
+
+.venues {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.venue {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--ink-900);
+  border: 1px solid var(--line-dark);
+  color: var(--text-dark-2);
+  text-align: left;
+  transition:
+    border-color var(--t-fast) var(--ease-standard),
+    box-shadow var(--t-fast) var(--ease-standard);
+}
+
+.venue--selected {
+  border-color: var(--amethyst-400);
+  box-shadow: 0 0 0 1px var(--amethyst-500);
+  background: var(--ink-800);
+}
+
+.venue--blocked {
+  opacity: 0.45;
+}
+
+.venue__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.venue__icon {
+  color: var(--brass-400);
+  display: inline-flex;
+}
+
+.venue--selected .venue__icon {
+  color: var(--amethyst-300);
+}
+
+.venue__name {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.venue__blocked {
+  font-size: var(--fs-micro);
+  color: var(--negative-soft);
+}
+
+.venue__fee {
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+  color: var(--brass-300);
+  line-height: 1;
+}
+
+.venue__feeLabel {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: -6px;
+}
+
+.venue__rows {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.venue__rationale {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  line-height: 1.3;
+  margin-top: auto;
+}
+
+.quoteRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+}
+
+.quoteRow__label {
+  color: var(--text-dark-3);
+}
+
+.quoteRow__value {
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+  white-space: nowrap;
+}
+
+.quoteRow__value--positive { color: var(--positive-soft); }
+.quoteRow__value--negative { color: var(--negative-soft); }
+.quoteRow__value--warning { color: var(--warning); }
+
+/* --- Söz: teslim günü kararı (GDD 17.3) --- */
+
+.promise {
+  flex: 0 0 auto;
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-4) var(--sp-3);
+  border-radius: var(--r-card);
+  background: var(--ink-900);
+  border: 1px solid var(--line-dark);
+}
+
+.promise__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.promise__day {
+  font-family: var(--font-display);
+  font-size: var(--fs-figure);
+  font-weight: var(--fw-bold);
+  color: var(--brass-300);
+  line-height: var(--lh-tight);
+}
+
+.promise__hint {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+.bufferRow {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--sp-2);
+}
+
+/* Söz aşamasında not, tampon seçiminin hemen altında kalır; kalan boşluk
+   aşağıya değil yukarı ve aşağıya eşit dağılır. */
+.bufferRow + .svc__note {
+  margin-bottom: auto;
+}
+
+.buffer {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: var(--touch-min);
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--ink-700);
+  border: 1px solid var(--line-dark);
+  color: var(--text-dark-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.buffer--selected {
+  background: var(--amethyst-600);
+  border-color: var(--amethyst-400);
+  color: #fff;
+}
+
+.buffer__title {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+}
+
+.buffer__note {
+  font-size: var(--fs-micro);
+  opacity: 0.8;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* --- Kuyruk: iş emri özeti --- */
+
+.workOrder {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border-radius: var(--r-card);
+  background: var(--ink-900);
+  border: 1px solid var(--brass-700);
+}
+
+.workOrder__badge {
+  align-self: flex-start;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.1em;
+  color: var(--brass-500);
+  border: 1px solid var(--brass-700);
+  border-radius: var(--r-pill);
+  padding: 1px 8px;
+}
+
+.workOrder__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--sp-2);
+}
+
+.workOrder__rows .quoteRow {
+  font-size: var(--fs-caption);
+}
+
+/* Kısa cihazda yoğunluk azalır (GDD 23.22). */
+@media (max-height: 760px) {
+  .svc__silhouette {
+    width: 72px;
+    height: 72px;
+  }
+  .venue {
+    padding: var(--sp-2);
+  }
+  .promise {
+    padding: var(--sp-3);
+  }
+  .promise__day {
+    font-size: var(--fs-title);
+  }
+}
+
+@media (max-height: 680px) {
+  .svc__hero {
+    display: none;
+  }
+  .venue__rationale {
+    display: none;
+  }
+  .buffer__note {
+    display: none;
+  }
+}

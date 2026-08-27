@@ -11,7 +11,7 @@
 
 import { create } from 'zustand';
 
-import { DAY, START, XP, PATIENCE_PER_TEST_SECOND, type SpeedStep } from '@domain/balance';
+import { DAY, SERVICE, START, XP, PATIENCE_PER_TEST_SECOND, type SpeedStep } from '@domain/balance';
 import { createMarketForDay, stepMarketIntraday } from '@domain/market';
 import { nextCustomerDelay, spawnCustomer } from '@domain/customer-spawn';
 import { applyMove, createSession, effectiveReservation, isTerminal } from '@domain/negotiation';
@@ -28,6 +28,7 @@ import {
   createLedger,
   liquidityBand,
   liquidityRatio,
+  realizeProfit,
   recordDeal,
   summarizeWealth,
   xpForDeal,
@@ -35,6 +36,18 @@ import {
   type Ledger,
 } from '@domain/settlement';
 import { buildCaseReview, toReviewData, type CaseReview } from '@domain/deal-review';
+import {
+  advanceJobsOneDay,
+  applyServiceToItem,
+  buildQuotes,
+  createServiceJob,
+  createServiceSession,
+  diagnose,
+  findQuote,
+  inHouseLoad,
+  resolveDelivery,
+  type QuoteContext,
+} from '@domain/service';
 import { getTool } from '@data/tools';
 import { makeId } from '@domain/rng';
 import type {
@@ -49,6 +62,8 @@ import type {
   MarketState,
   Money,
   NegotiationMove,
+  ServiceJob,
+  ServiceVenue,
   SettlementTransaction,
   StoreState,
   WorkbenchStage,
@@ -91,6 +106,11 @@ export interface GameState {
   /** Bir sonraki müşterinin geleceği oyun dakikası. */
   nextCustomerAtMinutes: number;
 
+  /** Atölyedeki tüm servis işleri (GDD 28.2 ServiceJob). */
+  jobs: ServiceJob[];
+  /** Deterministik iş kimliği için artan sayaç. */
+  jobCounter: number;
+
   activeCustomer: Customer | null;
   activeDeal: ActiveDeal | null;
   /** Müşterinin son mesajı — aynı yüzeyde gösterilir (GDD 23.24). */
@@ -109,6 +129,14 @@ export interface GameState {
   greetCustomer: () => void;
   setStage: (stage: WorkbenchStage) => void;
   setActiveLine: (lineId: string) => void;
+
+  // --- Servis Kabul akışı (GDD 23.14) ---
+  selectServiceType: (typeId: string) => void;
+  selectServiceVenue: (venue: ServiceVenue) => void;
+  setPromiseBuffer: (days: number) => void;
+  acceptServiceJob: () => void;
+  declineServiceJob: () => void;
+  deliverJob: (jobId: string) => void;
 
   runTest: (toolId: string) => void;
   selectThesis: (channel: ExitChannel) => void;
@@ -178,6 +206,9 @@ export const useGame = create<GameState>((set, get) => {
 
     queue: [],
     nextCustomerAtMinutes: DAY.openMinutes + 3,
+
+    jobs: [],
+    jobCounter: 0,
 
     activeCustomer: null,
     activeDeal: null,
@@ -271,6 +302,22 @@ export const useGame = create<GameState>((set, get) => {
 
       const dealId = makeId('deal', s.seed, s.spawnCounter);
 
+      // GDD 23.23 intent matrisi — niyet hangi aşama dizisinin kullanılacağını
+      // belirler. Servis müşterisi ana ticaret slider'ına ZORLANMAZ (GDD 23.14).
+      const isService = head.customer.intent === 'service';
+      const firstItem = head.items[0];
+
+      // Servis akışı tanılamayla açılır; ticaret akışı incelemeyle.
+      const service = isService && firstItem ? createServiceSession() : null;
+      if (service && firstItem) {
+        service.diagnosis = diagnose(firstItem, s.store.level);
+        service.quotes = buildQuotes(
+          firstItem,
+          service.diagnosis,
+          quoteContext(s),
+        );
+      }
+
       set({
         items,
         queue: s.queue.slice(1),
@@ -278,9 +325,11 @@ export const useGame = create<GameState>((set, get) => {
         activeDeal: {
           dealId,
           customerId: head.customer.id,
-          stage: 'inspect',
+          flow: isService ? 'service' : 'trade',
+          stage: isService ? 'diagnose' : 'inspect',
           activeLineId: lines[0]?.lineId ?? '',
           lines,
+          service,
           startedAtSec: s.market.clockMinutes * 60,
           settled: false,
         },
@@ -288,6 +337,184 @@ export const useGame = create<GameState>((set, get) => {
         lastReview: null,
         tab: 'shop',
       });
+    },
+
+    // -----------------------------------------------------------------------
+    // Servis Kabul akışı (GDD 23.14)
+    // -----------------------------------------------------------------------
+
+    selectServiceType: (typeId) => {
+      const s = get();
+      const deal = s.activeDeal;
+      if (!deal?.service) return;
+      set({
+        activeDeal: {
+          ...deal,
+          service: { ...deal.service, selectedTypeId: typeId },
+        },
+      });
+    },
+
+    selectServiceVenue: (venue) => {
+      const s = get();
+      const deal = s.activeDeal;
+      if (!deal?.service) return;
+      set({
+        activeDeal: { ...deal, service: { ...deal.service, selectedVenue: venue } },
+      });
+    },
+
+    setPromiseBuffer: (days) => {
+      const s = get();
+      const deal = s.activeDeal;
+      if (!deal?.service) return;
+      const clamped = Math.min(SERVICE.promise.maxBufferDays, Math.max(0, days));
+      set({
+        activeDeal: {
+          ...deal,
+          service: { ...deal.service, promiseBufferDays: clamped },
+        },
+      });
+    },
+
+    /**
+     * "İşi Kabul Et" — GDD 23.14 "Söz" adımının dock aksiyonu.
+     *
+     * Parça maliyeti KABUL ANINDA kasadan çıkar; ücret TESLİMDE girer.
+     * İkisi de ayrı txId taşır, yani ikisi de idempotenttir (GDD 22.1).
+     */
+    acceptServiceJob: () => {
+      const s = get();
+      const deal = s.activeDeal;
+      const customer = s.activeCustomer;
+      if (!deal?.service || !customer) return;
+      if (deal.service.outcome !== 'pending') return;
+
+      const line = activeLine(deal);
+      const item = line ? s.items[line.itemId] : undefined;
+      if (!item) return;
+
+      const quote = findQuote(
+        deal.service.quotes,
+        deal.service.selectedTypeId,
+        deal.service.selectedVenue,
+      );
+      if (!quote || quote.blockedReason) return;
+
+      if (quote.partsCost > s.store.cash) {
+        pushToast(set, get, 'Parça maliyeti için yeterli nakit yok.', 'negative');
+        return;
+      }
+
+      const job = createServiceJob({
+        rootSeed: s.seed,
+        jobIndex: s.jobCounter,
+        item,
+        customerId: customer.id,
+        customerName: customer.displayName,
+        quote,
+        today: s.market.day,
+        promiseBufferDays: deal.service.promiseBufferDays,
+      });
+
+      const tx: SettlementTransaction = {
+        txId: `service_accept_${job.jobId}`,
+        dealId: deal.dealId,
+        day: s.market.day,
+        cashDelta: -quote.partsCost,
+        itemsIn: [],
+        itemsOut: [],
+        trustDelta: 0,
+        reputationDelta: 0,
+        xpDelta: SERVICE.xpOnAccept,
+        label: `${quote.label} · parça maliyeti`,
+      };
+
+      const outcome = applyTransaction(economyOf(s), tx);
+      if (!outcome.applied) return;
+
+      // Ürün müşteride değil artık atölyededir.
+      const items = { ...outcome.state.items, [item.id]: { ...item, location: 'workshop' as const } };
+
+      set({
+        ...economyToState({ ...outcome.state, items }),
+        jobs: [...s.jobs, job],
+        jobCounter: s.jobCounter + 1,
+        activeDeal: {
+          ...deal,
+          stage: 'jobQueue',
+          service: { ...deal.service, createdJobId: job.jobId, outcome: 'accepted' },
+        },
+        customerMessage: `Anlaştık. ${job.promisedDay}. gün için sözünüzü aldım.`,
+      });
+    },
+
+    declineServiceJob: () => {
+      const s = get();
+      const deal = s.activeDeal;
+      if (!deal?.service) return;
+      set({
+        activeDeal: {
+          ...deal,
+          stage: 'jobQueue',
+          service: { ...deal.service, outcome: 'declined' },
+        },
+        customerMessage: 'Peki, başka yere bakayım.',
+      });
+    },
+
+    /**
+     * Biten işi müşteriye teslim eder.
+     *
+     * GDD 22.4 — "Servis net katkısı: Ücret − parça − dış usta − tazmin."
+     * GDD EK F — "Servis işi duplicate completion üretmiyor": txId iş kimliğini
+     * taşır ve `result: 'delivered'` ikinci teslimi baştan engeller.
+     */
+    deliverJob: (jobId) => {
+      const s = get();
+      const job = s.jobs.find((j) => j.jobId === jobId);
+      if (!job) return;
+      if (job.result === 'pending' || job.result === 'delivered') return;
+
+      const item = s.items[job.itemId];
+      if (!item) return;
+
+      const delivery = resolveDelivery(job, item, s.market.day);
+
+      const tx: SettlementTransaction = {
+        txId: `service_deliver_${job.jobId}`,
+        dealId: job.jobId,
+        day: s.market.day,
+        cashDelta: delivery.cashDelta,
+        itemsIn: [],
+        itemsOut: [],
+        trustDelta: delivery.trustDelta,
+        reputationDelta: delivery.reputationDelta,
+        xpDelta: delivery.succeeded ? SERVICE.xpOnDelivery : 0,
+        label: `${job.itemName} · servis teslimi`,
+      };
+
+      const outcome = applyTransaction(economyOf(s), tx);
+      if (!outcome.applied) return;
+
+      // Başarılı serviste ürünün kondisyonu gerçekten iyileşir.
+      const servicedItem = applyServiceToItem(item, job);
+      const items = {
+        ...outcome.state.items,
+        [item.id]: { ...servicedItem, location: 'customer' as const },
+      };
+
+      // Servis geliri GERÇEKLEŞMİŞ katkıdır — iş tamamlandı ve teslim edildi.
+      const ledger = realizeProfit(outcome.state.ledger, delivery.cashDelta, 0);
+
+      set({
+        ...economyToState({ ...outcome.state, items, ledger }),
+        jobs: s.jobs.map((j) =>
+          j.jobId === jobId ? { ...j, result: 'delivered' as const } : j,
+        ),
+      });
+
+      pushToast(set, get, delivery.message, delivery.succeeded ? 'positive' : 'negative');
     },
 
     setStage: (stage) => {
@@ -473,9 +700,14 @@ export const useGame = create<GameState>((set, get) => {
       const aged = closed.inventory.map((p) => ({ ...p, age: p.age + 1 }));
       const inventory = revalueInventory(aged, closed.items, thesisContext({ ...s, market }));
 
+      // GDD 17.3 — her servis işi süre tüketir. Bu ADIM PARA HAREKETİ ÜRETMEZ;
+      // gelir yalnız teslimde doğar (GDD 17.4 pasif gelir yasağı).
+      const jobs = advanceJobsOneDay(s.jobs);
+
       set({
         ...economyToState({ ...closed, inventory }),
         ledger: { ...closed.ledger, realizedProfitToday: 0 },
+        jobs,
         market,
         queue: [],
         activeCustomer: null,
@@ -490,6 +722,11 @@ export const useGame = create<GameState>((set, get) => {
         `Gün ${report.day} kapandı · Gerçekleşmiş kâr ${fmt(report.realizedTradeProfit)} · Gider ${fmt(report.overhead)}`,
         report.netCashChange >= 0 ? 'positive' : 'negative',
       );
+
+      const ready = jobs.filter((j) => j.result === 'success' || j.result === 'failed').length;
+      if (ready > 0) {
+        pushToast(set, get, `${ready} servis işi teslime hazır — Atölye'ye bak.`, 'info');
+      }
     },
 
     notify: (text, tone) => pushToast(set, get, text, tone),
@@ -677,6 +914,30 @@ export function canEnterStage(s: GameState, stage: WorkbenchStage): boolean {
   const line = activeLine(deal);
   if (!line) return false;
 
+  // --- Servis Kabul akışı (GDD 23.14) ---
+  // Adımlar sırayla açılır: teklif için tanı, söz için seçilmiş bir teklif,
+  // kuyruk için verilmiş bir karar gerekir.
+  if (deal.flow === 'service') {
+    const service = deal.service;
+    if (!service) return false;
+
+    switch (stage) {
+      case 'diagnose':
+        return true;
+      case 'quote':
+        return service.diagnosis !== null;
+      case 'promise':
+        return (
+          findQuote(service.quotes, service.selectedTypeId, service.selectedVenue) !== null
+        );
+      case 'jobQueue':
+        return service.outcome !== 'pending';
+      default:
+        // Ticaret aşamaları servis akışında kilitlidir.
+        return false;
+    }
+  }
+
   switch (stage) {
     case 'inspect':
       return true;
@@ -689,10 +950,28 @@ export function canEnterStage(s: GameState, stage: WorkbenchStage): boolean {
       return line.band !== null || line.testResults.length > 0;
     case 'result':
       return isTerminal(line.negotiation.state);
+    default:
+      // Servis aşamaları ticaret akışında kilitlidir.
+      return false;
   }
 }
 
+/** Tez/teklif bağlamı — kapasite ve likidite kararı değiştirir (GDD 6.4 / 17.3). */
+export function quoteContext(
+  s: Pick<GameState, 'store' | 'market' | 'jobs'>,
+): QuoteContext {
+  return {
+    store: s.store,
+    market: s.market,
+    workshopLoad: inHouseLoad(s.jobs),
+    day: s.market.day,
+  };
+}
+
 function isDealFinished(deal: ActiveDeal): boolean {
+  if (deal.flow === 'service') {
+    return deal.stage === 'jobQueue' && deal.service?.outcome !== 'pending';
+  }
   return deal.stage === 'result' && allLinesResolved(deal.lines);
 }
 

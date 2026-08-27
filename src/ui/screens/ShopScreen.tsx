@@ -20,6 +20,8 @@ import { effectiveCeiling, suggestedChannel } from '@domain/thesis';
 import { isTerminal } from '@domain/negotiation';
 import { liquidityRatio } from '@domain/settlement';
 import { toolsForLevel } from '@data/tools';
+import { getServiceType } from '@data/service-types';
+import { expectedCompletionDay, findQuote } from '@domain/service';
 import { activeLine, canEnterStage, selectors, useGame } from '@state/gameStore';
 
 import { CustomerStrip } from '@ui/shell/CustomerStrip';
@@ -34,6 +36,12 @@ import { InspectStage } from '@ui/workbench/InspectStage';
 import { NegotiateStage } from '@ui/workbench/NegotiateStage';
 import { ResultStage } from '@ui/workbench/ResultStage';
 import { ThesisStage } from '@ui/workbench/ThesisStage';
+import {
+  DiagnoseStage,
+  JobQueueStage,
+  PromiseStage,
+  QuoteStage,
+} from '@ui/workbench/ServiceStages';
 import { OfferControl, liquidityImpact, type OfferImpact } from '@ui/workbench/OfferControl';
 
 import {
@@ -58,6 +66,7 @@ import {
   IconVideo,
   IconWarning,
   IconWholesale,
+  IconWorkshop,
 } from '@ui/icons';
 import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
 import type { ExitChannel, InfoField, Money, WorkbenchStage } from '@domain/types';
@@ -135,6 +144,7 @@ export function ShopScreen() {
 
       {deal && (
         <StageStrip
+          flow={deal.flow}
           current={stage}
           canEnter={(target) => canEnterStage(useGame.getState(), target)}
           onSelect={s.setStage}
@@ -164,6 +174,29 @@ export function ShopScreen() {
 
           {!deal || !line || !item ? (
             <IdleWorkbench />
+          ) : /* --- Servis Kabul akışı (GDD 23.14) --- */
+          deal.flow === 'service' && deal.service ? (
+            stage === 'diagnose' ? (
+              <DiagnoseStage item={item} service={deal.service} />
+            ) : stage === 'quote' ? (
+              <QuoteStage
+                item={item}
+                market={s.market}
+                service={deal.service}
+                onSelectVenue={s.selectServiceVenue}
+              />
+            ) : stage === 'promise' ? (
+              <PromiseStage
+                service={deal.service}
+                today={s.market.day}
+                onSetBuffer={s.setPromiseBuffer}
+              />
+            ) : (
+              <JobQueueStage
+                service={deal.service}
+                job={s.jobs.find((j) => j.jobId === deal.service?.createdJobId)}
+              />
+            )
           ) : stage === 'inspect' ? (
             <InspectStage item={item} knowledge={line.knowledge} testResults={line.testResults} />
           ) : stage === 'appraise' && line.band ? (
@@ -301,6 +334,63 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
 
   if (!deal || !line) {
     return <ToolRail items={[]} emptyLabel="Müşteri karşılandığında araçlar burada" />;
+  }
+
+  // --- Servis Kabul akışı (GDD 23.14) ---
+  // Ray aynı fiziksel konumda kalır; içeriği adıma göre değişir (GDD 23.11).
+  if (deal.flow === 'service' && deal.service) {
+    const service = deal.service;
+
+    switch (deal.stage) {
+      // "Tanıla | Servis test/inceleme araçları; Devam."
+      // Servis müşterisinde ürünün sorunu beyandan bellidir; ray tanılamayı
+      // derinleştiren lup ile sınırlıdır — ticaret testleri burada anlamsızdır.
+      case 'diagnose': {
+        const loupe = toolsForLevel(s.store.level).find((t) => t.tool.id === 'loupe');
+        if (!loupe) return <ToolRail items={[]} emptyLabel="İnceleme aracı yok" />;
+        return (
+          <ToolRail
+            items={[
+              {
+                id: loupe.tool.id,
+                label: loupe.tool.shortLabel,
+                icon: <IconLoupe size={19} />,
+                onPress: () => s.runTest(loupe.tool.id),
+                used: line.testResults.some((r) => r.toolId === loupe.tool.id),
+                locked: loupe.locked,
+                lockReason: loupe.lockReason,
+                onLockedPress: () =>
+                  s.notify(`${loupe.tool.name}: ${loupe.lockReason}`, 'info'),
+              },
+            ]}
+          />
+        );
+      }
+
+      // "Teklif | Servis türleri; fiyat ve teslim tarihi."
+      case 'quote': {
+        const typeIds = service.diagnosis?.availableTypeIds ?? [];
+        const items: RailItem[] = typeIds.map((typeId) => {
+          const type = getServiceType(typeId);
+          return {
+            id: typeId,
+            label: type.shortLabel,
+            icon: <IconWorkshop size={19} />,
+            onPress: () => s.selectServiceType(typeId),
+            selected: service.selectedTypeId === typeId,
+          };
+        });
+        return <ToolRail items={items} emptyLabel="Uygulanabilir servis yok" />;
+      }
+
+      // "Söz | İşi Kabul Et / Reddet." — bu iki aksiyon Dock'ta yaşar.
+      case 'promise':
+        return <ToolRail items={[]} disabled emptyLabel="Teslim sözünü Karar Dock'unda ver" />;
+
+      // "Kuyruk | Atölyeye Gönder; sonuç Atölye ekranında takip edilir."
+      default:
+        return <ToolRail items={[]} disabled emptyLabel="İş emri oluşturuldu" />;
+    }
   }
 
   switch (deal.stage) {
@@ -500,6 +590,11 @@ function ShopDock({
     );
   }
 
+  // --- Servis Kabul akışı Dock'u (GDD 23.14) ---
+  if (deal.flow === 'service' && deal.service) {
+    return <ServiceDock deal={deal} />;
+  }
+
   const ceiling = effectiveCeiling(line.thesisOptions, line.selectedThesis);
 
   switch (deal.stage) {
@@ -658,6 +753,120 @@ function ShopDock({
     }
   }
 }
+
+/**
+ * Servis Kabul akışının Karar Dock'u (GDD 23.14 "Araç Rayı / Dock" sütunu).
+ *
+ * Ana CTA her adımda AYNI fiziksel bölgede kalır; yalnız etiketi ve üstündeki
+ * karar özeti değişir (GDD 23.12). Servis müşterisi teklif slider'ına
+ * zorlanmaz — ücret tekliften gelir, karar süre/risk/söz üzerinedir.
+ */
+function ServiceDock({ deal }: { deal: NonNullable<GameStateDeal> }) {
+  const s = useGame();
+  const service = deal.service;
+  if (!service) return null;
+
+  const quote = findQuote(service.quotes, service.selectedTypeId, service.selectedVenue);
+
+  switch (deal.stage) {
+    // --- TANILA: sorun + ulaşılabilir kondisyon ---
+    case 'diagnose': {
+      const count = service.diagnosis?.availableTypeIds.length ?? 0;
+      return (
+        <DecisionDock
+          summaryLabel="Tanı"
+          summaryValue={
+            count > 0 ? `${count} servis türü uygulanabilir` : 'Uygun servis bulunamadı'
+          }
+          primary={{
+            label: 'Teklif Hazırla',
+            onPress: () => s.setStage('quote'),
+            disabled: count === 0,
+          }}
+          secondary={[{ label: 'İşi Reddet', onPress: s.declineServiceJob, danger: true }]}
+        />
+      );
+    }
+
+    // --- TEKLİF: seçili türün ücreti + süresi + riski ---
+    case 'quote':
+      return (
+        <DecisionDock
+          summaryLabel={quote ? 'Seçili teklif' : 'Servis türü seçilmedi'}
+          summaryValue={
+            quote
+              ? `${tl(quote.fee)} · ${quote.durationDays} gün · risk ${pct(quote.risk)}`
+              : 'Raydan bir tür seçin'
+          }
+          primary={{
+            label: 'Teslim Sözü Ver',
+            onPress: () => s.setStage('promise'),
+            disabled: !quote || quote.blockedReason !== null,
+          }}
+          secondary={[{ label: 'İşi Reddet', onPress: s.declineServiceJob, danger: true }]}
+        />
+      );
+
+    // --- SÖZ: "İşi Kabul Et / Reddet" (GDD 23.14) ---
+    case 'promise': {
+      if (!quote) return null;
+      const promised = expectedCompletionDay(quote, s.market.day) + service.promiseBufferDays;
+      const affordable = quote.partsCost <= s.store.cash;
+
+      return (
+        <DecisionDock
+          summaryLabel="Kabul"
+          summaryValue={
+            <>
+              {promised}. gün teslim · {tl(quote.fee)} ücret
+              {quote.partsCost > 0 && (
+                <span style={{ color: 'var(--negative)' }}>
+                  {' '}· bugün {tl(quote.partsCost)} parça
+                </span>
+              )}
+            </>
+          }
+          primary={{
+            label: 'İşi Kabul Et',
+            onPress: s.acceptServiceJob,
+            disabled: !affordable,
+            icon: <IconWorkshop size={18} />,
+          }}
+          secondary={[{ label: 'Reddet', onPress: s.declineServiceJob, danger: true }]}
+        />
+      );
+    }
+
+    // --- KUYRUK: "Atölyeye Gönder" ---
+    default: {
+      const accepted = service.outcome === 'accepted';
+      return (
+        <DecisionDock
+          summaryLabel={accepted ? 'İş emri' : 'Sonuç'}
+          summaryValue={accepted ? 'Atölye kuyruğuna eklendi' : 'İş kabul edilmedi'}
+          primary={{ label: 'Devam Et', onPress: s.finishDeal }}
+          secondary={
+            accepted
+              ? [
+                  {
+                    label: 'Atölyeyi Aç',
+                    // İşlemi kapat, sonra sekmeyi değiştir: aksi hâlde oyuncu
+                    // Dükkan'a döndüğünde kapanmış bir iş emrinde kalırdı.
+                    onPress: () => {
+                      s.finishDeal();
+                      s.setTab('workshop');
+                    },
+                  },
+                ]
+              : []
+          }
+        />
+      );
+    }
+  }
+}
+
+type GameStateDeal = ReturnType<typeof useGame.getState>['activeDeal'];
 
 /** Kabul edilirse likidite nereye düşer — "%19 → %12" (GDD 23.12). */
 function liquidityPreview(s: ReturnType<typeof useGame.getState>, price: Money): string {

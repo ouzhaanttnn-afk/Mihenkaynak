@@ -472,21 +472,92 @@ export interface SupplierAccount {
   specialLotEligibility: boolean;
 }
 
+/** İşi kimin yaptığı — GDD 17.2 "Dış usta → kendi atölyesi". */
+export type ServiceVenue = 'inHouse' | 'outsourced';
+
 /** GDD 28.2 · ServiceJob. */
 export interface ServiceJob {
   jobId: string;
   type: string;
   itemId: string;
   customerId: string | null;
-  /** Kalan süre (oyun günü). */
+  /** Müşteri adı — kuyrukta kimin işi olduğu görünür (GDD 23.18). */
+  customerName: string;
+  itemName: string;
+  /** Toplam süre (oyun günü). */
   duration: number;
+  /** Kalan süre (oyun günü). */
   remainingDays: number;
+  /** 0–1 hata olasılığı (GDD 35 formülü). Oyuncuya işlem öncesi gösterilir. */
   risk: number;
   partsCost: Money;
   assignedStaff: string | null;
+  /** Kendi atölye mi dış usta mı (GDD 17.2). */
+  venue: ServiceVenue;
+  /** Dış ustaya ödenen pay. */
+  outsourceCost: Money;
+  /** Müşteriye verilen teslim günü — kişisel güvenin parçası (GDD 17.3). */
   promisedDay: GameDay;
+  /** Sistemin beklediği bitiş günü; sözden erken/geç olabilir. */
+  expectedDay: GameDay;
   fee: Money;
+  /**
+   * Sonuç SPAWN ANINDA sabitlenir (GDD 28.3 determinizm sözleşmesi).
+   * Oyuncuya risk yüzdesi gösterilir, sonuç gösterilmez — reload ile
+   * yeniden zar atılamaz.
+   */
+  predeterminedOutcome: 'success' | 'failed';
   result: 'pending' | 'success' | 'failed' | 'delivered';
+  /** Hata durumunda ödenen tazmin (GDD 21.2). */
+  compensation: Money;
+  acceptedDay: GameDay;
+}
+
+/** Tanılama sonucu — Servis Kabul akışının ilk adımı (GDD 23.14 "Tanıla"). */
+export interface ServiceDiagnosis {
+  /** Üründe okunabilir biçimde tespit edilen sorun. */
+  problemLabel: string;
+  /** Bu üründe rasyonel olan servis türleri. */
+  availableTypeIds: string[];
+  /** Servis sonrası ulaşılabilecek kondisyon. */
+  targetCondition: ConditionGrade;
+}
+
+/** Bir servis türü için hesaplanmış teklif (GDD 23.14 "Teklif"). */
+export interface ServiceQuote {
+  typeId: string;
+  label: string;
+  venue: ServiceVenue;
+  /** Müşteriden alınacak ücret. */
+  fee: Money;
+  /** İşçilik maliyeti — kendi zamanın; nakit çıkışı değildir ama marjın parçasıdır. */
+  laborCost: Money;
+  partsCost: Money;
+  outsourceCost: Money;
+  /** Ücret − parça − dış usta (GDD 22.4 "Servis net katkısı"). */
+  netContribution: Money;
+  durationDays: number;
+  /** 0–1 hata olasılığı. */
+  risk: number;
+  /** Kapasite slotu tüketir mi. */
+  usesCapacity: boolean;
+  /** Neden bu seçenek — kısa gerekçe satırı. */
+  rationale: string;
+  /** Kapasite doluysa veya seviye yetmiyorsa neden seçilemez. */
+  blockedReason: string | null;
+}
+
+/** Servis Kabul akışının çalışma durumu. */
+export interface ServiceSession {
+  diagnosis: ServiceDiagnosis | null;
+  quotes: ServiceQuote[];
+  selectedTypeId: string | null;
+  selectedVenue: ServiceVenue;
+  /** Söz verilen teslim gününe eklenen tampon (0 = en sıkı söz). */
+  promiseBufferDays: number;
+  /** Kabul edildiyse oluşan iş. */
+  createdJobId: string | null;
+  outcome: 'pending' | 'accepted' | 'declined';
 }
 
 /** GDD 28.2 · StoreState. */
@@ -575,7 +646,29 @@ export interface SettlementTransaction {
 // İşlem Masası aşamaları (GDD 23.6 / 23.10.2)
 // ---------------------------------------------------------------------------
 
-export type WorkbenchStage = 'inspect' | 'appraise' | 'thesis' | 'negotiate' | 'result';
+/**
+ * İşlem Masası aşamaları.
+ *
+ * İlk dördü çekirdek ticaret akışıdır (GDD 23.6). Son üçü Servis Kabul
+ * akışıdır — GDD 23.10.3: "Servis müşterisinde standart dört aşama yerine
+ * Servis Kabul akışı kullanılır: Tanıla → Süre/Risk/Fiyat → Teslim Sözü →
+ * Atölye Kuyruğu." İki akış aynı Workbench yüzeyini paylaşır; ayrı tam ekran
+ * açılmaz (GDD 23.24).
+ */
+export type WorkbenchStage =
+  | 'inspect'
+  | 'appraise'
+  | 'thesis'
+  | 'negotiate'
+  | 'result'
+  // --- Servis Kabul akışı (GDD 23.14) ---
+  | 'diagnose' // Tanıla
+  | 'quote' // Süre / Risk / Fiyat
+  | 'promise' // Teslim Sözü
+  | 'jobQueue'; // Atölye Kuyruğu
+
+/** Bir akışın hangi aşama dizisini kullandığı. */
+export type DealFlow = 'trade' | 'service';
 
 /** Aktif müşteri işleminin, bir kaleme ait çalışma durumu. */
 export interface DealLine {
@@ -595,9 +688,13 @@ export interface DealLine {
 export interface ActiveDeal {
   dealId: string;
   customerId: string;
+  /** Hangi aşama dizisi kullanılıyor (GDD 23.23 intent matrisi). */
+  flow: DealFlow;
   stage: WorkbenchStage;
   activeLineId: string;
   lines: DealLine[];
+  /** Servis akışında dolu; ticaret akışında null. */
+  service: ServiceSession | null;
   startedAtSec: number;
   /** Terminal settlement uygulandı mı — çift tap koruması (GDD 22.1). */
   settled: boolean;

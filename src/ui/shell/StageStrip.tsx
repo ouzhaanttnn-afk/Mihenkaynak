@@ -12,24 +12,41 @@
  * aynı Workbench state değiştirir." Bu bileşen yalnız state değiştirir.
  */
 
-import type { WorkbenchStage } from '@domain/types';
+import type { DealFlow, WorkbenchStage } from '@domain/types';
 
-const STEPS: { stage: WorkbenchStage; label: string }[] = [
+/** GDD 23.6 — çekirdek ticaret akışı. */
+const TRADE_STEPS: { stage: WorkbenchStage; label: string }[] = [
   { stage: 'inspect', label: 'İncele' },
   { stage: 'appraise', label: 'Değerle' },
   { stage: 'thesis', label: 'Tez' },
   { stage: 'negotiate', label: 'Pazarlık' },
 ];
 
-const ORDER: WorkbenchStage[] = ['inspect', 'appraise', 'thesis', 'negotiate', 'result'];
+/**
+ * GDD 23.10.3 — "Servis müşterisinde standart dört aşama yerine Servis Kabul
+ * akışı kullanılır: Tanıla → Süre/Risk/Fiyat → Teslim Sözü → Atölye Kuyruğu."
+ * Şerit aynı 32 px bölgede kalır; yalnız adımların anlamı değişir.
+ */
+const SERVICE_STEPS: { stage: WorkbenchStage; label: string }[] = [
+  { stage: 'diagnose', label: 'Tanıla' },
+  { stage: 'quote', label: 'Teklif' },
+  { stage: 'promise', label: 'Söz' },
+  { stage: 'jobQueue', label: 'Kuyruk' },
+];
+
+const TRADE_ORDER: WorkbenchStage[] = ['inspect', 'appraise', 'thesis', 'negotiate', 'result'];
+const SERVICE_ORDER: WorkbenchStage[] = ['diagnose', 'quote', 'promise', 'jobQueue'];
 
 interface Props {
+  flow: DealFlow;
   current: WorkbenchStage;
   canEnter: (stage: WorkbenchStage) => boolean;
   onSelect: (stage: WorkbenchStage) => void;
 }
 
-export function StageStrip({ current, canEnter, onSelect }: Props) {
+export function StageStrip({ flow, current, canEnter, onSelect }: Props) {
+  const STEPS = flow === 'service' ? SERVICE_STEPS : TRADE_STEPS;
+  const ORDER = flow === 'service' ? SERVICE_ORDER : TRADE_ORDER;
   const currentIndex = ORDER.indexOf(current);
 
   return (

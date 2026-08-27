@@ -288,6 +288,68 @@ export const NEGOTIATION = {
 /** Test aracı süresinin sabır maliyetine çevrimi. */
 export const PATIENCE_PER_TEST_SECOND = 1.6;
 
+/**
+ * GDD 17 — Servis ve atölye denge parametreleri. Tümü PLAYTEST.
+ *
+ * DEĞİŞMEZ (GDD 17.4): burada pasif gelir üreten hiçbir parametre yoktur.
+ * Her değer ya bir maliyeti, ya bir riski, ya da bir ilişki sonucunu ölçekler.
+ */
+export const SERVICE = {
+  /** GDD 14.1 — "Servis brüt marj %35–60". Ücret bu banttan türetilir. */
+  grossMarginBand: [0.35, 0.6] as [number, number],
+
+  /**
+   * GDD 35 hata riski formülünün yoğunluk terimi ağırlığı.
+   * GDD 17.3: "Aşırı iş almak bekleme süresini ve hata riskini artırır."
+   */
+  loadRiskWeight: 0.3,
+
+  /** Personel başına beceri katkısı (riski düşürür). Personel sistemi post-MVP. */
+  staffSkillPerMember: 0.06,
+
+  /** Mağaza kademesine bağlı ekipman bonusu (GDD 17.2 "ekipman"). */
+  equipmentBonusByTier: { 1: 0, 2: 0.04, 3: 0.08, 4: 0.13, 5: 0.18 } as Record<number, number>,
+
+  /** GDD 17.2 — dış usta: marj düşer, süre uzar, kapasite tüketmez. */
+  outsource: {
+    /** Ücretin dış ustaya giden payı. */
+    feeShare: 0.42,
+    /** Kendi atölyeye göre ek gün. */
+    extraDays: 2,
+    /** Dış ustanın hata riski çarpanı — kontrol sende değildir. */
+    riskFactor: 0.85,
+  },
+
+  /** GDD 17.3 — teslim sözü kişisel güvenin parçasıdır. */
+  promise: {
+    /** Varsayılan tampon: bir gün pay bırak. */
+    defaultBufferDays: 1,
+    /** Tamponsuz (sıkı) söz tutulursa ek güven. */
+    tightBonus: 4,
+    /** Aşırı geniş söz vermenin güven maliyeti. */
+    loosePenalty: -2,
+    /** Oyuncunun seçebileceği en geniş tampon. */
+    maxBufferDays: 3,
+  },
+
+  /** Sözden her gün gecikmenin güven cezası. */
+  latePenaltyPerDay: 6,
+
+  /** GDD 21.2 — servis hatasında ödenen tazminin ücrete oranı. */
+  compensationRatio: 1.25,
+
+  /** Servis hatasının doğrudan güven cezası. */
+  failureTrustPenalty: 18,
+
+  /** Kişisel güven hareketinin semt itibarına yansıma oranı (GDD 10.4). */
+  reputationTransfer: 0.25,
+
+  /** Servis işi kabul edildiğinde kazanılan XP. */
+  xpOnAccept: 18,
+  /** Başarılı teslimde kazanılan ek XP. */
+  xpOnDelivery: 26,
+} as const;
+
 /** XP kazanımı — GDD 18.1 "doğru ekspertiz, kârlı işlem, iyi risk kararı". */
 export const XP = {
   dealClosed: 30,

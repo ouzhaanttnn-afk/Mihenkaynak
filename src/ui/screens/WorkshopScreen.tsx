@@ -1,32 +1,44 @@
 /**
  * ATÖLYE ekranı (GDD 23.18)
  *
- * Kurallar:
- *  - Kapasite şeridi sticky: aktif slot / toplam slot, bugün teslim, gecikme riski.
- *  - İş kuyruğu: müşteri/ürün, servis tipi, kalan süre, söz verilen gün, hata riski.
- *  - "Atölye ekranı fabrika üretim bandı gibi görünmez; aktif iş emri ve teslim
- *    sözleri ön plandadır."
+ * Bölgeler (GDD 23.18 tablosu):
+ *   Kapasite şeridi | Aktif slot / toplam slot, bugün teslim, gecikme riski. Sticky.
+ *   İş kuyruğu      | Müşteri/ürün, servis tipi, kalan süre, söz verilen gün, hata riski.
+ *   Dış Usta        | Ayrı kısa alt görünüm; ücret + süre + güvenilirlik.
+ *   Ekipman         | Yükseltmeler kapasite/hata/süreyi etkiler; pasif HAS üretimi YOKTUR.
  *
- * DEĞİŞMEZ — GDD 17.4 / 34.13: "MIHENKAYNAK atölyesi havadan günlük metal veya
- * sabit pasif gelir ÜRETMEZ." Bu ekranda hiçbir pasif gelir sayacı yoktur.
+ * "Atölye ekranı fabrika üretim bandı gibi görünmez; aktif iş emri ve teslim
+ *  sözleri ön plandadır."
  *
- * Kapsam notu: servis kuyruğu MVP kapsamındadır (GDD 30.2); bu sürümde
- * kapasite yüzeyi ve boş-durum sözleşmesi kurulmuştur, iş kabul akışı
- * (GDD 23.14 Servis Kabul) sıradaki üretim adımıdır.
+ * DEĞİŞMEZ (GDD 17.4 / 34.13): bu ekranda pasif gelir sayacı yoktur. Para
+ * yalnız "Teslim Et" ile, yalnız tamamlanmış bir iş için hareket eder.
  */
 
+import { SERVICE } from '@domain/balance';
+import { activeJobs, inHouseLoad, overdueJobs, readyJobs } from '@domain/service';
+import { getServiceType } from '@data/service-types';
 import { useGame } from '@state/gameStore';
-import { IconClock, IconWorkshop } from '@ui/icons';
-import { tl } from '@ui/format';
+
+import { IconClock, IconServiceResale, IconWarning, IconWorkshop } from '@ui/icons';
+import { pct, tl } from '@ui/format';
+import type { ServiceJob } from '@domain/types';
 
 export function WorkshopScreen() {
   const s = useGame();
-  const inService = s.inventory.filter((p) => p.location === 'workshop');
-  const used = inService.length;
+
+  const active = activeJobs(s.jobs);
+  const ready = readyJobs(s.jobs);
+  const overdue = overdueJobs(s.jobs, s.market.day);
+  const load = inHouseLoad(s.jobs);
   const capacity = s.store.workshopCapacity;
+
+  const dueToday = active.filter((j) => j.promisedDay === s.market.day).length;
+  const equipmentBonus = SERVICE.equipmentBonusByTier[s.store.storeTier] ?? 0;
+  const outsourcedCount = active.filter((j) => j.venue === 'outsourced').length;
 
   return (
     <div className="page">
+      {/* Kapasite şeridi — sticky (GDD 23.18) */}
       <header className="pageHead">
         <h1 className="pageHead__title">Atölye</h1>
         <p className="pageHead__sub">Servis kuyruğu, kapasite ve teslim sözleri</p>
@@ -34,79 +46,232 @@ export function WorkshopScreen() {
         <div className="summaryRow">
           <div className="summaryRow__item">
             <span className="summaryRow__label">Kapasite</span>
-            <span className="summaryRow__value num">
-              {used}/{capacity} slot
+            <span
+              className={`summaryRow__value num ${
+                load >= capacity ? 'summaryRow__value--warning' : ''
+              }`}
+            >
+              {load}/{capacity} slot
             </span>
           </div>
           <div className="summaryRow__item">
             <span className="summaryRow__label">Bugün Teslim</span>
-            <span className="summaryRow__value num">0 iş</span>
+            <span className="summaryRow__value num">{dueToday} iş</span>
           </div>
           <div className="summaryRow__item">
-            <span className="summaryRow__label">Gecikme Riski</span>
-            <span className="summaryRow__value">Yok</span>
+            <span className="summaryRow__label">Gecikme</span>
+            <span
+              className={`summaryRow__value num ${
+                overdue.length > 0 ? 'summaryRow__value--negative' : ''
+              }`}
+            >
+              {overdue.length > 0 ? `${overdue.length} iş` : 'Yok'}
+            </span>
           </div>
         </div>
 
         <div className="liquidityBar">
           <div
-            className="liquidityBar__fill liquidityBar__fill--healthy"
-            style={{ width: `${capacity > 0 ? (used / capacity) * 100 : 0}%` }}
+            className={`liquidityBar__fill liquidityBar__fill--${
+              load >= capacity ? 'caution' : 'healthy'
+            }`}
+            style={{ width: `${capacity > 0 ? Math.min(100, (load / capacity) * 100) : 0}%` }}
           />
         </div>
       </header>
 
       <div className="page__scroll">
-        {used === 0 ? (
-          <div className="empty">
-            <div className="empty__icon">
-              <IconWorkshop size={34} />
+        {/* Teslime hazır işler önce — oyuncunun aksiyon alması gerekenler. */}
+        {ready.length > 0 && (
+          <div className="group">
+            <h2 className="group__title">Teslime Hazır</h2>
+            <div className="rowList">
+              {ready.map((job) => (
+                <JobRow key={job.jobId} job={job} today={s.market.day} onDeliver={s.deliverJob} />
+              ))}
             </div>
-            <p className="empty__title">Kuyruk boş</p>
-            <p className="empty__text">
-              Servis işleri müşteriden kabul edildiğinde buraya düşer. Atölye pasif gelir
-              üretmez — gelir kabul edilen gerçek işten, kullanılan kapasiteden ve
-              üstlenilen hata riskinden doğar.
-            </p>
-          </div>
-        ) : (
-          <div className="rowList">
-            {inService.map((position) => {
-              const item = s.items[position.itemId];
-              if (!item) return null;
-              return (
-                <div key={position.itemId} className="row">
-                  <span className="row__thumb">
-                    <IconClock size={20} />
-                  </span>
-                  <div className="row__body">
-                    <div className="row__title">{item.displayName}</div>
-                    <div className="row__meta">Serviste · maliyet {tl(position.costBasis)}</div>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         )}
 
+        {/* İş kuyruğu */}
+        <div className="group">
+          <h2 className="group__title">
+            İş Kuyruğu{active.length > 0 ? ` · ${active.length}` : ''}
+          </h2>
+
+          {active.length === 0 ? (
+            <div className="empty">
+              <div className="empty__icon">
+                <IconWorkshop size={34} />
+              </div>
+              <p className="empty__title">Kuyruk boş</p>
+              <p className="empty__text">
+                Servis işleri müşteriden kabul edildiğinde buraya düşer. Atölye pasif gelir
+                üretmez — gelir kabul edilen gerçek işten, kullanılan kapasiteden ve
+                üstlenilen hata riskinden doğar.
+              </p>
+            </div>
+          ) : (
+            <div className="rowList">
+              {active.map((job) => (
+                <JobRow key={job.jobId} job={job} today={s.market.day} onDeliver={s.deliverJob} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Dış Usta — ayrı kısa alt görünüm (GDD 23.18) */}
         <div className="group">
           <h2 className="group__title">Dış Usta</h2>
           <div className="group__body">
             <div className="statLine">
-              <span className="statLine__label">Ortalama süre</span>
-              <span className="statLine__value">2–3 gün</span>
+              <span className="statLine__label">
+                <IconServiceResale size={15} />
+                Devredilen iş
+              </span>
+              <span className="statLine__value num">{outsourcedCount}</span>
             </div>
             <div className="statLine">
-              <span className="statLine__label">Güvenilirlik</span>
-              <span className="statLine__value">Orta</span>
+              <span className="statLine__label">Ek süre</span>
+              <span className="statLine__value num">+{SERVICE.outsource.extraDays} gün</span>
             </div>
             <div className="statLine">
-              <span className="statLine__label">Marj etkisi</span>
-              <span className="statLine__value statLine__value--warning">Düşük</span>
+              <span className="statLine__label">Ücret payı</span>
+              <span className="statLine__value statLine__value--warning num">
+                {pct(SERVICE.outsource.feeShare)}
+              </span>
+            </div>
+            <div className="statLine">
+              <span className="statLine__label">Kapasite tüketimi</span>
+              <span className="statLine__value statLine__value--positive">Yok</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Ekipman — kapasite/hata/süreyi etkiler; pasif üretim yok (GDD 23.18) */}
+        <div className="group">
+          <h2 className="group__title">Ekipman</h2>
+          <div className="group__body">
+            <div className="statLine">
+              <span className="statLine__label">Kademe {s.store.storeTier} ekipman bonusu</span>
+              <span
+                className={`statLine__value num ${
+                  equipmentBonus > 0 ? 'statLine__value--positive' : ''
+                }`}
+              >
+                {equipmentBonus > 0 ? `−${pct(equipmentBonus)} hata riski` : 'Yok'}
+              </span>
+            </div>
+            <div className="statLine">
+              <span className="statLine__label">Personel</span>
+              <span className="statLine__value num">
+                {s.store.staff.length === 0 ? 'Yok' : `${s.store.staff.length} kişi`}
+              </span>
+            </div>
+            <div className="statLine">
+              <span className="statLine__label">Yoğunluk risk etkisi</span>
+              <span className="statLine__value statLine__value--warning num">
+                +{pct(SERVICE.loadRiskWeight)} tam kapasitede
+              </span>
             </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Bir iş emri satırı — GDD 23.18: "Müşteri/ürün, servis tipi, kalan süre,
+ * söz verilen gün, hata riski."
+ */
+function JobRow({
+  job,
+  today,
+  onDeliver,
+}: {
+  job: ServiceJob;
+  today: number;
+  onDeliver: (jobId: string) => void;
+}) {
+  const type = getServiceType(job.type);
+  const isReady = job.result === 'success' || job.result === 'failed';
+  const isLate = today > job.promisedDay && job.result !== 'delivered';
+  const daysToPromise = job.promisedDay - today;
+
+  return (
+    <div className="row">
+      <span className="row__thumb">
+        {isReady ? <IconWorkshop size={20} /> : <IconClock size={20} />}
+      </span>
+
+      <div className="row__body">
+        <div className="row__title">
+          {type.label}{' '}
+          <span className={`tag ${job.venue === 'outsourced' ? 'tag--neutral' : ''}`}>
+            {job.venue === 'inHouse' ? 'Kendi atölyem' : 'Dış usta'}
+          </span>
+        </div>
+        <div className="row__meta">
+          {job.itemName} · {job.customerName}
+        </div>
+
+        <div className="row__figures">
+          <span className="figure">
+            <span className="figure__label">Kalan süre</span>
+            <span className="figure__value num">
+              {job.result === 'pending' ? `${job.remainingDays} gün` : 'Bitti'}
+            </span>
+          </span>
+          <span className="figure">
+            <span className="figure__label">Söz verilen</span>
+            <span
+              className={`figure__value num ${isLate ? 'figure__value--negative' : ''}`}
+            >
+              {job.promisedDay}. gün
+            </span>
+          </span>
+          <span className="figure">
+            <span className="figure__label">Hata riski</span>
+            <span
+              className={`figure__value num ${
+                job.risk >= 0.3 ? 'figure__value--negative' : ''
+              }`}
+            >
+              {pct(job.risk)}
+            </span>
+          </span>
+          <span className="figure">
+            <span className="figure__label">Ücret</span>
+            <span className="figure__value num">{tl(job.fee)}</span>
+          </span>
+        </div>
+
+        {/* Satır uyarısı — tek satır durum */}
+        {isLate && (
+          <div className="rowAlert">
+            <IconWarning size={12} />
+            Söz verilen gün geçti · her gün {SERVICE.latePenaltyPerDay} puan güven kaybı
+          </div>
+        )}
+        {!isLate && job.result === 'pending' && daysToPromise <= 1 && (
+          <div className="rowAlert">
+            <IconClock size={12} />
+            {daysToPromise === 0 ? 'Bugün teslim sözü var' : 'Yarın teslim sözü var'}
+          </div>
+        )}
+      </div>
+
+      {isReady && (
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => onDeliver(job.jobId)}
+          style={{ flex: '0 0 auto' }}
+        >
+          Teslim Et
+        </button>
+      )}
     </div>
   );
 }

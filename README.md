@@ -13,9 +13,11 @@ Mobil öncelikli, portrait, tek oyunculu tycoon / shop management simülasyonu.
 
 ## Şu an ne çalışıyor?
 
-Çekirdek müşteri işlemi uçtan uca oynanabilir:
+İki müşteri akışı uçtan uca oynanabilir (GDD 23.23 intent matrisi):
 
-**Müşteri karşılama → İncele → Değerle → Tez → Pazarlık → Settlement → Vaka özeti**
+**Ticaret:** Müşteri karşılama → İncele → Değerle → Tez → Pazarlık → Settlement → Vaka özeti
+
+**Servis:** Müşteri karşılama → Tanıla → Teklif → Söz → Atölye Kuyruğu → Teslim
 
 - Test araçlarıyla belirsizliği daraltma; değer bandı ve güven seviyesi
 - 2–4 rasyonel çıkış kanalının net getiri / süre / risk / likidite karşılaştırması
@@ -24,12 +26,14 @@ Mobil öncelikli, portrait, tek oyunculu tycoon / shop management simülasyonu.
 - Anti-spam: aynı teklifi tekrarlamak yeni kabul şansı üretmez
 - Kalem bazlı, idempotent settlement ve DealRecord
 - İşlem sonrası öğretici vaka özeti
+- Servis: 7 servis türü, kendi atölye ↔ dış usta karşılaştırması, kapasite ve
+  yoğunluğa bağlı hata riski, teslim sözü kararı, gecikme ve tazmin sonuçları
 - Stok, Atölye, İşletme kök ekranları; Piyasa ve İşlem Defteri ikincil rotaları
 
 ```bash
 npm install
 npm run dev        # geliştirme sunucusu
-npm test           # 47 ekonomi invariant testi
+npm test           # 79 invariant testi (ekonomi + servis)
 npm run build      # production build
 ```
 
@@ -55,14 +59,17 @@ src/domain/              Saf oyun mantığı — UI bağımsız
   valuation.ts           Değerleme motoru ve güven seviyesi (GDD 6, 7)
   thesis.ts              İşlem Tezi ve alış tavanı (GDD 8, 6.4)
   negotiation.ts         Pazarlık durum makinesi (GDD 11)
+  service.ts             Servis kabul, kapasite, hata riski, teslim (GDD 17)
   settlement.ts          İdempotent ekonomi defteri (GDD 22)
   deal-review.ts         İşlem sonrası vaka özeti (GDD 22.3)
-  invariants.test.ts     GDD 31.3 / EK F kabul testleri
+  invariants.test.ts     GDD 31.3 / EK F ekonomi kabul testleri
+  service.test.ts        GDD 17 / 22.4 / EK F servis kabul testleri
 
 src/data/                İçerik — koddan ayrık veri (GDD 28.1)
   item-templates.ts      Ürün şablonları (GDD 29.2)
   archetypes.ts          Müşteri arketipleri (GDD 9.2 / EK C)
   tools.ts               Test araçları (GDD 7 / EK D)
+  service-types.ts       Servis türleri (GDD 17.1)
 
 src/state/gameStore.ts   Orkestrasyon. İş mantığı BURADA YAŞAMAZ.
 
@@ -71,6 +78,7 @@ src/ui/
   icons.tsx              Inline SVG ikon seti (EK H — "kodla çizilir")
   shell/                 GDD 23.9.2 global ekran kabuğu bölgeleri
   workbench/             İncele / Değerle / Tez / Pazarlık / Sonuç
+                         + Tanıla / Teklif / Söz / Kuyruk (servis)
   screens/               Dükkan, Stok, Atölye, İşletme
 ```
 
@@ -97,6 +105,9 @@ GDD 34 "Tasarımın Değişmez Kuralları" bu depoda yorum değil, yapı ve test
 | Toptancı risksiz arbitraj değildir | 34.7 | Tüm kanal fiyatları aynı spot ve spread'den türer |
 | Görünmez risk yoktur | 7.3 | `HiddenFlaw.readableSignal` opsiyonel değildir; test tüm üretimi tarar |
 | Test bilgi verir, para basmaz | 34.9 | Testler yalnız `certainty` artırır; kasa/stok yazamazlar |
+| Atölye pasif gelir üretmez | 17.4 / 34.13 | `advanceJobsOneDay` saf süre fonksiyonudur; para yalnız teslimde hareket eder |
+| Servis işi duplicate completion üretmez | EK F | Teslim `txId` iş kimliğini taşır; `result: 'delivered'` ikinci teslimi engeller |
+| Servis sonucu reload ile değişmez | 28.3 | Başarı/başarısızlık kabul anında `(seed, jobId)` ile sabitlenir |
 
 Testler denge değerlerini değil sözleşmeyi korur. Bir tuning parametresi
 değiştiğinde bu testler geçmeye devam etmelidir; geçmiyorsa değişen şey denge
@@ -138,12 +149,13 @@ yaşadığı için, motor değişikliği gerekirse bu katman büyük ölçüde t
 
 GDD'de tanımlı, henüz üretimde olmayanlar:
 
-- **Intent akışları (23.23):** dükkandan satış, servis kabul (23.14),
-  ekspertiz/danışma. Şu an müşteri havuzu yalnız çekirdek "satış" akışını üretir.
+- **Kalan intent akışları (23.23):** dükkandan satış ve ekspertiz/danışma.
+  Müşteri havuzu şu an yalnız akışı uygulanmış niyetleri üretir (satış + servis).
 - **Çoklu ürün (12, 23.13):** kalem şeridi ve kalem bazlı settlement hazır;
   paket teklif ekonomisi eksik.
 - **Toptancı (16, 23.17):** güven, limit, vade ve lot ekranı.
-- **Atölye (17, 23.18):** servis kuyruğu, kapasite, teslim sözü, hata riski.
+- **Atölye derinliği (17.2, 23.18):** personel işe alma, ekipman satın alma ve
+  servis türü uzmanlığı. Kapasite, hata riski ve teslim sözü üretimdedir.
 - **Save/migration (28.1):** işlem bazlı auto-save ve gün sonu checkpoint.
 - **Onboarding (25):** ilk 25 dakikalık öğretim akışı.
 

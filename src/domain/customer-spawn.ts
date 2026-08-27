@@ -53,20 +53,22 @@ export function spawnCustomer(
   //
   // GDD 23.23 beş ayrı intent akışı tanımlar ve her biri FARKLI bir ekran
   // davranışı ister:
-  //   sell      → İncele → Değerle → Tez → Pazarlık          (çekirdek akış)
+  //   sell      → İncele → Değerle → Tez → Pazarlık          ✔ üretimde
+  //   service   → Tanıla → Süre/Risk/Fiyat → Söz → Kuyruk    ✔ üretimde (23.14)
   //   buy       → Stok seçimi → Değer/Paket → Pazarlık        (henüz yok)
-  //   service   → Tanıla → Süre/Risk/Fiyat → Söz → Kuyruk     (henüz yok, 23.14)
   //   appraisal → İncele → Test → Rapor/Ücret → Sonuç         (henüz yok)
   //
-  // Bu sürümde yalnız çekirdek "sell" akışı üretimde olduğu için havuz ona
-  // sabitlenmiştir. Diğer niyetleri spawn etmek, müşteri şeridinde doğru
-  // niyeti yazıp yanlış akışı çalıştırmak anlamına gelirdi. Karşılık gelen
-  // akışlar üretime girdiğinde ağırlıklar buradan açılır.
-  const intent: CustomerIntent = 'sell';
+  // Havuz yalnız akışı uygulanmış niyetleri üretir. Uygulanmamış bir niyeti
+  // spawn etmek, müşteri şeridinde doğru niyeti yazıp yanlış akışı çalıştırmak
+  // anlamına gelirdi. Kalan akışlar üretime girdiğinde ağırlıkları eklenir.
+  const intent: CustomerIntent = rng.pickWeighted([
+    { value: 'sell' as const, weight: 82 },
+    { value: 'service' as const, weight: 18 },
+  ]);
 
   // --- Kalem sayısı: çoklu ürün orta oyunda açılır (GDD 12) ---
   const multiChance = store.level >= 3 ? 0.26 : store.level >= 2 ? 0.12 : 0;
-  const lineCount = rng.chance(multiChance) ? rng.int(2, 3) : 1;
+  const lineCount = intent === 'sell' && rng.chance(multiChance) ? rng.int(2, 3) : 1;
 
   // --- Ürünler ---
   const items: ItemInstance[] = [];
