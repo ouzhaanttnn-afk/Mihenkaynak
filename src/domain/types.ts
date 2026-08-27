@@ -530,6 +530,48 @@ export interface InventoryPosition {
   expectedExitValues: Partial<Record<ExitChannel, Money>>;
 }
 
+/**
+ * Ekonomi Ara Düzeltmesi §8 — ESNAF AĞI ÜYESİ.
+ *
+ * DEĞİŞMEZ (§8): "Esnaf ağı, toptancının yerine geçen SINIRSIZ İKİNCİ BANKA
+ * DEĞİLDİR. Yerel ilişki sermayesine dayanan, daha küçük ölçekli ve KOŞULLU
+ * bir ticari dayanışma kanalıdır."
+ *
+ * Bu yüzden ağ tek bir hesap değil, her biri kendi kasası, kendi iştahı ve
+ * kendi ilişkisi olan ÜYELERDEN oluşur. Tek hesap olsaydı toptancının küçük
+ * boy kopyası olurdu — §8'in son cümlesinin yasakladığı şey.
+ */
+export interface TradeNetworkMember {
+  id: string;
+  displayName: string;
+  /** Esnafın işi — kimin sarrafiye aldığını belirler (§8 "uygun esnafta"). */
+  craft: 'kuyumcu' | 'sarraf' | 'saatci' | 'tefeci' | 'manifaturaci';
+  /** Yerel ilişki sermayesi (0–100). */
+  trust: Scale100;
+  /**
+   * Elindeki nakit. §8 "Ağ kapasitesi SONLUDUR" — bir esnafın kasası
+   * bittiğinde daha fazla bozdurma yapılamaz, fiyat ne olursa olsun.
+   */
+  cashOnHand: Money;
+  /** Sarrafiye alma iştahı (0–1). Düşükse bu esnaf altın bozmaz. */
+  bullionAppetite: number;
+  /** Açık kısa vadeli borç; üye başına en fazla bir tane. */
+  loan: NetworkLoan | null;
+  /** Geçmiş davranış — §8 "güven, GEÇMİŞ DAVRANIŞ, açık borç ve vade sınırı". */
+  history: { repaidOnTime: number; repaidLate: number };
+}
+
+/** §8 "Kısa vadeli ticari borç". */
+export interface NetworkLoan {
+  id: string;
+  memberId: string;
+  principal: Money;
+  /** Anapara + ücret; kapanışta ödenecek toplam. */
+  totalDue: Money;
+  dueDay: GameDay;
+  takenDay: GameDay;
+}
+
 /** GDD 28.2 · SupplierAccount. */
 export interface SupplierAccount {
   trust: Scale100;

@@ -40,6 +40,16 @@ import {
 } from '@domain/purchase';
 import { CHANNEL_LABEL_TR, gramsFor } from '@domain/channels';
 import {
+  accrueNetworkOverdue,
+  applyLiquidation,
+  networkLiquidationOffer,
+  networkLoanOffer,
+  openLoan,
+  repayLoan,
+  replenishNetwork,
+  spawnNetwork,
+} from '@domain/trade-network';
+import {
   accrueOverdue,
   financeTerms,
   openInvoice,
@@ -102,6 +112,7 @@ import type {
   ServiceVenue,
   SettlementTransaction,
   StoreState,
+  TradeNetworkMember,
   TradeSide,
   WorkbenchStage,
 } from '@domain/types';
@@ -152,6 +163,12 @@ export interface GameState {
   /** Bir sonraki müşterinin geleceği oyun dakikası. */
   nextCustomerAtMinutes: number;
 
+  /**
+   * Addendum §8 — esnaf ağı üyeleri. Tek hesap değil, her biri kendi kasası
+   * ve ilişkisi olan esnaflar; §8 "sınırsız ikinci banka değildir".
+   */
+  network: TradeNetworkMember[];
+
   /** Atölyedeki tüm servis işleri (GDD 28.2 ServiceJob). */
   jobs: ServiceJob[];
   /** Deterministik iş kimliği için artan sayaç. */
@@ -200,6 +217,11 @@ export interface GameState {
   liquidateToWholesaler: (itemId: string, quantity: number, sliceCount: number) => void;
   buyFromWholesaler: (templateId: string, quantity: number) => void;
   repaySupplier: (invoiceId: string) => void;
+
+  // --- Esnaf ağı (Addendum §8) ---
+  liquidateToNetwork: (memberId: string, itemId: string, quantity: number) => void;
+  borrowFromNetwork: (memberId: string, amount: Money) => void;
+  repayNetworkLoan: (memberId: string) => void;
 
   advanceDay: () => void;
   notify: (text: string, tone: ToastMessage['tone']) => void;
@@ -263,6 +285,7 @@ export const useGame = create<GameState>((set, get) => {
 
     dayCharacter: dayCharacter(seed, 1, market),
     intentTelemetry: emptyTelemetry(),
+    network: spawnNetwork(seed, START.reputation),
 
     queue: [],
     nextCustomerAtMinutes: DAY.openMinutes + 3,
@@ -1082,6 +1105,188 @@ export const useGame = create<GameState>((set, get) => {
       );
     },
 
+    // -----------------------------------------------------------------------
+    // Esnaf ağı — §8
+    // -----------------------------------------------------------------------
+
+    /** §8 "Altın bozdurma: oyuncu uygun esnafta sarrafiyeyi nakde çevirebilir." */
+    liquidateToNetwork: (memberId, itemId, quantity) => {
+      const s = get();
+      const member = s.network.find((m) => m.id === memberId);
+      if (!member) return;
+
+      const offer = networkLiquidationOffer(
+        member,
+        itemId,
+        quantity,
+        s.items,
+        s.inventory,
+        s.market,
+      );
+      if (!offer || offer.quantity <= 0) {
+        pushToast(set, get, offer?.shortfallReason ?? 'Bu esnaf bu işi alamıyor.', 'negative');
+        return;
+      }
+
+      const item = s.items[itemId];
+      if (!item) return;
+
+      const tx: SettlementTransaction = {
+        txId: `nsale_${s.market.day}_${memberId}_${itemId}_${s.ledger.transactions.length}`,
+        dealId: `nsale_${s.market.day}_${memberId}_${itemId}`,
+        day: s.market.day,
+        cashDelta: offer.total,
+        itemsIn: [],
+        itemsOut: [{ itemId, quantity: offer.quantity }],
+        trustDelta: 0,
+        reputationDelta: 0,
+        xpDelta: 0,
+        label: `${offer.quantity} adet ${item.displayName} · ${member.displayName}`,
+      };
+
+      const outcome = applyTransaction(economyOf(s), tx);
+      if (!outcome.applied) return;
+
+      const ledger = recordDeal(
+        realizeProfit(outcome.state.ledger, offer.total, offer.costBasis),
+        {
+          dealId: `${tx.dealId}_${s.ledger.deals.length}`,
+          customerId: memberId,
+          lineIds: [],
+          itemIds: [itemId],
+          side: 'sell',
+          day: s.market.day,
+          clockMinutes: s.market.clockMinutes,
+          testsUsed: [],
+          estimateBand: { min: offer.total, max: offer.total },
+          confidence: 'high',
+          actualValue: offer.total,
+          offerHistory: [],
+          finalState: 'ACCEPTED',
+          movesUsed: [],
+          thesisAtDeal: null,
+          price: offer.total,
+          costBasis: offer.costBasis,
+          realizedProfit: offer.total - offer.costBasis,
+          units: offer.quantity,
+          grams: offer.grams,
+          channel: 'tradeNetwork',
+          isBulk: false,
+          trustDelta: 0,
+          reputationDelta: 0,
+          reviewData: {
+            missedSignals: [],
+            keyDecisionPoint: `${member.displayName} ile bozuldu.`,
+            alternativeChannelNote: offer.shortfallReason ?? 'Ağ kapasitesi yetti.',
+          },
+        },
+      );
+
+      const revalued = revalueInventory(
+        outcome.state.inventory,
+        outcome.state.items,
+        thesisContext(get()),
+      );
+
+      set({
+        ...economyToState({ ...outcome.state, inventory: revalued, ledger }),
+        // §8 "Ağ kapasitesi sonludur" — kullanılan kapasite gerçekten azalır.
+        network: s.network.map((m) =>
+          m.id === memberId ? applyLiquidation(m, offer.total) : m,
+        ),
+      });
+
+      const profit = offer.total - offer.costBasis;
+      pushToast(
+        set,
+        get,
+        `${offer.quantity} adet bozuldu · ${fmt(offer.total)} · ${fmt(profit)} kâr`,
+        profit >= 0 ? 'positive' : 'negative',
+      );
+    },
+
+    /** §8 "Kısa vadeli ticari borç: güven, geçmiş davranış, açık borç ve vade sınırıyla." */
+    borrowFromNetwork: (memberId, amount) => {
+      const s = get();
+      const member = s.network.find((m) => m.id === memberId);
+      if (!member) return;
+
+      const offer = networkLoanOffer(member, s.network, amount, s.market.day);
+      if (offer.blockedReason) {
+        pushToast(set, get, offer.blockedReason, 'negative');
+        return;
+      }
+
+      const tx: SettlementTransaction = {
+        txId: `nloan_${memberId}_${s.market.day}`,
+        dealId: `nloan_${memberId}_${s.market.day}`,
+        day: s.market.day,
+        cashDelta: offer.amount,
+        itemsIn: [],
+        itemsOut: [],
+        trustDelta: 0,
+        reputationDelta: 0,
+        xpDelta: 0,
+        label: `${member.displayName} · kısa vadeli borç`,
+      };
+
+      const outcome = applyTransaction(economyOf(s), tx);
+      if (!outcome.applied) return;
+
+      set({
+        ...economyToState(outcome.state),
+        network: s.network.map((m) => (m.id === memberId ? openLoan(m, offer, s.market.day) : m)),
+      });
+
+      pushToast(
+        set,
+        get,
+        `${fmt(offer.amount)} alındı · ${fmt(offer.totalDue)} ${offer.dueDay}. güne`,
+        'info',
+      );
+    },
+
+    repayNetworkLoan: (memberId) => {
+      const s = get();
+      const member = s.network.find((m) => m.id === memberId);
+      if (!member?.loan) return;
+      if (member.loan.totalDue > s.store.cash) {
+        pushToast(set, get, 'Borcu kapatacak nakit yok.', 'negative');
+        return;
+      }
+
+      const tx: SettlementTransaction = {
+        txId: `nrepay_${member.loan.id}`,
+        dealId: `nrepay_${member.loan.id}`,
+        day: s.market.day,
+        cashDelta: -member.loan.totalDue,
+        itemsIn: [],
+        itemsOut: [],
+        trustDelta: 0,
+        reputationDelta: 0,
+        xpDelta: 0,
+        label: `${member.displayName} · borç ödemesi`,
+      };
+
+      const outcome = applyTransaction(economyOf(s), tx);
+      if (!outcome.applied) return;
+
+      const { member: next, onTime } = repayLoan(member, s.market.day);
+      set({
+        ...economyToState(outcome.state),
+        network: s.network.map((m) => (m.id === memberId ? next : m)),
+      });
+
+      pushToast(
+        set,
+        get,
+        onTime
+          ? `${member.displayName} kapandı · ilişki ${next.trust}/100`
+          : `${member.displayName} GECİKMELİ kapandı · ilişki ${next.trust}/100`,
+        onTime ? 'positive' : 'negative',
+      );
+    },
+
     advanceDay: () => {
       const s = get();
       const { state: closed, report } = closeDay(economyOf(s), s.market.day);
@@ -1102,6 +1307,11 @@ export const useGame = create<GameState>((set, get) => {
       const overdue = accrueOverdue(closed.store.supplier, nextDay);
       const store = { ...closed.store, supplier: overdue.supplier };
 
+      // §8 aynı kural ağda da işler; ayrıca esnafın kasası kısmen tazelenir
+      // ki ağ kalıcı olarak kurumasın.
+      const networkOverdue = accrueNetworkOverdue(s.network, nextDay);
+      const network = replenishNetwork(networkOverdue.members);
+
       set({
         ...economyToState({ ...closed, store, inventory }),
         ledger: { ...closed.ledger, realizedProfitToday: 0 },
@@ -1109,6 +1319,7 @@ export const useGame = create<GameState>((set, get) => {
         market,
         // §3: her günün kendi karakteri var; havuz gün başında yeniden çekilir.
         dayCharacter: dayCharacter(s.seed, market.day, market),
+        network,
         queue: [],
         activeCustomer: null,
         activeDeal: null,
@@ -1122,6 +1333,15 @@ export const useGame = create<GameState>((set, get) => {
         `Gün ${report.day} kapandı · Gerçekleşmiş kâr ${fmt(report.realizedTradeProfit)} · Gider ${fmt(report.overhead)}`,
         report.netCashChange >= 0 ? 'positive' : 'negative',
       );
+
+      if (networkOverdue.penalty > 0) {
+        pushToast(
+          set,
+          get,
+          `${networkOverdue.lateMembers.length} esnaf borcu gecikti · ${fmt(networkOverdue.penalty)} yük`,
+          'negative',
+        );
+      }
 
       if (overdue.penalty > 0) {
         pushToast(

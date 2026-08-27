@@ -336,6 +336,65 @@ export const WHOLESALE = {
   lotShareOfCapacity: 0.18,
 } as const;
 
+/**
+ * Ekonomi Ara Düzeltmesi §8 — ESNAF AĞI.
+ *
+ * DEĞİŞMEZ: "toptancının yerine geçen SINIRSIZ İKİNCİ BANKA DEĞİLDİR."
+ * Sayılar bu cümleyi taşımak için seçildi: üye başına tavan toptancı
+ * limitinin küçük bir kesri, vade yarısı kadar kısa, ve ağ tavanı üye
+ * tavanlarının TOPLAMINDAN belirgin küçük.
+ */
+export const NETWORK = {
+  /** Ağdaki esnaf sayısı. */
+  memberCount: 6,
+  /** Bir esnafın kasasındaki nakit bandı — bozdurma kapasitesinin kaynağı. */
+  cashBand: [18_000, 70_000] as [number, number],
+  /** Gün başında kasanın tazelenen payı; ağ kalıcı kurumaz. */
+  dailyReplenishShare: 0.22,
+  /** Bu iştahın altındaki esnaf sarrafiye almaz (§8 "uygun esnafta"). */
+  minAppetiteToBuy: 0.3,
+
+  /** Kısa vadeli borç tabanı. */
+  loanBase: 4_000,
+  /** Güven puanı başına borç kapasitesi. */
+  loanPerTrustPoint: 90,
+  /** Düzenli ödemenin kapasiteye katkısı (§8 "düzenli ödeme ağı güçlendirebilir"). */
+  historyBonusPerRepayment: 1_200,
+  /** Gecikmenin kapasite cezası. */
+  historyPenaltyPerLate: 2_600,
+
+  /**
+   * Ağın TOPLAM açık borç tavanı. Üye tavanlarının toplamından belirgin
+   * küçük: toplam olsaydı üye sayısını artırmak sınırsız bankaya giden yol
+   * olurdu (§8).
+   */
+  networkDebtCeiling: 45_000,
+  /** Sıfır ortalama güvende bile ağ tavanının bu payı açıktır. */
+  ceilingFloorShare: 0.3,
+
+  /** §8 "KISA vadeli" — toptancının vadesinin yarısı kadar. */
+  termDays: 2,
+  /** Bu güvenin üstündeki esnaf bir gün daha veriyor. */
+  longTermTrust: 70,
+
+  /** Dayanışma ücreti — gizli değil, işlem öncesi görünür. */
+  baseFeeRate: 0.035,
+  feeTrustRelief: 0.02,
+  /** Ücret hiçbir güvende sıfırlanmaz; bedava para arbitraj kapısıdır. */
+  minFeeRate: 0.012,
+
+  /** Zamanında ödeme ilişkiyi güçlendirir. */
+  onTimeTrustGain: 5,
+  /** Gecikme ilişkiyi aşındırır — ağ toptancıdan daha kırılgandır. */
+  lateTrustPenalty: 14,
+  /** Ticaret ilişkiyi bir tık büyütür. */
+  tradeTrustGain: 2,
+
+  /** Gecikmiş borcun günlük yükü. */
+  overduePerDayRate: 0.02,
+  overdueDailyTrustPenalty: 5,
+} as const;
+
 export const CHANNEL = {
   /**
    * Tezgâh müşterisi: dükkânın fiyatı BELİRLEDİĞİ kanal (makerBias +1).

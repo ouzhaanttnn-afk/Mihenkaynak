@@ -36,7 +36,20 @@ import {
   supplyOffer,
   usedLimit,
 } from '@domain/wholesaler';
-import type { InventoryPosition, ItemInstance, TradeChannel } from '@domain/types';
+import {
+  buysBullion,
+  memberFeeRate,
+  networkDebt,
+  networkDebtCeiling,
+  networkLiquidationOffer,
+  networkLoanOffer,
+} from '@domain/trade-network';
+import type {
+  InventoryPosition,
+  ItemInstance,
+  TradeChannel,
+  TradeNetworkMember,
+} from '@domain/types';
 import { useGame } from '@state/gameStore';
 
 import {
@@ -50,7 +63,7 @@ import {
 } from '@ui/icons';
 import { pct, pctChange, price, tl, tlSigned } from '@ui/format';
 
-type Route = 'root' | 'market' | 'journal' | 'wholesaler';
+type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network';
 
 export function BusinessScreen() {
   const [route, setRoute] = useState<Route>('root');
@@ -58,6 +71,7 @@ export function BusinessScreen() {
   if (route === 'market') return <MarketRoute onBack={() => setRoute('root')} />;
   if (route === 'journal') return <JournalRoute onBack={() => setRoute('root')} />;
   if (route === 'wholesaler') return <WholesalerRoute onBack={() => setRoute('root')} />;
+  if (route === 'network') return <NetworkRoute onBack={() => setRoute('root')} />;
   return <BusinessRoot onOpen={setRoute} />;
 }
 
@@ -161,6 +175,12 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               sub={supplierSub(s)}
               icon={<IconWholesale size={17} />}
               onPress={() => onOpen('wholesaler')}
+            />
+            <MenuLine
+              title="Esnaf Ağı"
+              sub={networkSub(s)}
+              icon={<IconTrust size={17} />}
+              onPress={() => onOpen('network')}
             />
             <MenuLine
               title="Kariyer / Yetenekler"
@@ -489,6 +509,217 @@ function LiquidateRow({ position, item }: { position: InventoryPosition; item: I
 const SUPPLY_TEMPLATES = ['gram_gold_1', 'quarter_gold', 'half_gold', 'full_gold'];
 /** Lot fiyatlaması ürünün kimliğine değil şablonuna bağlıdır; sabit sonda yeter. */
 const LOT_PROBE_INDEX = 424_242;
+
+/** §8 — ağın durumu bir satırda: kaç esnaf alım yapar, ne kadar borç açık. */
+function networkSub(s: ReturnType<typeof useGame.getState>): string {
+  const buyers = s.network.filter(buysBullion).length;
+  const debt = networkDebt(s.network);
+  return debt > 0
+    ? `${buyers} esnaf altın alıyor · ${tl(debt)} açık borç`
+    : `${buyers} esnaf altın alıyor · borç yok`;
+}
+
+/**
+ * ESNAF AĞI — Addendum §8.
+ *
+ * DEĞİŞMEZ: "toptancının yerine geçen SINIRSIZ İKİNCİ BANKA DEĞİLDİR."
+ * Ekran bunu görünür kılar: tek bir hesap bakiyesi yok, ayrı ayrı esnaflar
+ * var; her birinin kasası, ilişkisi ve tek bir açık borcu. Üstte ağın toplam
+ * kapasitesi durur — üye tavanlarının toplamı DEĞİL, ondan küçük bir tavan.
+ */
+function NetworkRoute({ onBack }: { onBack: () => void }) {
+  const s = useGame();
+  const today = s.market.day;
+  const debt = networkDebt(s.network);
+  const ceiling = networkDebtCeiling(s.network);
+
+  return (
+    <div className="page">
+      <header className="pageHead">
+        <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
+          ← İşletme
+        </button>
+        <h1 className="pageHead__title">Esnaf Ağı</h1>
+        <p className="pageHead__sub">
+          Yerel dayanışma · {s.network.length} esnaf · kısa vadeli
+        </p>
+      </header>
+
+      <div className="page__scroll">
+        {/* §8 "Ağ kapasitesi sonludur" — tavan en üstte, gizlenmeden. */}
+        <div className="group">
+          <h2 className="group__title">Ağ kapasitesi</h2>
+          <div className="group__body">
+            <StatLine label="Açık borç" value={tl(debt)} tone={debt > 0 ? 'warning' : undefined} />
+            <StatLine
+              label="Kalan kapasite"
+              value={tl(Math.max(0, ceiling - debt))}
+              tone={ceiling - debt <= 0 ? 'negative' : undefined}
+            />
+            <StatLine
+              label="Ağ nakdi"
+              value={tl(s.network.reduce((sum, m) => sum + m.cashOnHand, 0))}
+            />
+          </div>
+        </div>
+
+        {s.network.map((member) => (
+          <NetworkMemberCard key={member.id} member={member} today={today} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NetworkMemberCard({
+  member,
+  today,
+}: {
+  member: TradeNetworkMember;
+  today: number;
+}) {
+  const s = useGame();
+  const [amount, setAmount] = useState(0);
+
+  const offer = networkLoanOffer(member, s.network, amount || 0, today);
+  const canBuy = buysBullion(member);
+  const late = !!member.loan && member.loan.dueDay < today;
+
+  // §8 "uygun esnafta" — yalnız bu esnafın alabileceği pozisyonlar.
+  const sellable = s.inventory
+    .filter((p) => p.location !== 'workshop')
+    .map((p) => ({
+      position: p,
+      offer: networkLiquidationOffer(member, p.itemId, p.quantity, s.items, s.inventory, s.market),
+    }))
+    .filter((r) => r.offer !== null && r.offer.quantity > 0);
+
+  return (
+    <div className="group">
+      <h2 className="group__title">
+        {member.displayName} · ilişki {member.trust}/100
+      </h2>
+      <div className="group__body">
+        <StatLine label="Kasasındaki nakit" value={tl(member.cashOnHand)} />
+
+        {/* §8 — açık borç ve sonuçları */}
+        {member.loan ? (
+          <div className="statLine">
+            <span className="statLine__label">
+              {late ? 'GECİKMİŞ borç' : `${member.loan.dueDay}. gün borcu`}
+            </span>
+            <span className="statLine__value">
+              <span className={`num ${late ? 'statLine__value--negative' : ''}`}>
+                {tl(member.loan.totalDue)}
+              </span>{' '}
+              <button
+                type="button"
+                className="miniBtn"
+                onClick={() => s.repayNetworkLoan(member.id)}
+                disabled={member.loan.totalDue > s.store.cash}
+              >
+                Öde
+              </button>
+            </span>
+          </div>
+        ) : offer.maxAmount <= 0 ? (
+          /*
+           * §8 "Ağ kapasitesi sonludur" — kapasite dolduğunda oyuncu ölü bir
+           * form değil, NEDENİNİ görür. Boş kutu göstermek kısıtı gizlemek
+           * olurdu; kısıt tasarımın kendisi, saklanacak bir kusur değil.
+           */
+          <p className="emptyNote">
+            {networkDebtCeiling(s.network) - networkDebt(s.network) <= 0
+              ? 'Ağ kapasitesi dolu; önce açık borçlarınızı kapatın.'
+              : 'Bu esnafın şu an verecek nakdi yok.'}
+          </p>
+        ) : (
+          <div className="lotRow">
+            <div className="lotRow__terms">
+              Kısa vadeli borç · en çok {tl(offer.maxAmount)} · {offer.termDays} gün ·
+              dayanışma ücreti {pct(memberFeeRate(member))}
+            </div>
+            {amount > 0 && !offer.blockedReason && (
+              <div className="lotRow__terms">
+                {tl(offer.amount)} alırsınız, {offer.dueDay}. gün {tl(offer.totalDue)} ödersiniz.
+              </div>
+            )}
+            <div className="lotRow__controls">
+              <label className="lotRow__field">
+                <span>Tutar</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={offer.maxAmount}
+                  step={1000}
+                  value={amount}
+                  onChange={(e) => setAmount(Number(e.target.value))}
+                />
+              </label>
+              <button
+                type="button"
+                className="miniBtn"
+                onClick={() => setAmount(offer.maxAmount)}
+                disabled={offer.maxAmount <= 0}
+              >
+                En çok
+              </button>
+              <button
+                type="button"
+                className="lotRow__buy"
+                onClick={() => s.borrowFromNetwork(member.id, amount)}
+                disabled={!!offer.blockedReason}
+              >
+                {amount > 0 ? offer.blockedReason ?? 'Borç Al' : 'Borç Al'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* §8 — altın bozdurma; yalnız uygun esnafta */}
+        {!canBuy ? (
+          <p className="emptyNote">Bu esnaf sarrafiye almıyor.</p>
+        ) : sellable.length === 0 ? (
+          <p className="emptyNote">Bozdurulacak uygun sarrafiye yok.</p>
+        ) : (
+          sellable.map(({ position, offer: liq }) => (
+            <div key={position.itemId} className="lotRow">
+              <div className="lotRow__head">
+                <span className="lotRow__name">
+                  {s.items[position.itemId]?.displayName ?? 'Ürün'} ×{liq!.quantity}
+                </span>
+                <span className="lotRow__price num">{tl(liq!.total)}</span>
+              </div>
+              <div className="lotRow__terms">
+                {liq!.grams.toFixed(2)} gr · maliyet {tl(liq!.costBasis)} ·{' '}
+                <span
+                  className={
+                    liq!.total - liq!.costBasis >= 0
+                      ? 'statLine__value--positive'
+                      : 'statLine__value--negative'
+                  }
+                >
+                  {tlSigned(liq!.total - liq!.costBasis)}
+                </span>
+              </div>
+              {/* §8 kapasite sınırı sessizce yutulmaz. */}
+              {liq!.shortfallReason && (
+                <div className="lotRow__terms">{liq!.shortfallReason}</div>
+              )}
+              <button
+                type="button"
+                className="lotRow__buy"
+                onClick={() => s.liquidateToNetwork(member.id, position.itemId, liq!.quantity)}
+              >
+                Bozdur
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Piyasa ekranı (GDD 23.16)
