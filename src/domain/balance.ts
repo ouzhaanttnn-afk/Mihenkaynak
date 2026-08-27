@@ -139,25 +139,46 @@ export const SELL_FLOOR = {
 /** GDD 13.2 — Piyasa rejim modeli. Günlük ve olay hareket bantları. */
 export const MARKET_REGIME: Record<
   MarketRegime,
-  { dailyMove: [number, number]; eventMove: [number, number]; label: string; note: string }
+  {
+    dailyMove: [number, number];
+    eventMove: [number, number];
+    label: string;
+    note: string;
+    /**
+     * Ekonomi Ara Düzeltmesi §6 — "Belirsizlik ve hızlı fiyat değişimi makası
+     * genişletebilir; sakin koşullar daraltabilir."
+     */
+    spreadShift: number;
+    /**
+     * §11 "Aşırı volatilite: makas genişleyebilir, fiyat geçerlilik süresi
+     * kısalabilir." Kanallar volatil piyasada daha az hacim taşır.
+     */
+    capacityFactor: number;
+  }
 > = {
   calm: {
     dailyMove: [0.004, 0.009],
     eventMove: [0, 0],
     label: 'Sakin',
     note: 'Dar bant, düşük stok riski.',
+    spreadShift: -0.002,
+    capacityFactor: 1.15,
   },
   normal: {
     dailyMove: [0.008, 0.018],
     eventMove: [0.02, 0.03],
     label: 'Normal',
     note: 'Nötr veya hafif trend.',
+    spreadShift: 0,
+    capacityFactor: 1,
   },
   volatile: {
     dailyMove: [0.015, 0.025],
     eventMove: [0.04, 0.06],
     label: 'Volatil',
     note: 'Uyarı: likidite ve stok yaşı daha önemli.',
+    spreadShift: 0.006,
+    capacityFactor: 0.72,
   },
   shock: {
     dailyMove: [0.015, 0.025],
@@ -165,8 +186,94 @@ export const MARKET_REGIME: Record<
     eventMove: [0.06, 0.08],
     label: 'Şok Olay',
     note: 'Önceden kısmi sinyal; pozisyon küçültme mümkün.',
+    spreadShift: 0.013,
+    capacityFactor: 0.5,
   },
 };
+
+/**
+ * Ekonomi Ara Düzeltmesi §2.4 / §6 / §8 — KANAL PROFİLLERİ.
+ *
+ * DEĞİŞMEZ (§8): "Toptancı ve esnaf ağı aynı fiyat/limit algoritmasının
+ * yalnızca farklı isimleri olarak uygulanmaz." Aşağıdaki dört profil farklı
+ * spread, kapasite, derinlik ve ilişki ağırlığı taşır.
+ *
+ * DEĞİŞMEZ (§9): "Hiçbir kanal her rejimde en iyi fiyatı, en hızlı işlemi ve
+ * en düşük riski AYNI ANDA vermemelidir." Her profilde en az bir zayıflık var.
+ *
+ * `makerBias` — FİYATI KİM BELİRLİYOR? +1 dükkân (tezgâh müşterisine karşı
+ * dükkân piyasa yapıcıdır), negatif ise karşı taraf (toptancıya karşı dükkân
+ * fiyat alıcısıdır). Ürün belirsizliği, rejim ve volatilite genişlemesi bu
+ * katsayıyla çarpılır: fiyatı belirleyen taraf kendini korur, alan taraf öder.
+ * §6.1'in "tersine çevirebilir" cümlesi bu yapıdan doğar — sabitten değil.
+ *
+ * `slippageFactor` — kanalın derinliği tükendiğinde fazla adet başına ödenen
+ * kayma. Tezgâh sığdır (1.35), toptancı derindir (0.42).
+ *
+ * `maxConcessionShare` — ilişki ve hacim ödünlerinin yarım makasın en fazla
+ * ne kadarını yiyebileceği. §8'in gereği: esnaf ağı ve toptancı fiyatlarını
+ * ilişki sermayesi taşır, tezgâh taşımaz. Kalan pay her koşulda ayakta kalır
+ * ki §11'in arbitraj döngüsü yapısal olarak kapansın.
+ */
+export const CHANNEL = {
+  /**
+   * Tezgâh müşterisi: dükkânın fiyatı BELİRLEDİĞİ kanal (makerBias +1).
+   * Marjı en yüksek, kapasitesi en dar, derinliği en sığ olan kanal.
+   */
+  retailCustomer: {
+    buySpread: 0.02,
+    sellSpread: 0.014,
+    capacityUnits: 5,
+    slippageFactor: 1.35,
+    relationshipWeight: 0.006,
+    makerBias: 1,
+    maxConcessionShare: 0.55,
+    settlementDays: 0,
+  },
+  /** Toplu müşteri: hacim getirir, pazarlık gücünün bir kısmını da (§4.1). */
+  bulkCustomer: {
+    buySpread: 0.011,
+    sellSpread: 0.008,
+    capacityUnits: 60,
+    slippageFactor: 0.9,
+    relationshipWeight: 0.012,
+    makerBias: 0.45,
+    maxConcessionShare: 0.6,
+    settlementDays: 0,
+  },
+  /**
+   * Toptancı: fiyatı TOPTANCI belirler (makerBias negatif). Dükkân burada
+   * fiyat alıcısıdır — ürün belirsizliğinin ve volatilitenin bedelini o öder.
+   * Karşılığında en derin piyasa ve en yüksek kapasite (§4.2).
+   * Zayıflığı: küçük hacimde tezgâhtan KÖTÜ fiyat verir; üstünlüğü ancak
+   * hacim tezgâhın derinliğini tükettiğinde ortaya çıkar (§6.1).
+   */
+  wholesaler: {
+    buySpread: 0.002,
+    sellSpread: 0.001,
+    capacityUnits: 220,
+    slippageFactor: 0.42,
+    relationshipWeight: 0.022,
+    makerBias: -0.6,
+    maxConcessionShare: 0.8,
+    settlementDays: 0,
+  },
+  /**
+   * Esnaf ağı: toptancının kopyası DEĞİL (§8). Kapasitesi bir düzine kat
+   * küçük, ilişki ağırlığı en yüksek — fiyatı neredeyse tamamen ilişki
+   * sermayesi taşır. Derinliği toptancıdan çok sığdır.
+   */
+  tradeNetwork: {
+    buySpread: 0.008,
+    sellSpread: 0.006,
+    capacityUnits: 18,
+    slippageFactor: 1.05,
+    relationshipWeight: 0.026,
+    makerBias: -0.15,
+    maxConcessionShare: 0.85,
+    settlementDays: 0,
+  },
+} as const;
 
 /** Rejim seçimi ağırlıkları — gün başında belirlenir (GDD 13.3). */
 export const REGIME_WEIGHTS: { value: MarketRegime; weight: number }[] = [

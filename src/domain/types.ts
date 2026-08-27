@@ -236,6 +236,25 @@ export type ExitChannel =
   | 'collection'; // Koleksiyon Bekletme
 
 export type RiskLevel = 'low' | 'medium' | 'high';
+
+/**
+ * Ekonomi Ara Düzeltmesi §2.4 — "Toplu müşteri, toptancı ve esnaf ağı
+ * birbirinden farklı hacim, fiyat, hız, risk ve ilişki davranışına sahip AYRI
+ * ticari kanallardır."
+ *
+ * §8: "Toptancı ve esnaf ağı aynı fiyat/limit algoritmasının yalnızca farklı
+ * isimleri olarak uygulanmaz." Her kanalın kendi profili vardır (channels.ts).
+ */
+export type TradeChannel =
+  | 'retailCustomer' // Tekil müşteri — tezgâh
+  | 'bulkCustomer' // Toplu sarrafiye müşterisi (§4.1)
+  | 'wholesaler' // Toptancı — yüksek hacim, hızlı likidite (§4.2)
+  | 'tradeNetwork'; // Esnaf ağı — yerel ilişki sermayesi (§8)
+
+/** İşlemin yönü. §3 terminolojisi: "alış" = oyuncu satar, "satış" = oyuncu alır. */
+export type TradeSide =
+  | 'shopSells' // Müşteri alış intenti: oyuncu müşteriye sarrafiye satar
+  | 'shopBuys'; // Müşteri satış intenti: müşteri oyuncuya sarrafiye satar
 export type LiquidityLevel = 'low' | 'medium' | 'high';
 
 /** GDD EK E — İşlem Tezi tasarım şablonu. */
