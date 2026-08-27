@@ -13,6 +13,7 @@
  * ve klavye hiç açılmaz.
  */
 
+import { TERM } from '@ui/terms';
 import { tlBare, pct } from '@ui/format';
 import type { Money } from '@domain/types';
 
@@ -96,7 +97,7 @@ export function OfferControl({ value, min, max, step, onChange, impacts, disable
 export function liquidityImpact(before: number, after: number): OfferImpact {
   const drop = before - after;
   return {
-    label: 'Likidite',
+    label: TERM.liquidity,
     value: `${pct(before)} → ${pct(after)}`,
     tone: after < 0.15 ? 'negative' : drop > 0.12 ? 'warning' : 'neutral',
   };

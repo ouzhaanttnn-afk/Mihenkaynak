@@ -15,6 +15,7 @@ import { getTemplate } from '@data/item-templates';
 import { getTool } from '@data/tools';
 import { IconWarning, ProductSilhouette } from '@ui/icons';
 import { grams } from '@ui/format';
+import { relevantFields } from '@domain/transaction-class';
 import type { FieldKnowledge, InfoField, ItemInstance, TestResult } from '@domain/types';
 
 const STATUS_TEXT: Record<FieldKnowledge['status'], string> = {
@@ -42,6 +43,10 @@ export function InspectStage({ item, knowledge, testResults }: Props) {
   const purityStatus = statusOf(knowledge, 'purity');
   const conditionStatus = statusOf(knowledge, 'condition');
 
+  // §3 — bu üründe anlamlı olan alanlar. Bilgi setiyle AYNI kaynaktan gelir
+  // ki ekran ile hesap birbirinden ayrışmasın.
+  const fields = relevantFields(item);
+
   // Ağırlık: doğrulanmadıysa müşteri beyanı, doğrulandıysa gerçek gösterilir.
   const weightVerified = weightStatus === 'verified';
   const shownWeight = weightVerified ? item.truth.grossWeight : (item.declared.claimedWeight ?? 0);
@@ -60,26 +65,47 @@ export function InspectStage({ item, knowledge, testResults }: Props) {
         <div className="inspect__fields">
           <h2 className="inspect__title">{item.displayName}</h2>
 
-          <Field
-            label="Ağırlık"
-            value={weightVerified ? grams(shownWeight) : `~${grams(shownWeight)}`}
-            status={weightStatus}
-          />
-          <Field
-            label={purityVerified ? 'Ayar' : 'Beyan ayarı'}
-            value={KARAT_LABEL[shownKarat]}
-            status={purityStatus}
-          />
-          <Field
-            label="Kondisyon"
-            value={
-              CONDITION_LABEL[
-                conditionStatus === 'verified' ? item.truth.condition : item.declared.visibleCondition
-              ]
-            }
-            status={conditionStatus}
-          />
-          {item.truth.stoneData.kind !== 'none' && (
+          {/*
+            İşlem Akışı Ara Düzeltmesi §3 — satırlar ÜRÜNE GÖRE türetilir,
+            sabit kodlanmaz. Standart sarrafiyede kondisyon ve iç yapı
+            satırları hiç çizilmez: §9.2 "alakasız kondisyon/ölçü alanları"
+            görünmemeli diyor ve ölü bir satır da bir alandır.
+          */}
+          {fields.includes('weight') && (
+            <Field
+              label="Ağırlık"
+              value={weightVerified ? grams(shownWeight) : `~${grams(shownWeight)}`}
+              status={weightStatus}
+            />
+          )}
+          {fields.includes('purity') && (
+            <Field
+              label={purityVerified ? 'Ayar' : 'Beyan ayarı'}
+              value={KARAT_LABEL[shownKarat]}
+              status={purityStatus}
+            />
+          )}
+          {fields.includes('coreIntegrity') && (
+            <Field
+              label="İç yapı"
+              value={statusOf(knowledge, 'coreIntegrity') === 'verified' ? 'Doğrulandı' : 'Belirsiz'}
+              status={statusOf(knowledge, 'coreIntegrity')}
+            />
+          )}
+          {fields.includes('condition') && (
+            <Field
+              label="Kondisyon"
+              value={
+                CONDITION_LABEL[
+                  conditionStatus === 'verified'
+                    ? item.truth.condition
+                    : item.declared.visibleCondition
+                ]
+              }
+              status={conditionStatus}
+            />
+          )}
+          {fields.includes('stone') && (
             <Field label="Taş" value={stoneText(item, knowledge)} status={statusOf(knowledge, 'stone')} />
           )}
         </div>

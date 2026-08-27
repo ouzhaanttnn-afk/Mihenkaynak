@@ -10,6 +10,7 @@
  * piyasa şeridinden açılan ikincil rotalardır — alt navigasyona eklenmez.
  */
 
+import { TERM } from '@ui/terms';
 import { useState } from 'react';
 
 import { MARKET_REGIME } from '@domain/balance';
@@ -106,7 +107,7 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
           <div className="group__body">
             <StatLine label="Nakit" value={tl(wealth.cash)} icon={<IconCash size={15} />} />
             <StatLine
-              label="Likidite"
+              label={TERM.liquidity}
               value={`${pct(ratio)} · ${LIQUIDITY_BAND_LABEL[band]}`}
               icon={<IconLiquidity size={15} />}
               tone={band === 'red' ? 'negative' : band === 'caution' ? 'warning' : undefined}
@@ -148,7 +149,7 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               icon={<IconTrust size={15} />}
             />
             <StatLine
-              label="Toptancı güveni"
+              label={TERM.supplierTrust}
               value={`${Math.round(s.store.supplier.trust)}/100`}
               icon={<IconWholesale size={15} />}
             />
@@ -165,7 +166,7 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
           <div className="group__body">
             <MenuLine
               title="Piyasa"
-              sub={`${MARKET_REGIME[s.market.regime].label} rejim · ${s.market.assets.length} varlık`}
+              sub={`${MARKET_REGIME[s.market.regime].label} · ${s.market.assets.length} varlık`}
               icon={<IconLiquidity size={17} />}
               onPress={() => onOpen('market')}
             />
@@ -291,7 +292,7 @@ function WholesalerRoute({ onBack }: { onBack: () => void }) {
         </button>
         <h1 className="pageHead__title">Toptancı Hesabı</h1>
         <p className="pageHead__sub">
-          Güven {Math.round(s.store.supplier.trust)}/100 · {creditTermDays(s.store)} gün vade ·
+          {TERM.supplierTrust} {Math.round(s.store.supplier.trust)}/100 · {creditTermDays(s.store)} gün vade ·
           vade farkı {pct(financeRate(s.store))}
         </p>
       </header>
@@ -751,7 +752,7 @@ function OvernightPanel() {
 
   return (
     <div className="group">
-      <h2 className="group__title">Gecelik pozisyon</h2>
+      <h2 className="group__title">{TERM.overnight}</h2>
       <div className="group__body">
         <StatLine
           label="Dağılım"
@@ -763,7 +764,7 @@ function OvernightPanel() {
         {last && (
           <>
             <StatLine
-              label={`${last.position.day}. gece · spot`}
+              label={`${last.position.day}. gece · piyasa`}
               value={pctChange(last.spotChange * 100)}
               tone={last.spotChange >= 0 ? 'positive' : 'negative'}
             />
@@ -810,7 +811,7 @@ function MarketRoute({ onBack }: { onBack: () => void }) {
         </button>
         <h1 className="pageHead__title">Piyasa</h1>
         <p className="pageHead__sub">
-          Gün {market.day} · {regime.label} rejim · oynaklık {pct(market.volatility, 1)}
+          Gün {market.day} · {regime.label} · oynaklık {pct(market.volatility, 1)}
         </p>
 
         {market.activeEvent && (
@@ -864,7 +865,7 @@ function MarketRoute({ onBack }: { onBack: () => void }) {
         </div>
 
         <div className="group">
-          <h2 className="group__title">Gün Rejimi</h2>
+          <h2 className="group__title">Günün {TERM.regime}</h2>
           <div className="group__body">
             <div className="statLine">
               <span className="statLine__label">{regime.label}</span>

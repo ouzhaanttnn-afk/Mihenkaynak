@@ -2,6 +2,9 @@
  * D — Aşama Şeridi (GDD 23.9.2, 32 px)
  * "İncele / Değerle / Tez / Pazarlık. Bağlama göre adım atlanabilir."
  *
+ * İşlem Akışı Ara Düzeltmesi §7: oyuncuya görünen ad "Çıkış Planı".
+ * Aşamanın domain adı (`thesis`) §9 gereği değişmez.
+ *
  * GDD 23.10.3 kuralları:
  *  - Aşama Şeridi ileri doğru yalnız gerekli minimum koşullar sağlandığında
  *    ilerler. Kilitli adım tıklanamaz.
@@ -12,13 +15,14 @@
  * aynı Workbench state değiştirir." Bu bileşen yalnız state değiştirir.
  */
 
+import { TERM } from '@ui/terms';
 import type { DealFlow, WorkbenchStage } from '@domain/types';
 
 /** GDD 23.6 — çekirdek ticaret akışı. */
 const TRADE_STEPS: { stage: WorkbenchStage; label: string }[] = [
   { stage: 'inspect', label: 'İncele' },
   { stage: 'appraise', label: 'Değerle' },
-  { stage: 'thesis', label: 'Tez' },
+  { stage: 'thesis', label: TERM.thesis },
   { stage: 'negotiate', label: 'Pazarlık' },
 ];
 

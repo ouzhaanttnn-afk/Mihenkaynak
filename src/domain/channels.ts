@@ -437,7 +437,8 @@ function buildRationale(
     return `${CHANNEL_LABEL_TR[channel]} bu hacmi tek seferde karşılayamıyor; dilimleme gerekir.`;
   }
   if (market.regime === 'volatile' || market.regime === 'shock') {
-    return 'Volatil piyasa makası genişletiyor.';
+    // §7 — oyuncuya görünen metinde teknik terim kullanılmaz.
+    return 'Oynak piyasa alış-satış farkını açıyor.';
   }
   if (channel === 'wholesaler') {
     return side === 'shopSells'

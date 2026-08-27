@@ -216,10 +216,10 @@ export function marketSignals(
 }
 
 const REGIME_NOTE: Record<MarketState['regime'], string> = {
-  calm: 'Sakin koşullar; makas dar kalma eğiliminde.',
+  calm: 'Sakin koşullar; alış-satış farkı dar kalma eğiliminde.',
   normal: 'Olağan koşullar.',
-  volatile: 'Oynak koşullar; makas genişleyebilir.',
-  shock: 'Stres koşulları; kapasite daralır, makas genişler.',
+  volatile: 'Oynak koşullar; alış-satış farkı açılabilir.',
+  shock: 'Stres koşulları; kapasite daralır, alış-satış farkı açılır.',
 };
 
 /** İşçilikli üründe değerin metale bağlı kabul edilen payı. */

@@ -99,6 +99,7 @@ import {
 } from '@domain/service';
 import { getTool } from '@data/tools';
 import { makeId } from '@domain/rng';
+import { flowPolicy, stageUnlocked } from '@domain/transaction-class';
 import { clearSave, readSave, writeSave } from './save';
 import type {
   ActiveDeal,
@@ -1724,7 +1725,7 @@ function settlePurchase(
         purchase.fulfilment === 'partial'
           ? 'Talep kısmen karşılandı; müşteri eksik adede razı oldu.'
           : 'Paket talebi tam karşıladı.',
-      alternativeChannelNote: `${CHANNEL_LABEL_TR[purchase.channel]} makasıyla fiyatlandı.`,
+      alternativeChannelNote: `${CHANNEL_LABEL_TR[purchase.channel]} alış-satış farkıyla fiyatlandı.`,
     },
   };
 
@@ -1843,22 +1844,20 @@ export function canEnterStage(s: GameState, stage: WorkbenchStage): boolean {
     }
   }
 
-  switch (stage) {
-    case 'inspect':
-      return true;
-    case 'appraise':
-      return true;
-    case 'thesis':
-      // Değerleme yapılmadan tez karşılaştırması anlamsızdır.
-      return line.band !== null || line.testResults.length > 0;
-    case 'negotiate':
-      return line.band !== null || line.testResults.length > 0;
-    case 'result':
-      return isTerminal(line.negotiation.state);
-    default:
-      // Servis aşamaları ticaret akışında kilitlidir.
-      return false;
-  }
+  if (stage === 'result') return isTerminal(line.negotiation.state);
+
+  // İşlem Akışı Ara Düzeltmesi §2/§4 — akış yoğunluğu ÜRÜNE göre değişir.
+  // Standart sarrafiyede zorunlu test zinciri yoktur; oyuncu 1-2 adımda
+  // fiyata geçebilir. §8 gereği aşama SİLİNMEZ, yalnız zorunluluğu kalkar:
+  // hızlı işlemde de İncele ve Değerle açıktır, sadece bekletmez.
+  const item = s.items[line.itemId];
+  if (!item) return stage === 'inspect' || stage === 'appraise';
+
+  return stageUnlocked(item, stage, {
+    hasBand: line.band !== null,
+    hasTests: line.testResults.length > 0,
+    hasExitPlan: line.selectedThesis !== null,
+  });
 }
 
 /** Tez/teklif bağlamı — kapasite ve likidite kararı değiştirir (GDD 6.4 / 17.3). */
@@ -1930,6 +1929,13 @@ function fmt(n: Money): string {
 
 // UI'nin ihtiyaç duyduğu türetilmiş seçiciler.
 export const selectors = {
+  /** İşlem Akışı §2 — aktif kalemin işlem sınıfı ve akış politikası. */
+  flow: (s: GameState) => {
+    const line = s.activeDeal ? activeLine(s.activeDeal) : undefined;
+    const item = line ? s.items[line.itemId] : undefined;
+    return item ? flowPolicy(item) : null;
+  },
+
   /** §5 — bugünkü pozisyon (gün içinde canlı; kapanışta sabitlenir). */
   position: (s: GameState) =>
     measurePosition(s.market.day, s.store.cash, s.inventory, s.items, s.market),

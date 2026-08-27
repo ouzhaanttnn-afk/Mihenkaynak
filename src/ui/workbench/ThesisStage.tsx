@@ -11,6 +11,7 @@
  * (thesis.ts) — UI yalnız sunar.
  */
 
+import { TERM } from '@ui/terms';
 import { LIQUIDITY_LABEL, RISK_LABEL } from '@domain/thesis';
 import {
   IconCollection,
@@ -82,7 +83,7 @@ export function ThesisStage({ options, selected, suggested, onSelect }: Props) {
                   tone={option.demandRisk}
                 />
                 <Metric
-                  label="Likidite"
+                  label={TERM.liquidity}
                   value={LIQUIDITY_LABEL[option.liquidity]}
                   tone={option.liquidity === 'high' ? 'low' : option.liquidity === 'low' ? 'high' : 'medium'}
                 />

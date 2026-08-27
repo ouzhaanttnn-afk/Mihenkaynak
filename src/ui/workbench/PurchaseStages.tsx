@@ -231,7 +231,8 @@ export function PackageStage({
 
       <p className="svc__note">
         <IconPackage size={16} />
-        <strong>{CHANNEL_LABEL_TR[purchase.channel]}</strong> makasıyla fiyatlandı.{' '}
+        <strong>{CHANNEL_LABEL_TR[purchase.channel]}</strong> alış-satış farkıyla{' '}
+        fiyatlandı.{' '}
         {purchase.rationale} Öneri bir dayatma değildir; pazarlıkta istediğiniz
         rakamı verirsiniz.
       </p>

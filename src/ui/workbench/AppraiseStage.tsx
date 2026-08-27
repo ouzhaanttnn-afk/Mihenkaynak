@@ -10,6 +10,7 @@
  * referansıdır, adil fiyat ilanı değildir.
  */
 
+import { TERM } from '@ui/terms';
 import { CONFIDENCE_LABEL } from '@domain/valuation';
 import { tl, tlBare, pct } from '@ui/format';
 import type { ValuationBand } from '@domain/types';
@@ -41,7 +42,7 @@ export function AppraiseStage({ band }: Props) {
         </div>
 
         <div className="confidence">
-          <span className="confidence__label">Güven</span>
+          <span className="confidence__label">{TERM.confidence}</span>
           <span className="confidence__bar">
             {Array.from({ length: SEGMENTS }, (_, i) => (
               <span

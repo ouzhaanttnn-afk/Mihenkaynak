@@ -12,6 +12,7 @@
  * ekran veya modal açmaz.
  */
 
+import { TERM } from '@ui/terms';
 import { CHANNEL_SHORT } from '@domain/thesis';
 import { STATE_LABEL } from '@domain/negotiation';
 import { CONFIDENCE_LABEL } from '@domain/valuation';
@@ -100,7 +101,7 @@ export function NegotiateStage({
               </span>
             </div>
             <div className="preview__row">
-              <span className="preview__key">Likidite</span>
+              <span className="preview__key">{TERM.liquidity}</span>
               <span className="preview__val preview__val--warning num">{liquidityAfter}</span>
             </div>
             <div className="preview__row">

@@ -24,6 +24,7 @@ import {
 } from './balance';
 import { spotFor } from './market';
 import { isValueDeductingFlaw } from './item-spawn';
+import { isFieldRelevant, relevantFields } from './transaction-class';
 import type {
   ConfidenceLevel,
   FieldKnowledge,
@@ -100,11 +101,17 @@ export function conditionCutFor(truth: ItemInstance['truth']): number {
 // Bilgi durumu (GDD 7.1 / 7.2)
 // ---------------------------------------------------------------------------
 
-const ALL_FIELDS: InfoField[] = ['weight', 'purity', 'coreIntegrity', 'stone', 'condition'];
 
 /** Test yapılmadan önceki başlangıç bilgisi (GDD 5.3). */
 export function initialKnowledge(item: ItemInstance): FieldKnowledge[] {
-  return ALL_FIELDS.map((field) => {
+  // İşlem Akışı Ara Düzeltmesi §3 — "Bir test ürün hakkında anlamlı yeni bilgi
+  // üretmiyorsa varsayılan akışta GÖSTERİLMEMELİ." Alan listesi ürüne göre
+  // filtrelenir; gram altına taş satırı, çeyreğe ölçü satırı çıkmaz.
+  //
+  // Filtre yalnız GÖRÜNÜRLÜĞÜ değiştirir: değerleme formülü elenen alanı
+  // zaten belirsiz saymaz (taşsız üründe taş belirsizliği yoktur), bu yüzden
+  // hesaplanan değer aynı kalır (§8 "değerleme formülleri değişmez").
+  return relevantFields(item).map((field) => {
     // Beyan edilen gramaj kaba bir başlangıç verir; taşsız ürün net oranı bilinir.
     let certainty = 0;
     if (field === 'weight') certainty = 0.35;
@@ -319,7 +326,17 @@ export function estimateBand(
   market: MarketState,
   knowledge: FieldKnowledge[],
 ): ValuationBand {
-  const k = (field: InfoField) => knowledge.find((f) => f.field === field)?.certainty ?? 0;
+  // Alan bilgi setinde yoksa iki ayrı durum vardır ve karıştırılmamalıdır:
+  //   · ürün için ANLAMSIZ (taşsız üründe taş) → belirsizlik YOKTUR, 1
+  //   · anlamlı ama henüz okunmamış → belirsizdir, 0
+  // İkisini birden 0 saymak, ilgisiz bir alanı belirsizlik gibi işleyip
+  // sarrafiyenin bandını haksız yere genişletirdi (§8: değerleme formülü
+  // değişmez — filtre yalnız görünürlüğü değiştirir).
+  const k = (field: InfoField) => {
+    const known = knowledge.find((f) => f.field === field);
+    if (known) return known.certainty;
+    return isFieldRelevant(item, field) ? 0 : 1;
+  };
   const spot = spotFor(market, item.metal);
   const t = item.truth;
 

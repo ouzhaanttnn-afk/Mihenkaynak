@@ -8,6 +8,7 @@
  * kalır ve tipografik ağırlığı Karar Dock'unun altındadır.
  */
 
+import { TERM } from '@ui/terms';
 import { MARKET_REGIME } from '@domain/balance';
 import { pctChange, price } from '@ui/format';
 import type { MarketState } from '@domain/types';
@@ -28,7 +29,7 @@ export function MarketStrip({ market, onOpenMarket }: Props) {
       aria-label="Piyasa ekranını aç"
     >
       <div className="marketStrip__regime">
-        <span className="marketStrip__regimeLabel">Rejim</span>
+        <span className="marketStrip__regimeLabel">{TERM.regime}</span>
         <span className="marketStrip__regimeValue">
           {regime.label}
           {market.activeEvent ? ' •' : ''}

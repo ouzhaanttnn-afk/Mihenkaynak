@@ -13,6 +13,7 @@
  *  ✔ İkon tek başına anlam taşımaz; her araçta metin etiketi var.
  */
 
+import { TERM } from '@ui/terms';
 import { useEffect, useMemo, useState } from 'react';
 
 import { DAY, NEGOTIATION } from '@domain/balance';
@@ -24,6 +25,7 @@ import { getServiceType } from '@data/service-types';
 import { expectedCompletionDay, findQuote } from '@domain/service';
 import { activeLine, canEnterStage, selectors, useGame } from '@state/gameStore';
 import { offerableStock } from '@domain/purchase';
+import { CLASS_LABEL, flowPolicy, isToolRelevant } from '@domain/transaction-class';
 
 import { CustomerStrip } from '@ui/shell/CustomerStrip';
 import { DecisionDock } from '@ui/shell/DecisionDock';
@@ -298,7 +300,7 @@ function IdleWorkbench() {
   if (band === 'red' || band === 'caution') {
     alerts.push({
       key: 'liquidity',
-      title: `Likidite ${pct(liquidity)}`,
+      title: `${TERM.liquidity} ${pct(liquidity)}`,
       detail:
         band === 'red'
           ? 'Büyük alış öncesi hızlı likidasyon gerekebilir.'
@@ -368,6 +370,8 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
   if (!deal || !line) {
     return <ToolRail items={[]} emptyLabel="Müşteri karşılandığında araçlar burada" />;
   }
+
+  const railItem = s.items[line.itemId];
 
   // --- Müşteri alış akışı (GDD 23.23) ---
   // Ray aynı fiziksel konumda kalır. Alış akışında test aracı YOKTUR: ürün
@@ -493,7 +497,12 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
   switch (deal.stage) {
     // İncele → test araçları. İlk 4 görünür; fazlası yatay scroll.
     case 'inspect': {
-      const items: RailItem[] = toolsForLevel(s.store.level).map(({ tool, locked, lockReason }) => {
+      // İşlem Akışı Ara Düzeltmesi §3 — "Bir test ürün hakkında ANLAMLI YENİ
+      // BİLGİ ÜRETMİYORSA varsayılan akışta gösterilmemeli." Gram altına taş
+      // kontrolü, çeyreğe ölçü aracı bu filtreyle rayda hiç belirmez.
+      const items: RailItem[] = toolsForLevel(s.store.level)
+        .filter(({ tool }) => !railItem || isToolRelevant(railItem, tool))
+        .map(({ tool, locked, lockReason }) => {
         const Icon = TOOL_ICON[tool.id] ?? IconScale;
         const used = line.testResults.some((r) => r.toolId === tool.id);
         return {
@@ -509,8 +518,8 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
           onLockedPress: () => s.notify(`${tool.name}: ${lockReason}`, 'info'),
           disabled: tool.cost > s.store.cash,
           badge: tool.cost > 0 ? `${tool.cost}₺` : undefined,
-        };
-      });
+          };
+        });
       return <ToolRail items={items} />;
     }
 
@@ -531,7 +540,7 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
         },
         {
           id: 'thesis',
-          label: 'Tez',
+          label: TERM.thesisShort,
           icon: <IconPackage size={19} />,
           onPress: () => s.setStage('thesis'),
         },
@@ -707,28 +716,44 @@ function ShopDock({
 
   const ceiling = effectiveCeiling(line.thesisOptions, line.selectedThesis);
 
+  // İşlem Akışı §2 — akış politikası ürünün kendisinden türer.
+  const dockItem = s.items[line.itemId];
+  const policy = dockItem ? flowPolicy(dockItem) : null;
+
   switch (deal.stage) {
     // --- İNCELE: doğrulanan alan sayısı + risk ---
     case 'inspect': {
       const verified = line.knowledge.filter((k) => k.status === 'verified').length;
       const conflicting = line.knowledge.some((k) => k.status === 'conflicting');
 
+      // İşlem Akışı §2/§4 — hızlı işlemde birincil eylem doğrudan fiyattır.
+      // "Değerlemeye Geç" düğmesini zorunlu adım gibi bırakmak, kaldırılan
+      // test zincirini arayüzde diriltmek olurdu.
+      const fast = policy?.transactionClass === 'fast';
+
       return (
         <DecisionDock
-          summaryLabel="Doğrulanan alan"
+          summaryLabel={policy ? CLASS_LABEL[policy.transactionClass] : 'Doğrulanan alan'}
           summaryValue={
             <>
-              {verified}/{line.knowledge.length}
+              {verified}/{line.knowledge.length} alan
+              {policy && <span style={{ color: 'var(--muted)' }}> · {policy.note}</span>}
               {conflicting && (
                 <span style={{ color: 'var(--negative)' }}> · çelişkili sinyal</span>
               )}
             </>
           }
-          primary={{ label: 'Değerlemeye Geç', onPress: () => s.setStage('appraise') }}
+          primary={
+            fast
+              ? { label: 'Fiyata Geç', onPress: () => s.setStage('negotiate') }
+              : { label: 'Değerlemeye Geç', onPress: () => s.setStage('appraise') }
+          }
           secondary={
-            line.testResults.length === 0
-              ? [{ label: 'Test yapmadan ilerle', onPress: () => s.setStage('appraise') }]
-              : []
+            fast
+              ? [{ label: 'Yine de değerle', onPress: () => s.setStage('appraise') }]
+              : line.testResults.length === 0
+                ? [{ label: 'Test yapmadan ilerle', onPress: () => s.setStage('appraise') }]
+                : []
           }
         />
       );
@@ -745,7 +770,7 @@ function ShopDock({
           summaryLabel="Değer bandı"
           summaryValue={band ? `${tl(band.min)} – ${tl(band.max)}` : '—'}
           primary={{
-            label: skipThesis ? 'Pazarlığa Geç' : 'Tez Seç',
+            label: skipThesis ? 'Pazarlığa Geç' : `${TERM.thesis} Seç`,
             onPress: () => s.setStage(skipThesis ? 'negotiate' : 'thesis'),
           }}
           secondary={[{ label: 'Ek test', onPress: () => s.setStage('inspect') }]}
@@ -761,7 +786,7 @@ function ShopDock({
 
       return (
         <DecisionDock
-          summaryLabel={selected ? 'Seçili tez' : 'Tez seçilmedi'}
+          summaryLabel={selected ? `Seçili ${TERM.thesis.toLocaleLowerCase('tr')}` : `${TERM.thesis} seçilmedi`}
           summaryValue={
             selected
               ? `${selected.label} · net ${tl(selected.expectedNet)}`

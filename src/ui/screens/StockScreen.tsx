@@ -10,6 +10,7 @@
  *  - Stok ekranı scroll kullanabilir; üst başlık ve filtre rayı sticky kalır.
  */
 
+import { TERM } from '@ui/terms';
 import { useState } from 'react';
 
 import { KARAT_LABEL } from '@domain/balance';
@@ -89,7 +90,7 @@ export function StockScreen() {
             </span>
           </div>
           <div className="summaryRow__item">
-            <span className="summaryRow__label">Likidite</span>
+            <span className="summaryRow__label">{TERM.liquidity}</span>
             <span
               className={`summaryRow__value num ${
                 band === 'red'
@@ -179,7 +180,9 @@ function StockRow({ position }: { position: InventoryPosition }) {
           {position.age} gün{' '}
           {/* GDD 8.3 — "her kalemin neden tutulduğunu görünür kılan plan etiketi" */}
           <span className={`tag ${position.thesis ? '' : 'tag--neutral'}`}>
-            {position.thesis ? `Tez: ${CHANNEL_SHORT[position.thesis]}` : 'Tez yok'}
+            {position.thesis
+              ? `${TERM.thesisShort}: ${CHANNEL_SHORT[position.thesis]}`
+              : `${TERM.thesis} yok`}
           </span>
         </div>
 
