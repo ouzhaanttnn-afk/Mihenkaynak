@@ -13,6 +13,7 @@ import { PURITY_TABLE } from './balance';
 import { createMarketForDay, stepMarketIntraday } from './market';
 import { spawnItem } from './item-spawn';
 import { spawnCustomer } from './customer-spawn';
+import { dayCharacter } from './intent';
 import { applyTest, estimateBand, initialKnowledge, trueValue } from './valuation';
 import { revalueInventory, thesisFor, type ThesisContext } from './thesis';
 import { applyMove, createSession, effectiveReservation } from './negotiation';
@@ -80,6 +81,26 @@ function thesisCtx(store = makeStore()): ThesisContext {
 // ===========================================================================
 // GDD 5.4 / 34.1 — HIDDEN TRUTH REROLL YOK
 // ===========================================================================
+
+/**
+ * §3 gün karakteri — müşteri üretiminin üçüncü girdisi. Testler sabit bir
+ * karakter kullanır ki dağılım oynaklığı invariant testlerini sallamasın.
+ */
+const CHARACTER = dayCharacter(SEED, 1, createMarketForDay(SEED, 1));
+
+/**
+ * Ürünle GELEN müşteri (müşteri satış intenti). §3'ten sonra havuz alış
+ * intenti de üretiyor; alış müşterisi elinde ürünle gelmez. Ürüne dayanan
+ * testler bu yüzden ilk uygun index'i tarar — sabit bir index'e yaslanmak
+ * intent dağılımı her ayarlandığında testleri kırardı.
+ */
+function spawnSeller(index: number, market: ReturnType<typeof createMarketForDay>, store: StoreState) {
+  for (let i = index; i < index + 400; i += 1) {
+    const spawned = spawnCustomer(SEED, i, market, store, CHARACTER);
+    if (spawned.items.length > 0) return spawned;
+  }
+  throw new Error('Ürün getiren müşteri bulunamadı');
+}
 
 describe('GDD 5.4 — Hidden truth reroll yok', () => {
   it('aynı (seed, index, şablon) her zaman aynı ürünü üretir', () => {
@@ -250,7 +271,7 @@ describe('GDD 11.4 / 34.3 — Deterministik pazarlık', () => {
   const market = createMarketForDay(SEED, 1);
 
   function setup(index = 5) {
-    const { customer, items } = spawnCustomer(SEED, index, market, makeStore());
+    const { customer, items } = spawnSeller(index, market, makeStore());
     const item = items[0]!;
     const knowledge = initialKnowledge(item);
     return {
@@ -262,8 +283,8 @@ describe('GDD 11.4 / 34.3 — Deterministik pazarlık', () => {
   }
 
   it('aynı müşteri iki kez spawn edilirse rezervasyon fiyatı aynıdır', () => {
-    const a = spawnCustomer(SEED, 12, market, makeStore());
-    const b = spawnCustomer(SEED, 12, market, makeStore());
+    const a = spawnCustomer(SEED, 12, market, makeStore(), CHARACTER);
+    const b = spawnCustomer(SEED, 12, market, makeStore(), CHARACTER);
     expect(b.customer.reservationPrice).toBe(a.customer.reservationPrice);
     expect(b.customer.archetype).toBe(a.customer.archetype);
   });
@@ -385,7 +406,7 @@ describe('GDD 11.5 — Gerekçe yalnız doğrulanmış veriye dayanabilir', () =
   const market = createMarketForDay(SEED, 1);
 
   it('test yapılmadan verilen gerekçe bilgili müşteride güven kaybettirir', () => {
-    const { customer, items } = spawnCustomer(SEED, 14, market, makeStore());
+    const { customer, items } = spawnSeller(14, market, makeStore());
     const item = items[0]!;
     const knowledgeableCustomer = { ...customer, knowledge: 85 };
     const ctx = {
@@ -406,7 +427,7 @@ describe('GDD 11.5 — Gerekçe yalnız doğrulanmış veriye dayanabilir', () =
   });
 
   it('test yapıldıktan sonra aynı gerekçe güven kazandırır', () => {
-    const { customer, items } = spawnCustomer(SEED, 14, market, makeStore());
+    const { customer, items } = spawnSeller(14, market, makeStore());
     const item = items[0]!;
     const knowledge = applyTest(item, getTool('touchstone'), initialKnowledge(item), 0).knowledge;
     const ctx = { customer, reputation: 42, buyCeiling: 0, knowledge };
@@ -421,7 +442,7 @@ describe('GDD 11.5 — Gerekçe yalnız doğrulanmış veriye dayanabilir', () =
   });
 
   it('aynı gerekçe ikinci kez değer üretmez', () => {
-    const { customer, items } = spawnCustomer(SEED, 15, market, makeStore());
+    const { customer, items } = spawnSeller(15, market, makeStore());
     const item = items[0]!;
     const knowledge = applyTest(item, getTool('touchstone'), initialKnowledge(item), 0).knowledge;
     const ctx = { customer, reputation: 42, buyCeiling: 0, knowledge };
@@ -808,8 +829,8 @@ describe('GDD 9.3 — Müşteri spawn sabitleri', () => {
   it('aynı index aynı müşteri ve ürünleri üretir', () => {
     const market = createMarketForDay(SEED, 2);
     const store = makeStore();
-    const a = spawnCustomer(SEED, 33, market, store);
-    const b = spawnCustomer(SEED, 33, market, store);
+    const a = spawnCustomer(SEED, 33, market, store, CHARACTER);
+    const b = spawnCustomer(SEED, 33, market, store, CHARACTER);
     expect(b).toEqual(a);
   });
 
@@ -817,10 +838,19 @@ describe('GDD 9.3 — Müşteri spawn sabitleri', () => {
     const market = createMarketForDay(SEED, 2);
     const store = makeStore();
     for (let i = 0; i < 200; i++) {
-      const { customer } = spawnCustomer(SEED, i, market, store);
-      expect(customer.reservationPrice).toBeGreaterThan(0);
-      expect(customer.budget).toBeGreaterThan(customer.reservationPrice);
+      const { customer } = spawnCustomer(SEED, i, market, store, CHARACTER);
       expect(customer.patience).toBe(customer.patienceMax);
+      expect(customer.budget).toBeGreaterThan(0);
+
+      if (customer.intent === 'buy') {
+        // Alış müşterisinin sınırı rezervasyon değil ÖDEME TAVANIdır; ürünü
+        // getirmediği için rezervasyonun bir dayanağı yoktur (Addendum §3).
+        expect(customer.demand).not.toBeNull();
+        expect(customer.purchaseCeilingRatio).toBeGreaterThan(1);
+      } else {
+        expect(customer.reservationPrice).toBeGreaterThan(0);
+        expect(customer.budget).toBeGreaterThan(customer.reservationPrice);
+      }
     }
   });
 });

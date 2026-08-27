@@ -286,6 +286,28 @@ export type CustomerIntent =
   | 'service' // Servis istiyor
   | 'appraisal'; // Ekspertiz / danışma
 
+/**
+ * Ekonomi Ara Düzeltmesi §3 / GDD 23.23 — müşteri alış intentinde müşterinin
+ * NE ARADIĞI. Ürünü müşteri getirmez, oyuncu stoktan seçer; bu yüzden alış
+ * akışının girdisi kalem değil TALEPTİR.
+ */
+export interface CustomerDemand {
+  /** Aradığı ürün aileleri. Boşsa esnek müşteri. */
+  families: string[];
+  /** Sarrafiye mi arıyor, işçilikli mi. */
+  wantsBullion: boolean;
+  /** Doğrudan istediği ürün şablonu (sarrafiyede sık). */
+  templateId: string | null;
+  /** Kaç adet istiyor (§4.1 toplu müşteride bandın üstü). */
+  quantity: number;
+  /** §4.1 "kısmi karşılama": bu adedin altını kabul eder mi. */
+  acceptsPartial: boolean;
+  /** En az kaç adet kabul eder. acceptsPartial false ise quantity'ye eşittir. */
+  minQuantity: number;
+  /** Talebin okunabilir özeti — müşteri şeridinde gösterilir. */
+  summary: string;
+}
+
 export type ArchetypeId =
   | 'urgentCash' // Acil nakit arayan
   | 'investor' // Yatırımcı
@@ -336,6 +358,14 @@ export interface Customer {
   budget: Money;
   /** Gerçek kabul sınırı. Oyuncuya asla doğrudan gösterilmez (GDD 6.6). */
   reservationPrice: Money;
+  /**
+   * Müşteri alış intentinde ÖDEME TAVANI oranı — adil değerin kaç katına
+   * kadar çıkar. GDD 34.2 gereği spawn anında sabitlenir; tavarın kendisi
+   * seçilen pakete göre türer çünkü paketi oyuncu belirler.
+   */
+  purchaseCeilingRatio: number;
+  /** Müşteri alış intentinde ne aradığı; diğer niyetlerde null. */
+  demand: CustomerDemand | null;
 
   // --- İşlem sırasında değişenler (GDD 9.4) ---
   patience: Scale100;
@@ -684,10 +714,35 @@ export type WorkbenchStage =
   | 'diagnose' // Tanıla
   | 'quote' // Süre / Risk / Fiyat
   | 'promise' // Teslim Sözü
-  | 'jobQueue'; // Atölye Kuyruğu
+  | 'jobQueue' // Atölye Kuyruğu
+  // --- Müşteri alış akışı (GDD 23.23 · Addendum §3) ---
+  | 'stockPick' // Stok seçimi
+  | 'package'; // Değer / Paket
 
 /** Bir akışın hangi aşama dizisini kullandığı. */
-export type DealFlow = 'trade' | 'service';
+export type DealFlow = 'trade' | 'service' | 'purchase';
+
+/**
+ * Müşteri alış akışının oturum durumu (GDD 23.23:
+ * Stok seçimi → Değer/Paket → Pazarlık).
+ */
+export interface PurchaseSession {
+  demand: CustomerDemand;
+  /** Oyuncunun pakete koyduğu stok kalemleri. */
+  selectedItemIds: string[];
+  /** Paketin adil değeri (GDD 6.2 çıktısı; kanal katmanı öncesi). */
+  packageFairValue: Money;
+  /** Kanal fiyatlamasının önerdiği satış fiyatı (Addendum §6). */
+  suggestedPrice: Money;
+  /** Hangi kanal profiliyle fiyatlandı — adet talebe göre değişir (§4.1). */
+  channel: TradeChannel;
+  /** Paketin maliyet toplamı — kâr hesabı için (GDD 22.1 tek settlement). */
+  packageCost: Money;
+  /** Talep tam mı karşılandı, kısmi mi (§4.1). */
+  fulfilment: 'none' | 'partial' | 'full';
+  /** Paketin fiyat gerekçesi — oyuncuya gösterilir. */
+  rationale: string;
+}
 
 /** Aktif müşteri işleminin, bir kaleme ait çalışma durumu. */
 export interface DealLine {
@@ -712,8 +767,10 @@ export interface ActiveDeal {
   stage: WorkbenchStage;
   activeLineId: string;
   lines: DealLine[];
-  /** Servis akışında dolu; ticaret akışında null. */
+  /** Servis akışında dolu; diğer akışlarda null. */
   service: ServiceSession | null;
+  /** Müşteri alış akışında dolu; diğer akışlarda null. */
+  purchase: PurchaseSession | null;
   startedAtSec: number;
   /** Terminal settlement uygulandı mı — çift tap koruması (GDD 22.1). */
   settled: boolean;

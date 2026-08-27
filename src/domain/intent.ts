@@ -1,0 +1,200 @@
+/**
+ * MIHENKAYNAK — Müşteri niyeti ve gün karakteri
+ * Kaynak: Ekonomi Ara Düzeltmesi v1.0 · §3 "Müşteri dağılımı".
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * TERMİNOLOJİ (§3, bağlayıcı):
+ *   "Alış"  = OYUNCUNUN MÜŞTERİYE sarrafiye satması  → TradeSide 'shopSells'
+ *   "Satış" = MÜŞTERİNİN OYUNCUYA sarrafiye satması  → TradeSide 'shopBuys'
+ *
+ *   "Uygulama boyunca bu terminoloji tutarlı kullanılmalıdır."
+ *   Kafa karışıklığını kökten kesmek için kod tarafında yalnız
+ *   `customerBuys` / `customerSells` isimleri kullanılır: niyet her zaman
+ *   MÜŞTERİNİN fiilidir, dükkânın değil.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * §3 iki katmanlı üretim tarif eder:
+ *   %38 müşteri alış intenti — SABİT TABAN, dinamik havuz azaltamaz
+ *   %38 müşteri satış intenti — SABİT TABAN, dinamik havuz azaltamaz
+ *   %24 kontrollü dinamik/RNG — günün ürün, hacim, kanal ve tempo karakterini
+ *       değiştirir; %38/%38 tabanını BOZMAZ.
+ *
+ * DEĞİŞMEZ (§3): "Dinamik havuzun tamamını tek yöne yığarak fiili alış-satış
+ * dengesini SÜREKLİ biçimde bozmak yasaktır; sapmalar kontrollü, sınırlı ve
+ * telemetriyle izlenebilir olmalıdır."
+ * Bu yüzden dinamik havuzun yön eğimi `maxDynamicTilt` ile kelepçelidir ve
+ * eğimin işareti gün karakterinden türer — art arda aynı yöne yığılamaz.
+ */
+
+import { INTENT_MIX } from './balance';
+import { Rng, deriveSeed } from './rng';
+import type { CustomerIntent, GameDay, MarketState } from './types';
+
+/**
+ * Günün karakteri — §3'ün %24'lük dinamik havuzu.
+ *
+ * "%24 havuz; toplu sipariş olasılığı, ürün karması, hacim bandı, müşteri
+ * kalitesi, aciliyet ve gün içi yoğunluk gibi nitelikleri etkileyebilir."
+ *
+ * Dikkat: buradaki hiçbir alan %38/%38 tabanını değiştirmez. Havuz NİYETİN
+ * PAYINI değil, niyetin NASIL göründüğünü belirler.
+ */
+export interface DayCharacter {
+  day: GameDay;
+  /** Bir müşterinin toplu sipariş getirme olasılığı (§4.1). */
+  bulkOrderChance: number;
+  /** Sarrafiye ağırlığı: 0 = tamamen işçilikli, 1 = tamamen sarrafiye. */
+  bullionBias: number;
+  /** Standart hacim bandının çarpanı. */
+  volumeScale: number;
+  /** Müşteri kalitesi eğimi (bütçe, bilgi, itibar): -1 .. +1. */
+  qualityTilt: number;
+  /** Aciliyet eğimi: -1 .. +1. */
+  urgencyTilt: number;
+  /** Gün içi yoğunluk — müşteri arası bekleme çarpanı (küçük = yoğun). */
+  tempo: number;
+  /**
+   * Dinamik havuzun yön eğimi: +1 tamamen müşteri alışına, -1 tamamen
+   * müşteri satışına. `INTENT_MIX.maxDynamicTilt` ile kelepçelidir.
+   */
+  dynamicTilt: number;
+  /** Oyuncuya gösterilecek okunabilir gün etiketi (§5.2 sinyal dili). */
+  label: string;
+}
+
+/**
+ * Günün karakterini deterministik üretir. (rootSeed, day) ikilisi günü
+ * tamamen belirler — gün içinde yeniden hesaplamak aynı sonucu verir.
+ */
+export function dayCharacter(rootSeed: number, day: GameDay, market: MarketState): DayCharacter {
+  const rng = new Rng(deriveSeed(rootSeed, 'day/character', day));
+
+  // Piyasa rejimi karakteri besler ama belirlemez: şok günü daha aceleci ve
+  // daha sarrafiye ağırlıklı geçer, sakin gün daha seçici.
+  const stress = market.regime === 'shock' ? 1 : market.regime === 'volatile' ? 0.6 : market.regime === 'calm' ? -0.4 : 0;
+
+  const bulkOrderChance = clamp(rng.range(0.06, 0.2) + stress * 0.06, 0.02, 0.34);
+  const bullionBias = clamp(rng.range(0.35, 0.7) + stress * 0.12, 0.15, 0.9);
+  const volumeScale = clamp(rng.range(0.75, 1.35) + stress * 0.1, 0.5, 1.8);
+  const qualityTilt = clamp(rng.range(-1, 1) - stress * 0.2, -1, 1);
+  const urgencyTilt = clamp(rng.range(-1, 1) + stress * 0.35, -1, 1);
+  const tempo = clamp(rng.range(0.8, 1.25) - stress * 0.1, 0.6, 1.5);
+
+  // §3 kelepçesi: eğim asla havuzun tamamını tek yöne yığamaz.
+  const dynamicTilt = clamp(rng.range(-1, 1), -1, 1) * INTENT_MIX.maxDynamicTilt;
+
+  return {
+    day,
+    bulkOrderChance,
+    bullionBias,
+    volumeScale,
+    qualityTilt,
+    urgencyTilt,
+    tempo,
+    dynamicTilt,
+    label: characterLabel(bulkOrderChance, bullionBias, tempo, dynamicTilt),
+  };
+}
+
+/**
+ * Bir müşterinin niyetini üretir.
+ *
+ * §3'ün iki katmanı burada AYRI AYRI görünür:
+ *   [0, 0.38)         → müşteri alış  (sabit taban)
+ *   [0.38, 0.76)      → müşteri satış (sabit taban)
+ *   [0.76, 1)         → dinamik havuz (kelepçeli eğimle dağıtılır)
+ *
+ * Taban dilimleri gün karakterinden ETKİLENMEZ. Karakter yalnızca son %24'ün
+ * içinde iş görür — §3'ün "tabanını bozmaz" cümlesinin birebir karşılığı.
+ */
+export function rollIntent(
+  rootSeed: number,
+  spawnIndex: number,
+  character: DayCharacter,
+): { intent: CustomerIntent; fromDynamicPool: boolean } {
+  const rng = new Rng(deriveSeed(rootSeed, 'customer/intent', spawnIndex));
+  const roll = rng.next();
+
+  if (roll < INTENT_MIX.customerBuys) {
+    return { intent: 'buy', fromDynamicPool: false };
+  }
+  if (roll < INTENT_MIX.customerBuys + INTENT_MIX.customerSells) {
+    return { intent: 'sell', fromDynamicPool: false };
+  }
+
+  // --- Dinamik havuz (%24) ---
+  // Havuzun bir kısmı servis gibi ticaret dışı niyetlere gider; kalanı
+  // kelepçeli eğimle alış/satış arasında paylaşılır.
+  const inner = rng.next();
+  if (inner < INTENT_MIX.dynamicServiceShare) {
+    return { intent: 'service', fromDynamicPool: true };
+  }
+
+  // tilt +1 → tamamı alışa, -1 → tamamı satışa. Kelepçe zaten uygulandı.
+  const buyShare = 0.5 + character.dynamicTilt / 2;
+  const pick = rng.next();
+  return { intent: pick < buyShare ? 'buy' : 'sell', fromDynamicPool: true };
+}
+
+// ---------------------------------------------------------------------------
+// Telemetri — §3 "Dağılım, uygun örneklem penceresinde üretilen intentler
+// üzerinden izlenir; tek tek kısa seanslarda birebir yüzde garantisi aranmaz."
+// ---------------------------------------------------------------------------
+
+export interface IntentTelemetry {
+  total: number;
+  counts: Record<CustomerIntent, number>;
+  fromDynamicPool: number;
+}
+
+export function emptyTelemetry(): IntentTelemetry {
+  return {
+    total: 0,
+    counts: { buy: 0, sell: 0, service: 0, appraisal: 0 },
+    fromDynamicPool: 0,
+  };
+}
+
+export function recordIntent(
+  telemetry: IntentTelemetry,
+  intent: CustomerIntent,
+  fromDynamicPool: boolean,
+): IntentTelemetry {
+  return {
+    total: telemetry.total + 1,
+    counts: { ...telemetry.counts, [intent]: telemetry.counts[intent] + 1 },
+    fromDynamicPool: telemetry.fromDynamicPool + (fromDynamicPool ? 1 : 0),
+  };
+}
+
+/** Gerçekleşen paylar — denge turlarında ve §12 kabul testlerinde okunur. */
+export function intentShares(t: IntentTelemetry): Record<CustomerIntent, number> {
+  const n = Math.max(1, t.total);
+  return {
+    buy: t.counts.buy / n,
+    sell: t.counts.sell / n,
+    service: t.counts.service / n,
+    appraisal: t.counts.appraisal / n,
+  };
+}
+
+/**
+ * §3 "fiili alış-satış dengesi" — 1'e yakın olmalı. Sürekli tek yöne
+ * yığılma bu oranı kalıcı olarak bozardı.
+ */
+export function tradeBalance(t: IntentTelemetry): number {
+  return t.counts.buy / Math.max(1, t.counts.sell);
+}
+
+function characterLabel(bulk: number, bullion: number, tempo: number, tilt: number): string {
+  if (bulk >= 0.22) return 'Toplu sipariş günü';
+  if (tempo <= 0.85) return 'Yoğun gün';
+  if (bullion >= 0.72) return 'Sarrafiye günü';
+  if (tilt >= 0.2) return 'Alıcı ağırlıklı gün';
+  if (tilt <= -0.2) return 'Satıcı ağırlıklı gün';
+  return 'Olağan gün';
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
+}

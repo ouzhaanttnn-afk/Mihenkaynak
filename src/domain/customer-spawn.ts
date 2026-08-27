@@ -9,6 +9,10 @@
  */
 
 import { ARCHETYPES, FIRST_NAMES_F, FIRST_NAMES_M, HONORIFIC_F, HONORIFIC_M, getArchetype } from '@data/archetypes';
+import { PURCHASE } from './balance';
+import { rollIntent, type DayCharacter } from './intent';
+import { spawnDemand } from './purchase';
+import { bullionMeta } from '@data/bullion';
 import { templatesForTier } from './item-spawn';
 import { spawnItem } from './item-spawn';
 import { trueValue } from './valuation';
@@ -16,7 +20,7 @@ import { Rng, deriveSeed, makeId } from './rng';
 import type {
   ArchetypeId,
   Customer,
-  CustomerIntent,
+  CustomerDemand,
   ItemInstance,
   MarketState,
   StoreState,
@@ -25,6 +29,8 @@ import type {
 export interface SpawnedCustomer {
   customer: Customer;
   items: ItemInstance[];
+  /** §3 telemetrisi: bu niyet sabit tabandan mı, dinamik havuzdan mı geldi. */
+  fromDynamicPool: boolean;
 }
 
 /**
@@ -38,6 +44,7 @@ export function spawnCustomer(
   spawnIndex: number,
   market: MarketState,
   store: StoreState,
+  character: DayCharacter,
 ): SpawnedCustomer {
   const rng = new Rng(deriveSeed(rootSeed, 'customer', spawnIndex));
 
@@ -49,22 +56,25 @@ export function spawnCustomer(
   const firstName = isFemale ? rng.pick(FIRST_NAMES_F) : rng.pick(FIRST_NAMES_M);
   const displayName = `${firstName} ${isFemale ? HONORIFIC_F : HONORIFIC_M}`;
 
-  // --- Niyet ---
+  // --- Niyet (Ekonomi Ara Düzeltmesi §3) ---
   //
-  // GDD 23.23 beş ayrı intent akışı tanımlar ve her biri FARKLI bir ekran
-  // davranışı ister:
-  //   sell      → İncele → Değerle → Tez → Pazarlık          ✔ üretimde
-  //   service   → Tanıla → Süre/Risk/Fiyat → Söz → Kuyruk    ✔ üretimde (23.14)
-  //   buy       → Stok seçimi → Değer/Paket → Pazarlık        (henüz yok)
-  //   appraisal → İncele → Test → Rapor/Ücret → Sonuç         (henüz yok)
+  // Dağılım artık burada elle ağırlıklandırılmaz; §3'ün iki katmanlı havuzu
+  // intent.ts'te yaşar: %38 sabit alış tabanı + %38 sabit satış tabanı +
+  // %24 kontrollü dinamik havuz.
   //
-  // Havuz yalnız akışı uygulanmış niyetleri üretir. Uygulanmamış bir niyeti
-  // spawn etmek, müşteri şeridinde doğru niyeti yazıp yanlış akışı çalıştırmak
-  // anlamına gelirdi. Kalan akışlar üretime girdiğinde ağırlıkları eklenir.
-  const intent: CustomerIntent = rng.pickWeighted([
-    { value: 'sell' as const, weight: 82 },
-    { value: 'service' as const, weight: 18 },
-  ]);
+  // GDD 23.23'ün beş akışından uygulananlar:
+  //   sell    → İncele → Değerle → Tez → Pazarlık          ✔
+  //   service → Tanıla → Süre/Risk/Fiyat → Söz → Kuyruk    ✔
+  //   buy     → Stok seçimi → Değer/Paket → Pazarlık       ✔
+  //   appraisal → İncele → Test → Rapor/Ücret → Sonuç      (henüz yok)
+  // Havuz `appraisal` üretmez; üretilmiş olsaydı müşteri şeridinde doğru
+  // niyeti yazıp yanlış akışı çalıştırırdı.
+  const { intent, fromDynamicPool } = rollIntent(rootSeed, spawnIndex, character);
+
+  // --- Talep: yalnız alış intentinde. Ürünü müşteri getirmez, oyuncu
+  //     stoktan seçer (GDD 23.23). ---
+  const demand: CustomerDemand | null =
+    intent === 'buy' ? spawnDemand(rootSeed, spawnIndex, archetypeId, character) : null;
 
   // --- Kalem sayısı: çoklu ürün orta oyunda açılır (GDD 12) ---
   const multiChance = store.level >= 3 ? 0.26 : store.level >= 2 ? 0.12 : 0;
@@ -80,15 +90,24 @@ export function spawnCustomer(
   );
   const usablePool = pool.length > 0 ? pool : templatesForTier(store.storeTier);
 
-  for (let i = 0; i < lineCount; i++) {
-    const template = rng.pick(usablePool);
-    items.push(spawnItem(rootSeed, spawnIndex * 10 + i, template.id));
+  // Alış intentinde müşteri elinde ürünle gelmez.
+  if (intent !== 'buy') {
+    for (let i = 0; i < lineCount; i++) {
+      const template = rng.pick(usablePool);
+      items.push(spawnItem(rootSeed, spawnIndex * 10 + i, template.id));
+    }
   }
 
   // --- Davranış parametreleri (GDD 9.1) ---
   const patienceMax = Math.round(rng.band(archetype.patienceBand));
   const knowledge = Math.round(rng.band(archetype.knowledgeBand));
-  const urgency = Math.round(rng.band(archetype.urgencyBand));
+  // §3: dinamik havuz "müşteri kalitesi, aciliyet" gibi nitelikleri etkiler —
+  // niyet payını DEĞİL. Eğim bu yüzden davranışa uygulanır, dağılıma değil.
+  const urgency = clamp(
+    Math.round(rng.band(archetype.urgencyBand) + character.urgencyTilt * 8),
+    0,
+    100,
+  );
   const priceSensitivity = Math.round(rng.band(archetype.priceSensitivityBand));
   const status = Math.round(rng.band(archetype.statusBand));
 
@@ -103,7 +122,21 @@ export function spawnCustomer(
   const reservationPrice = Math.round(fairTotal * reservationRatio);
 
   // --- Bütçe (alıcı müşteride kullanılır) ---
-  const budget = Math.round(fairTotal * rng.range(1.05, 1.9) * (1 + status / 200));
+  const qualityFactor = 1 + character.qualityTilt * 0.12;
+  const budget =
+    intent === 'buy'
+      ? Math.round(
+          purchaseBudgetBase(demand, market) * rng.range(1.1, 2.1) * (1 + status / 200) * qualityFactor,
+        )
+      : Math.round(fairTotal * rng.range(1.05, 1.9) * (1 + status / 200) * qualityFactor);
+
+  // --- Ödeme tavanı oranı: SPAWN ANINDA SABİT (GDD 34.2) ---
+  // Paketi oyuncu seçtiği için tavarın TL karşılığı sonradan türer; ama
+  // oranı burada sabitlenir ki oyuncu paketi değiştirip zar atamasın.
+  const purchaseCeilingRatio =
+    rng.band(PURCHASE.ceilingRatioBand) +
+    ((knowledge - 50) / 50) * -0.03 +
+    ((status - 50) / 50) * 0.04;
 
   const id = makeId('cust', rootSeed, spawnIndex);
   const lineIds = items.map((_, i) => `${id}_line${i}`);
@@ -121,6 +154,8 @@ export function spawnCustomer(
       status,
       budget,
       reservationPrice,
+      purchaseCeilingRatio: clamp(purchaseCeilingRatio, 0.95, 1.45),
+      demand,
       patience: patienceMax,
       // Yeni müşteride mağaza güveni semt itibarından türer (GDD 10.1).
       trust: clamp(Math.round(store.reputation * 0.6 + rng.range(-8, 12)), 5, 95),
@@ -131,7 +166,22 @@ export function spawnCustomer(
       lineIds,
     },
     items,
+    fromDynamicPool,
   };
+}
+
+/**
+ * Alıcı müşterinin bütçe tabanı: getirdiği ürün olmadığı için adil değer
+ * yerine ARADIĞI ŞEYİN değeri esas alınır.
+ */
+function purchaseBudgetBase(demand: CustomerDemand | null, market: MarketState): number {
+  if (!demand) return market.goldSpot * 12;
+  const unit = demand.templateId
+    ? (bullionMeta(demand.templateId)?.unitWeightGrams ?? 5) *
+      (bullionMeta(demand.templateId)?.unitPurity ?? 0.916) *
+      market.goldSpot
+    : market.goldSpot * 14;
+  return unit * Math.max(1, demand.quantity);
 }
 
 /**

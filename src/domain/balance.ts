@@ -215,6 +215,69 @@ export const MARKET_REGIME: Record<
  * ilişki sermayesi taşır, tezgâh taşımaz. Kalan pay her koşulda ayakta kalır
  * ki §11'in arbitraj döngüsü yapısal olarak kapansın.
  */
+/**
+ * Ekonomi Ara Düzeltmesi §3 — MÜŞTERİ INTENT DAĞILIMI.
+ *
+ * DEĞİŞMEZ: %38 / %38 SABİT TABANDIR. Dinamik havuz bu iki dilimi azaltamaz;
+ * yalnız kalan %24'ün içinde iş görür.
+ *
+ * DEĞİŞMEZ: "Dinamik havuzun tamamını tek yöne yığarak fiili alış-satış
+ * dengesini sürekli biçimde bozmak yasaktır." → `maxDynamicTilt` kelepçesi.
+ * Tilt ±0.5 iken havuzun en aşırı günü bile %24'ün 75/25'inden fazlasını tek
+ * yöne veremez; toplam sapma en fazla ±%6 puandır.
+ */
+export const INTENT_MIX = {
+  /** Müşteri alış intenti — oyuncu müşteriye satar. */
+  customerBuys: 0.38,
+  /** Müşteri satış intenti — müşteri oyuncuya satar. */
+  customerSells: 0.38,
+  /** Kontrollü dinamik/RNG havuzu. */
+  dynamic: 0.24,
+  /** Dinamik havuzun ticaret dışı niyetlere (servis) ayrılan payı. */
+  dynamicServiceShare: 0.55,
+  /** Havuzun yön eğiminin mutlak tavanı. */
+  maxDynamicTilt: 0.5,
+} as const;
+
+/**
+ * Müşteri alış akışı ayarları (GDD 23.23 · Addendum §3, §4.1).
+ * §9: "Denge ayarları veri odaklıdır: sabit kod yerine konfigürasyon."
+ */
+export const PURCHASE = {
+  /** Sarrafiye talebinde havuz — §4'ün ürün havuzuyla aynı kümedir. */
+  bullionDemandPool: [
+    'gram_gold_1',
+    'gram_gold_5',
+    'gram_gold_10',
+    'quarter_gold',
+    'half_gold',
+    'full_gold',
+    'republic_gold',
+    'ata_gold',
+  ] as const,
+
+  /** Bu adetten itibaren toplu müşteri kanal profili kullanılır (§4.1). */
+  bulkChannelThreshold: 8,
+
+  /** Toplu müşterinin kısmi karşılamayı kabul etme olasılığı (§4.1). */
+  bulkPartialChance: 0.65,
+  /** Kısmi karşılamada talebin en az bu payı verilmeli. */
+  partialFloorShare: 0.5,
+
+  /** Talebe uymayan kalem başına sabır bedeli. */
+  offMatchPatienceCost: 6,
+  /** Talebe uymayan kalem başına ödeme tavanı kaybı. */
+  offMatchCeilingCut: 0.06,
+  /** Tam isabetli kalem başına tavan primi. */
+  exactMatchCeilingBonus: 0.02,
+
+  /** Ödeme tavanı oranı bandı — spawn anında sabitlenir (GDD 34.2). */
+  ceilingRatioBand: [1.04, 1.34] as [number, number],
+
+  /** Mağaza kademesine göre paketteki azami kalem sayısı. */
+  maxPackageLinesByTier: { 1: 2, 2: 3, 3: 4, 4: 5 } as Record<number, number>,
+} as const;
+
 export const CHANNEL = {
   /**
    * Tezgâh müşterisi: dükkânın fiyatı BELİRLEDİĞİ kanal (makerBias +1).

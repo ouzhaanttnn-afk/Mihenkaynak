@@ -34,7 +34,20 @@ const SERVICE_STEPS: { stage: WorkbenchStage; label: string }[] = [
   { stage: 'jobQueue', label: 'Kuyruk' },
 ];
 
+/**
+ * GDD 23.23 — "Müşteri alış: Stok seçimi → Değer/Paket → Pazarlık."
+ * Üç adımdır, dört değil: alış akışında ürün oyuncunun kendi stoğudur, test
+ * edilecek gizli gerçek yoktur. Dördüncü bir adım uydurmak GDD'de olmayan
+ * mekanik eklemek olurdu.
+ */
+const PURCHASE_STEPS: { stage: WorkbenchStage; label: string }[] = [
+  { stage: 'stockPick', label: 'Stok' },
+  { stage: 'package', label: 'Paket' },
+  { stage: 'negotiate', label: 'Pazarlık' },
+];
+
 const TRADE_ORDER: WorkbenchStage[] = ['inspect', 'appraise', 'thesis', 'negotiate', 'result'];
+const PURCHASE_ORDER: WorkbenchStage[] = ['stockPick', 'package', 'negotiate', 'result'];
 const SERVICE_ORDER: WorkbenchStage[] = ['diagnose', 'quote', 'promise', 'jobQueue'];
 
 interface Props {
@@ -45,8 +58,10 @@ interface Props {
 }
 
 export function StageStrip({ flow, current, canEnter, onSelect }: Props) {
-  const STEPS = flow === 'service' ? SERVICE_STEPS : TRADE_STEPS;
-  const ORDER = flow === 'service' ? SERVICE_ORDER : TRADE_ORDER;
+  const STEPS =
+    flow === 'service' ? SERVICE_STEPS : flow === 'purchase' ? PURCHASE_STEPS : TRADE_STEPS;
+  const ORDER =
+    flow === 'service' ? SERVICE_ORDER : flow === 'purchase' ? PURCHASE_ORDER : TRADE_ORDER;
   const currentIndex = ORDER.indexOf(current);
 
   return (

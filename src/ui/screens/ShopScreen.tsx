@@ -23,6 +23,7 @@ import { toolsForLevel } from '@data/tools';
 import { getServiceType } from '@data/service-types';
 import { expectedCompletionDay, findQuote } from '@domain/service';
 import { activeLine, canEnterStage, selectors, useGame } from '@state/gameStore';
+import { offerableStock } from '@domain/purchase';
 
 import { CustomerStrip } from '@ui/shell/CustomerStrip';
 import { DecisionDock } from '@ui/shell/DecisionDock';
@@ -42,6 +43,7 @@ import {
   PromiseStage,
   QuoteStage,
 } from '@ui/workbench/ServiceStages';
+import { PackageStage, StockPickStage } from '@ui/workbench/PurchaseStages';
 import { OfferControl, liquidityImpact, type OfferImpact } from '@ui/workbench/OfferControl';
 
 import {
@@ -69,7 +71,7 @@ import {
   IconWorkshop,
 } from '@ui/icons';
 import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
-import type { ExitChannel, InfoField, Money, WorkbenchStage } from '@domain/types';
+import type { DealLine, ExitChannel, InfoField, Money, WorkbenchStage } from '@domain/types';
 
 const TOOL_ICON: Record<string, typeof IconScale> = {
   scale: IconScale,
@@ -172,7 +174,42 @@ export function ShopScreen() {
             </div>
           )}
 
-          {!deal || !line || !item ? (
+          {!deal || !line ? (
+            <IdleWorkbench />
+          ) : /* --- Müşteri alış akışı (GDD 23.23) --- */
+          deal.flow === 'purchase' && deal.purchase ? (
+            stage === 'package' ? (
+              <PackageStage
+                purchase={deal.purchase}
+                items={deal.purchase.selectedItemIds
+                  .map((id) => s.items[id])
+                  .filter((it): it is NonNullable<typeof it> => !!it)}
+              />
+            ) : stage === 'negotiate' ? (
+              <NegotiateStage
+                session={line.negotiation}
+                message={s.customerMessage}
+                selectedThesis={null}
+                thesisOptions={[]}
+                band={null}
+                verifiedFields={0}
+                totalFields={0}
+                liquidityAfter={salePreview(
+                  s,
+                  line.negotiation.finalOffer ?? offer,
+                  deal.purchase.packageCost,
+                )}
+              />
+            ) : stage === 'result' && s.lastReview ? (
+              <ResultStage review={s.lastReview} accepted={line.negotiation.state === 'ACCEPTED'} />
+            ) : (
+              <StockPickStage
+                purchase={deal.purchase}
+                rows={offerableStock(deal.purchase.demand, s.inventory, s.items)}
+                onToggle={s.togglePackageItem}
+              />
+            )
+          ) : !item ? (
             <IdleWorkbench />
           ) : /* --- Servis Kabul akışı (GDD 23.14) --- */
           deal.flow === 'service' && deal.service ? (
@@ -334,6 +371,70 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
 
   if (!deal || !line) {
     return <ToolRail items={[]} emptyLabel="Müşteri karşılandığında araçlar burada" />;
+  }
+
+  // --- Müşteri alış akışı (GDD 23.23) ---
+  // Ray aynı fiziksel konumda kalır. Alış akışında test aracı YOKTUR: ürün
+  // oyuncunun kendi stoğudur, ölçülecek gizli gerçek yok. Rayın işi paketi
+  // yönetmektir.
+  if (deal.flow === 'purchase' && deal.purchase) {
+    const purchase = deal.purchase;
+    const locked = line.negotiation.offerHistory.length > 0;
+
+    // Pazarlıkta ray fiyat dışı hamleleri taşır. "Gerekçe" burada YOKTUR:
+    // GDD 11.5 gerekçeyi doğrulanmış test verisine bağlar, alış akışında ise
+    // test yapılmaz. Elde olmayan bir kanıta dayanan buton koymak, kuralı
+    // ekranda varmış gibi göstermek olurdu.
+    if (deal.stage === 'negotiate') {
+      const session = line.negotiation;
+      const terminal = isTerminal(session.state);
+      return (
+        <ToolRail
+          disabled={terminal}
+          items={[
+            {
+              id: 'gesture',
+              label: 'Jest',
+              icon: <IconGesture size={19} />,
+              used: session.gesturesUsed >= NEGOTIATION.maxEffectiveGestures,
+              onPress: () => s.negotiationMove({ kind: 'gesture', atRound: session.round }),
+            },
+            {
+              id: 'counter',
+              label: 'Karşı Teklif',
+              icon: <IconCounter size={19} />,
+              onPress: () => s.negotiationMove({ kind: 'requestCounter', atRound: session.round }),
+            },
+          ]}
+        />
+      );
+    }
+
+    if (deal.stage === 'result') {
+      return <ToolRail items={[]} disabled emptyLabel="İşlem kapandı" />;
+    }
+
+    return (
+      <ToolRail
+        items={[
+          {
+            id: 'clearPackage',
+            label: 'Paketi boşalt',
+            icon: <IconReject size={19} />,
+            onPress: s.clearPackage,
+            disabled: purchase.selectedItemIds.length === 0 || locked,
+          },
+          {
+            id: 'toPackage',
+            label: 'Pakete bak',
+            icon: <IconPackage size={19} />,
+            onPress: () => s.setStage('package'),
+            selected: deal.stage === 'package',
+            disabled: purchase.selectedItemIds.length === 0,
+          },
+        ]}
+      />
+    );
   }
 
   // --- Servis Kabul akışı (GDD 23.14) ---
@@ -595,6 +696,19 @@ function ShopDock({
     return <ServiceDock deal={deal} />;
   }
 
+  // --- Müşteri alış akışı Dock'u (GDD 23.23) ---
+  if (deal.flow === 'purchase' && deal.purchase) {
+    return (
+      <PurchaseDock
+        deal={deal}
+        line={line}
+        offer={offer}
+        setOffer={setOffer}
+        liquidity={liquidity}
+      />
+    );
+  }
+
   const ceiling = effectiveCeiling(line.thesisOptions, line.selectedThesis);
 
   switch (deal.stage) {
@@ -761,6 +875,187 @@ function ShopDock({
  * karar özeti değişir (GDD 23.12). Servis müşterisi teklif slider'ına
  * zorlanmaz — ücret tekliften gelir, karar süre/risk/söz üzerinedir.
  */
+/**
+ * MÜŞTERİ ALIŞ AKIŞI DOCK'U (GDD 23.23)
+ *
+ * GDD 6.6 — müşterinin ödeme tavanı hiçbir aşamada sayı olarak gösterilmez.
+ * Dock'ta görünen tek referans oyuncunun KENDİ maliyeti ve kanal önerisidir;
+ * müşterinin nereye kadar çıkacağı pazarlıkta öğrenilir.
+ */
+function PurchaseDock({
+  deal,
+  line,
+  offer,
+  setOffer,
+  liquidity,
+}: {
+  deal: NonNullable<GameStateDeal>;
+  line: DealLine;
+  offer: Money;
+  setOffer: (v: Money) => void;
+  liquidity: number;
+}) {
+  const s = useGame();
+  const purchase = deal.purchase;
+  if (!purchase) return null;
+
+  switch (deal.stage) {
+    // --- STOK SEÇİMİ ---
+    case 'stockPick': {
+      const count = purchase.selectedItemIds.length;
+      return (
+        <DecisionDock
+          summaryLabel="Pakette"
+          summaryValue={
+            count === 0
+              ? 'Henüz kalem seçilmedi'
+              : `${count} kalem · ${tl(purchase.packageFairValue)} adil değer`
+          }
+          primary={{
+            label: 'Paketi Değerle',
+            onPress: () => s.setStage('package'),
+            disabled: count === 0,
+          }}
+          secondary={[{ label: 'Müşteriyi Gönder', onPress: s.finishDeal, danger: true }]}
+        />
+      );
+    }
+
+    // --- DEĞER / PAKET ---
+    case 'package': {
+      // §4.1 — kısmi karşılamayı kabul etmeyen müşteriye eksik paket sunulmaz.
+      const ready = purchase.fulfilment !== 'none';
+      return (
+        <DecisionDock
+          summaryLabel="Kanal önerisi"
+          summaryValue={
+            <>
+              {tl(purchase.suggestedPrice)}
+              <span style={{ color: 'var(--muted)' }}>
+                {' '}· maliyet {tl(purchase.packageCost)}
+              </span>
+            </>
+          }
+          primary={{
+            label: 'Pazarlığa Geç',
+            onPress: () => {
+              setOffer(purchase.suggestedPrice);
+              s.setStage('negotiate');
+            },
+            disabled: !ready,
+          }}
+          secondary={[
+            { label: 'Paketi Düzenle', onPress: () => s.setStage('stockPick') },
+            { label: 'Müşteriyi Gönder', onPress: s.finishDeal, danger: true },
+          ]}
+        />
+      );
+    }
+
+    // --- PAZARLIK ---
+    case 'negotiate': {
+      const session = line.negotiation;
+      const isFinal = session.state === 'FINAL_OFFER';
+      const counter = session.finalOffer ?? session.activeCounter;
+
+      // Satışta kâr HEMEN gerçekleşir (GDD 34.5): satış fiyatı eksi maliyet.
+      const profit = offer - purchase.packageCost;
+      const impacts: OfferImpact[] = [
+        {
+          label: 'Kâr',
+          value: `${tlSigned(profit)} ${tonWord(profit)}`,
+          tone: profit >= 0 ? 'positive' : 'negative',
+        },
+        liquidityImpact(liquidity, liquidity),
+        {
+          label: 'İlişki',
+          value: saleRelationLabel(offer, purchase.packageFairValue),
+          tone: offer > purchase.packageFairValue * 1.25 ? 'warning' : 'neutral',
+        },
+      ];
+
+      const bounds = purchaseBounds(purchase);
+
+      return (
+        <DecisionDock
+          summaryLabel={isFinal ? 'Son teklif' : 'İstediğiniz fiyat'}
+          summaryValue={
+            isFinal && counter !== null
+              ? `Müşteri: ${tl(counter)} — geri dönüş yok`
+              : `Adil değer ${tl(purchase.packageFairValue)}`
+          }
+          primary={{
+            label: isFinal ? 'Son Teklifi Kabul Et' : 'Fiyatı Ver',
+            onPress: () =>
+              isFinal && counter !== null
+                ? s.negotiationMove({ kind: 'acceptCounter', atRound: session.round })
+                : s.submitOffer(offer),
+            disabled: isTerminal(session.state) || offer <= 0,
+            icon: <IconSend size={18} />,
+          }}
+          secondary={[
+            {
+              label: 'Vazgeç',
+              onPress: () => s.negotiationMove({ kind: 'reject', atRound: session.round }),
+              danger: true,
+              icon: <IconReject size={16} />,
+            },
+          ]}
+        >
+          {!isFinal && (
+            <OfferControl
+              value={offer}
+              onChange={setOffer}
+              min={bounds.min}
+              max={bounds.max}
+              step={bounds.step}
+              impacts={impacts}
+              disabled={isTerminal(session.state)}
+            />
+          )}
+        </DecisionDock>
+      );
+    }
+
+    // --- SONUÇ ---
+    default:
+      return (
+        <DecisionDock
+          summaryLabel="Sonuç"
+          summaryValue={
+            line.negotiation.state === 'ACCEPTED'
+              ? `Satıldı · ${tl(line.negotiation.settledPrice ?? 0)}`
+              : 'Satış olmadı'
+          }
+          primary={{ label: 'Sonraki Müşteri', onPress: s.finishDeal }}
+        />
+      );
+  }
+}
+
+/**
+ * Satış slider'ının aralığı: maliyetin altından adil değerin belirgin
+ * üstüne. Oyuncu zararına da satabilir — sistem "şu fiyattan sat" demez
+ * (GDD 6.6), yalnız sonucunu gösterir.
+ */
+function purchaseBounds(purchase: NonNullable<GameStateDeal>['purchase']) {
+  const fair = purchase?.packageFairValue ?? 0;
+  const cost = purchase?.packageCost ?? 0;
+  const min = Math.max(0, Math.round(Math.min(cost, fair) * 0.6));
+  const max = Math.max(min + 1000, Math.round(fair * 1.6));
+  const span = max - min;
+  return { min, max, step: span > 200_000 ? 500 : span > 40_000 ? 100 : 50 };
+}
+
+/** Satışta ilişki etiketi: fiyat adil değerin ne kadar üstünde (GDD 23.12). */
+function saleRelationLabel(price: Money, fair: Money): string {
+  if (fair <= 0) return 'nötr';
+  const ratio = price / fair;
+  if (ratio <= 1.08) return 'olumlu';
+  if (ratio <= 1.28) return 'nötr';
+  return 'riskli';
+}
+
 function ServiceDock({ deal }: { deal: NonNullable<GameStateDeal> }) {
   const s = useGame();
   const service = deal.service;
@@ -875,6 +1170,24 @@ function liquidityPreview(s: ReturnType<typeof useGame.getState>, price: Money):
     Math.max(0, s.store.cash - price),
     [...s.inventory, { costBasis: price } as never],
   );
+  return `${pct(before)} → ${pct(after)}`;
+}
+
+/**
+ * Satış tarafında likidite TERS yönde hareket eder: mal çıkar, nakit girer.
+ * Alış önizlemesini yeniden kullanmak "%19 → %12" gibi yanlış bir yön
+ * gösterirdi — oyuncu kararını bu sayıya bakarak veriyor.
+ */
+function salePreview(
+  s: ReturnType<typeof useGame.getState>,
+  price: Money,
+  costBasis: Money,
+): string {
+  const before = liquidityRatio(s.store.cash, s.inventory);
+  const after = liquidityRatio(s.store.cash + price, [
+    { costBasis: -costBasis } as never,
+    ...s.inventory,
+  ]);
   return `${pct(before)} → ${pct(after)}`;
 }
 

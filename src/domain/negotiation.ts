@@ -21,6 +21,7 @@ import { NEGOTIATION, TRUST } from './balance';
 import { getArchetype } from '@data/archetypes';
 import type {
   Customer,
+  TradeSide,
   FieldKnowledge,
   Money,
   NegotiationMove,
@@ -28,6 +29,29 @@ import type {
   NegotiationSession,
   NegotiationState,
 } from './types';
+
+/**
+ * Yön işareti: +1 oyuncu alıyor (yüksek teklif iyi), -1 oyuncu satıyor
+ * (düşük fiyat iyi). Tüm karşılaştırmalar bu işaretle çarpılır.
+ */
+function dirSign(ctx: NegotiationContext): 1 | -1 {
+  return ctx.direction === 'shopSells' ? -1 : 1;
+}
+
+/** Yönden bağımsız "teklif eşiği geçti mi" sınaması. */
+function meetsThreshold(ctx: NegotiationContext, offer: Money, threshold: Money): boolean {
+  return dirSign(ctx) * (offer - threshold) >= 0;
+}
+
+/**
+ * Teklifin eşiğe göre ne kadar cömert olduğu. 1 = tam eşik, <1 = eşiğin
+ * gerisinde. Yön ne olursa olsun "1'e ne kadar yakın" anlamı korunur.
+ */
+function offerRatio(ctx: NegotiationContext, offer: Money, threshold: Money): number {
+  return dirSign(ctx) === 1
+    ? offer / Math.max(1, threshold)
+    : threshold / Math.max(1, offer);
+}
 
 /** Yeni bir pazarlık oturumu. */
 export function createSession(lineId: string, itemId: string): NegotiationSession {
@@ -48,10 +72,29 @@ export function createSession(lineId: string, itemId: string): NegotiationSessio
 
 export interface NegotiationContext {
   customer: Customer;
+  /**
+   * Pazarlığın YÖNÜ (Addendum §3 terminolojisi).
+   *   'shopBuys'  — müşteri satış intenti: müşteri satar, oyuncu alır.
+   *                 Eşik bir TABANDIR; teklif eşiğe ULAŞINCA kabul edilir.
+   *   'shopSells' — müşteri alış intenti: oyuncu satar, müşteri alır.
+   *                 Eşik bir TAVANDIR; istenen fiyat eşiğin ALTINDA kalınca
+   *                 kabul edilir.
+   *
+   * İki yön aynı durum makinesini paylaşır. Ayrı bir makine yazmak, GDD
+   * 34.3'ün "aynı teklif spam'i yeni sonuç üretmez" garantisini iki yerde
+   * ayrı ayrı korumak demekti; tek makine tek garanti demektir.
+   */
+  direction?: TradeSide;
   /** Semt / marka itibarı (GDD 10.1). */
   reputation: number;
   /** Oyuncunun bu kalem için hesapladığı alış tavanı — yalnız UI önizlemesi için. */
   buyCeiling: Money;
+  /**
+   * 'shopSells' yönünde müşterinin ÖDEME TAVANI (GDD 6.6: gösterilmez).
+   * purchase.ts'in `purchaseCeiling()` çıktısıdır; paketi oyuncu seçtiği için
+   * TL karşılığı orada hesaplanır, oranı spawn anında sabittir (GDD 34.2).
+   */
+  purchaseCeiling?: Money;
   /** Bilgi durumu — 'gerekçe' hamlesinin geçerliliğini denetler (GDD 11.5). */
   knowledge: FieldKnowledge[];
 }
@@ -94,7 +137,26 @@ export function effectiveReservation(ctx: NegotiationContext, session: Negotiati
   const flex = clamp(rawFlex, -NEGOTIATION.maxReservationFlex, NEGOTIATION.maxReservationFlex);
 
   // Arketip eşiği: 1.0 = tam rezervasyon. Fırsatçı > 1, acil nakit < 1.
-  return Math.round(customer.reservationPrice * a.closeThreshold * (1 - flex));
+  //
+  // Esneme HER ZAMAN oyuncunun lehinedir: alırken tabanı indirir, satarken
+  // tavanı yükseltir. İşaret bu yüzden yöne bağlıdır.
+  const sign = dirSign(ctx);
+  const base = sign === 1 ? customer.reservationPrice : purchaseThresholdBase(ctx);
+  return Math.round(base * a.closeThreshold * (1 - sign * flex));
+}
+
+/**
+ * 'shopSells' yönünde eşiğin tabanı: müşterinin ödeme tavanı. Bağlam bunu
+ * vermediyse rezervasyon fiyatına düşülür — sessizce yanlış yöne çalışmaktansa
+ * makul bir taban kullanmak yeğdir.
+ */
+function purchaseThresholdBase(ctx: NegotiationContext): Money {
+  return ctx.purchaseCeiling ?? ctx.customer.reservationPrice;
+}
+
+/** Adalet algısının referansı — yön ne olursa olsun müşterinin kendi sınırı. */
+function thresholdBaseFor(ctx: NegotiationContext): Money {
+  return dirSign(ctx) === 1 ? ctx.customer.reservationPrice : purchaseThresholdBase(ctx);
 }
 
 /**
@@ -194,7 +256,7 @@ function handleOffer(
   const round = session.round + 1;
 
   // --- KABUL: deterministik, zar yok ---
-  if (offer >= threshold) {
+  if (meetsThreshold(ctx, offer, threshold)) {
     const next: NegotiationSession = {
       ...session,
       state: 'ACCEPTED',
@@ -206,7 +268,7 @@ function handleOffer(
     };
 
     // Adil fiyat algısı güveni yükseltir, sert fiyat düşürür (GDD 10.2).
-    const fairness = offer / Math.max(1, customer.reservationPrice);
+    const fairness = offerRatio(ctx, offer, Math.max(1, thresholdBaseFor(ctx)));
     const trustDelta =
       fairness >= TRUST.fairPriceRatio
         ? TRUST.fairDealGain
@@ -230,7 +292,7 @@ function handleOffer(
   }
 
   // --- RED / SERTLEŞME / KARŞI TEKLİF ---
-  const ratio = offer / Math.max(1, threshold);
+  const ratio = offerRatio(ctx, offer, threshold);
   const isInsulting = ratio < NEGOTIATION.insultThreshold;
   const badOfferCount = countBadOffers(session, ctx) + (isInsulting ? 1 : 0);
 
@@ -327,12 +389,18 @@ function deriveCounter(
   const progress = Math.min(1, session.round / (4 * stickiness));
   const margin = startMargin + (endMargin - startMargin) * progress;
 
-  const anchored = threshold * (1 + margin);
+  // Marj her zaman MÜŞTERİNİN lehine konur: satarken eşiğin üstünü ister,
+  // alırken eşiğin altını teklif eder.
+  const sign = dirSign(ctx);
+  const anchored = threshold * (1 + sign * margin);
 
-  // Müşteri oyuncunun teklifine kısmen yaklaşır — ama asla eşiğin altına inmez.
+  // Müşteri oyuncunun teklifine kısmen yaklaşır — ama asla eşiği geçmez.
   const meetInMiddle = anchored - (anchored - playerOffer) * 0.18;
 
-  return Math.max(threshold, Math.round(Math.max(meetInMiddle, playerOffer)));
+  if (sign === 1) {
+    return Math.max(threshold, Math.round(Math.max(meetInMiddle, playerOffer)));
+  }
+  return Math.min(threshold, Math.round(Math.min(meetInMiddle, playerOffer)));
 }
 
 // ---------------------------------------------------------------------------

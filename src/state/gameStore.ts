@@ -14,6 +14,20 @@ import { create } from 'zustand';
 import { DAY, SERVICE, START, XP, PATIENCE_PER_TEST_SECOND, type SpeedStep } from '@domain/balance';
 import { createMarketForDay, stepMarketIntraday } from '@domain/market';
 import { nextCustomerDelay, spawnCustomer } from '@domain/customer-spawn';
+import {
+  dayCharacter,
+  emptyTelemetry,
+  recordIntent,
+  type DayCharacter,
+  type IntentTelemetry,
+} from '@domain/intent';
+import {
+  createPurchaseSession,
+  maxPackageLines,
+  purchaseCeiling,
+  repricePackage,
+} from '@domain/purchase';
+import { CHANNEL_LABEL_TR } from '@domain/channels';
 import { applyMove, createSession, effectiveReservation, isTerminal } from '@domain/negotiation';
 import { applyTest, estimateBand, initialKnowledge, trueValue } from '@domain/valuation';
 import {
@@ -62,10 +76,12 @@ import type {
   MarketState,
   Money,
   NegotiationMove,
+  NegotiationState,
   ServiceJob,
   ServiceVenue,
   SettlementTransaction,
   StoreState,
+  TradeSide,
   WorkbenchStage,
 } from '@domain/types';
 
@@ -100,6 +116,15 @@ export interface GameState {
   /** 4x rewarded video ile geçici açılır (GDD 26.2). */
   speed4xUnlocked: boolean;
   customerRushUntilMinutes: number | null;
+
+  /**
+   * Günün karakteri — Addendum §3'ün %24'lük dinamik havuzu.
+   * %38/%38 intent tabanını DEĞİŞTİRMEZ; ürün karması, hacim, kalite,
+   * aciliyet ve tempo gibi nitelikleri belirler.
+   */
+  dayCharacter: DayCharacter;
+  /** §3 "dağılım ... izlenir" — üretilen intentlerin sayacı. */
+  intentTelemetry: IntentTelemetry;
 
   /** Kapıda bekleyen müşteriler. */
   queue: { customer: Customer; items: ItemInstance[] }[];
@@ -137,6 +162,10 @@ export interface GameState {
   acceptServiceJob: () => void;
   declineServiceJob: () => void;
   deliverJob: (jobId: string) => void;
+
+  // --- Müşteri alış akışı (GDD 23.23 · Addendum §3) ---
+  togglePackageItem: (itemId: string) => void;
+  clearPackage: () => void;
 
   runTest: (toolId: string) => void;
   selectThesis: (channel: ExitChannel) => void;
@@ -204,6 +233,9 @@ export const useGame = create<GameState>((set, get) => {
     speed4xUnlocked: false,
     customerRushUntilMinutes: null,
 
+    dayCharacter: dayCharacter(seed, 1, market),
+    intentTelemetry: emptyTelemetry(),
+
     queue: [],
     nextCustomerAtMinutes: DAY.openMinutes + 3,
 
@@ -255,23 +287,35 @@ export const useGame = create<GameState>((set, get) => {
 
       const market = stepMarketIntraday(s.market, clock);
       let { queue, nextCustomerAtMinutes, spawnCounter } = s;
+      let telemetry = s.intentTelemetry;
 
       if (clock >= nextCustomerAtMinutes && queue.length < 3) {
-        const spawned = spawnCustomer(s.seed, spawnCounter, market, s.store);
+        const spawned = spawnCustomer(s.seed, spawnCounter, market, s.store, s.dayCharacter);
         queue = [...queue, spawned];
         spawnCounter += 1;
+        telemetry = recordIntent(telemetry, spawned.customer.intent, spawned.fromDynamicPool);
 
         const rushActive =
           s.customerRushUntilMinutes !== null && clock < s.customerRushUntilMinutes;
+        // §3: dinamik havuz "gün içi yoğunluk" karakterini belirler.
         nextCustomerAtMinutes =
-          clock + nextCustomerDelay(s.seed, spawnCounter, DAY.customerIntervalMinutes, rushActive);
+          clock +
+          nextCustomerDelay(s.seed, spawnCounter, DAY.customerIntervalMinutes, rushActive) *
+            s.dayCharacter.tempo;
       }
 
       // GDD 14.3 / 15.1 — stok değeri bugünkü piyasaya göre canlı kalır.
       // Bu YALNIZ currentValue yazar; gerçekleşmiş kâra dokunmaz (GDD 34.5).
       const inventory = revalueInventory(s.inventory, s.items, thesisContext({ ...s, market }));
 
-      set({ market, inventory, queue, nextCustomerAtMinutes, spawnCounter });
+      set({
+        market,
+        inventory,
+        queue,
+        nextCustomerAtMinutes,
+        spawnCounter,
+        intentTelemetry: telemetry,
+      });
     },
 
     // -----------------------------------------------------------------------
@@ -303,11 +347,16 @@ export const useGame = create<GameState>((set, get) => {
       const dealId = makeId('deal', s.seed, s.spawnCounter);
 
       // GDD 23.23 intent matrisi — niyet hangi aşama dizisinin kullanılacağını
-      // belirler. Servis müşterisi ana ticaret slider'ına ZORLANMAZ (GDD 23.14).
-      const isService = head.customer.intent === 'service';
+      // belirler. Servis müşterisi ana ticaret slider'ına ZORLANMAZ (GDD 23.14),
+      // alış müşterisi de değerleme akışına zorlanmaz: elinde ürün yoktur,
+      // ürünü oyuncu stoktan seçer.
+      const intent = head.customer.intent;
+      const isService = intent === 'service';
+      const isPurchase = intent === 'buy' && !!head.customer.demand;
       const firstItem = head.items[0];
 
-      // Servis akışı tanılamayla açılır; ticaret akışı incelemeyle.
+      // Servis akışı tanılamayla açılır; ticaret akışı incelemeyle;
+      // alış akışı stok seçimiyle.
       const service = isService && firstItem ? createServiceSession() : null;
       if (service && firstItem) {
         service.diagnosis = diagnose(firstItem, s.store.level);
@@ -318,6 +367,28 @@ export const useGame = create<GameState>((set, get) => {
         );
       }
 
+      const purchase =
+        isPurchase && head.customer.demand ? createPurchaseSession(head.customer.demand) : null;
+
+      // Alış akışında pazarlık tek bir "paket satırı" üzerinden yürür;
+      // kalem henüz seçilmediği için itemId boştur ve paket kuruldukça dolar.
+      const purchaseLines: DealLine[] =
+        purchase && lines.length === 0
+          ? [
+              {
+                lineId: `${head.customer.id}_pkg`,
+                itemId: '',
+                knowledge: [],
+                testResults: [],
+                band: null,
+                thesisOptions: [],
+                selectedThesis: null,
+                negotiation: createSession(`${head.customer.id}_pkg`, ''),
+                status: 'untouched',
+              },
+            ]
+          : lines;
+
       set({
         items,
         queue: s.queue.slice(1),
@@ -325,11 +396,12 @@ export const useGame = create<GameState>((set, get) => {
         activeDeal: {
           dealId,
           customerId: head.customer.id,
-          flow: isService ? 'service' : 'trade',
-          stage: isService ? 'diagnose' : 'inspect',
-          activeLineId: lines[0]?.lineId ?? '',
-          lines,
+          flow: isService ? 'service' : isPurchase ? 'purchase' : 'trade',
+          stage: isService ? 'diagnose' : isPurchase ? 'stockPick' : 'inspect',
+          activeLineId: purchaseLines[0]?.lineId ?? '',
+          lines: purchaseLines,
           service,
+          purchase,
           startedAtSec: s.market.clockMinutes * 60,
           settled: false,
         },
@@ -630,6 +702,58 @@ export const useGame = create<GameState>((set, get) => {
       get().negotiationMove({ kind: 'offer', amount, atRound: 0 });
     },
 
+    // -----------------------------------------------------------------------
+    // Müşteri alış akışı — Stok seçimi → Değer/Paket → Pazarlık (GDD 23.23)
+    // -----------------------------------------------------------------------
+    togglePackageItem: (itemId) => {
+      const s = get();
+      const deal = s.activeDeal;
+      const customer = s.activeCustomer;
+      if (!deal || !customer || !deal.purchase) return;
+      // Pazarlık başladıktan sonra paket kilitlenir: paketi değiştirip
+      // müşterinin tavanını yeniden zar atmak GDD 34.2'yi delerdi.
+      const line = activeLine(deal);
+      if (line && line.negotiation.offerHistory.length > 0) {
+        pushToast(set, get, 'Pazarlık başladı; paket artık değiştirilemez.', 'negative');
+        return;
+      }
+
+      const selected = deal.purchase.selectedItemIds;
+      const already = selected.includes(itemId);
+      const limit = maxPackageLines(s.store);
+
+      if (!already && selected.length >= limit) {
+        pushToast(set, get, `Bu dükkân kademesinde pakete en fazla ${limit} kalem konur.`, 'negative');
+        return;
+      }
+
+      const nextIds = already ? selected.filter((id) => id !== itemId) : [...selected, itemId];
+      const purchase = repricePackage(
+        deal.purchase,
+        nextIds,
+        s.items,
+        s.inventory,
+        customer,
+        s.market,
+      );
+
+      set({
+        activeDeal: { ...deal, purchase, lines: syncPackageLine(deal.lines, nextIds) },
+      });
+    },
+
+    clearPackage: () => {
+      const s = get();
+      const deal = s.activeDeal;
+      const customer = s.activeCustomer;
+      if (!deal || !customer || !deal.purchase) return;
+      const line = activeLine(deal);
+      if (line && line.negotiation.offerHistory.length > 0) return;
+
+      const purchase = repricePackage(deal.purchase, [], s.items, s.inventory, customer, s.market);
+      set({ activeDeal: { ...deal, purchase, lines: syncPackageLine(deal.lines, []) } });
+    },
+
     negotiationMove: (move) => {
       const s = get();
       const deal = s.activeDeal;
@@ -641,10 +765,16 @@ export const useGame = create<GameState>((set, get) => {
       if (isTerminal(line.negotiation.state)) return;
 
       const options = line.thesisOptions;
+      const isPurchase = deal.flow === 'purchase' && !!deal.purchase;
+
+      // Addendum §3 terminolojisi: alış akışında YÖN terstir — oyuncu satar,
+      // müşteri alır. Aynı durum makinesi, farklı eşik yönü.
       const ctx = {
         customer,
+        direction: (isPurchase ? 'shopSells' : 'shopBuys') as TradeSide,
         reputation: s.store.reputation,
         buyCeiling: effectiveCeiling(options, line.selectedThesis),
+        purchaseCeiling: isPurchase ? effectivePurchaseCeiling(deal, customer) : undefined,
         knowledge: line.knowledge,
       };
 
@@ -681,7 +811,8 @@ export const useGame = create<GameState>((set, get) => {
       });
 
       if (isTerminal(session.state)) {
-        settleLine(set, get, line.lineId);
+        if (isPurchase) settlePurchase(set, get, session.settledPrice ?? 0, session.state);
+        else settleLine(set, get, line.lineId);
       }
     },
 
@@ -709,6 +840,8 @@ export const useGame = create<GameState>((set, get) => {
         ledger: { ...closed.ledger, realizedProfitToday: 0 },
         jobs,
         market,
+        // §3: her günün kendi karakteri var; havuz gün başında yeniden çekilir.
+        dayCharacter: dayCharacter(s.seed, market.day, market),
         queue: [],
         activeCustomer: null,
         activeDeal: null,
@@ -854,6 +987,132 @@ function settleLine(
   set({ ...economyToState({ ...economy, inventory: revalued }), lastReview: review });
 }
 
+/**
+ * Paket satırının itemId'sini seçimle senkron tutar. Pazarlık satırı tek
+ * kalırken temsil ettiği kalemler değişebilir; ilk kalem "yüz" olur.
+ */
+function syncPackageLine(lines: DealLine[], itemIds: string[]): DealLine[] {
+  if (lines.length === 0) return lines;
+  return lines.map((l, i) => (i === 0 ? { ...l, itemId: itemIds[0] ?? '' } : l));
+}
+
+/**
+ * Müşterinin bu PAKET için ödeme tavanı (GDD 6.6: asla gösterilmez).
+ *
+ * Oranı spawn anında sabittir (GDD 34.2); TL karşılığı paketten türer.
+ * Yanlış mal sunmak tavanı düşürür — §9'un "her koşulda en iyi sonuç yok"
+ * ilkesinin müşteri tarafındaki karşılığı.
+ */
+function effectivePurchaseCeiling(deal: ActiveDeal, customer: Customer): Money {
+  const purchase = deal.purchase;
+  if (!purchase) return customer.reservationPrice;
+
+  const base = purchaseCeiling(customer, purchase.packageFairValue);
+
+  // Kısmi karşılama müşteriyi tam memnun etmez: §4.1 "kısmen karşılanabilir"
+  // demek "aynı parayı öder" demek değildir.
+  const fulfilmentFactor =
+    purchase.fulfilment === 'full' ? 1 : purchase.fulfilment === 'partial' ? 0.94 : 0.8;
+
+  return Math.round(base * fulfilmentFactor);
+}
+
+/**
+ * Müşteri alış işleminin settlement'i — GDD 22.1'in TEK yazma yolu.
+ *
+ * GDD 34.5: kâr SATIŞTA doğar. Alışta realize kâr yoktu; burada vardır ve
+ * paketin maliyet tabanına göre hesaplanır.
+ */
+function settlePurchase(
+  set: (partial: Partial<GameState>) => void,
+  get: () => GameState,
+  price: Money,
+  state: NegotiationState,
+): void {
+  const s = get();
+  const deal = s.activeDeal;
+  const customer = s.activeCustomer;
+  if (!deal || !customer || !deal.purchase) return;
+
+  const purchase = deal.purchase;
+  const accepted = state === 'ACCEPTED' && price > 0;
+
+  let economy = economyOf(s);
+
+  if (accepted) {
+    const soldItems = purchase.selectedItemIds
+      .map((id) => s.items[id])
+      .filter((it): it is ItemInstance => !!it);
+
+    const tx: SettlementTransaction = {
+      // Paket bazlı benzersiz kimlik → çift tap ve reload koruması (GDD 22.1).
+      txId: `sale_${deal.dealId}`,
+      dealId: deal.dealId,
+      day: s.market.day,
+      cashDelta: price,
+      itemsIn: [],
+      itemsOut: soldItems.map((it) => it.id),
+      trustDelta: 0,
+      reputationDelta: Math.round(((customer.trust - 50) / 50) * 2),
+      xpDelta: xpForDeal({
+        testsUsed: 0,
+        confidence: 'high',
+        margin: purchase.packageCost > 0 ? (price - purchase.packageCost) / purchase.packageCost : 0,
+      }),
+      label: `${soldItems.length} kalem satışı`,
+    };
+
+    const outcome = applyTransaction(economy, tx);
+    if (!outcome.applied) return;
+
+    economy = {
+      ...outcome.state,
+      // GDD 34.5 — gerçekleşmiş kâr TAM BURADA doğar, başka hiçbir yerde.
+      ledger: realizeProfit(outcome.state.ledger, price, purchase.packageCost),
+    };
+  }
+
+  const record: DealRecord = {
+    dealId: `${deal.dealId}_pkg`,
+    customerId: customer.id,
+    lineIds: deal.lines.map((l) => l.lineId),
+    itemIds: purchase.selectedItemIds,
+    side: 'sell',
+    day: s.market.day,
+    clockMinutes: s.market.clockMinutes,
+    testsUsed: [],
+    estimateBand: { min: purchase.packageFairValue, max: purchase.packageFairValue },
+    // Alış akışında ürün oyuncunun kendi stoğudur; gerçeği zaten bilinir.
+    confidence: 'high',
+    actualValue: purchase.packageFairValue,
+    offerHistory: deal.lines[0]?.negotiation.offerHistory ?? [],
+    finalState: state,
+    movesUsed: deal.lines[0]?.negotiation.moveHistory.map((m) => m.kind) ?? [],
+    thesisAtDeal: null,
+    price: accepted ? price : 0,
+    costBasis: accepted ? purchase.packageCost : 0,
+    realizedProfit: accepted ? price - purchase.packageCost : null,
+    trustDelta: 0,
+    reputationDelta: 0,
+    reviewData: {
+      missedSignals: [],
+      keyDecisionPoint:
+        purchase.fulfilment === 'partial'
+          ? 'Talep kısmen karşılandı; müşteri eksik adede razı oldu.'
+          : 'Paket talebi tam karşıladı.',
+      alternativeChannelNote: `${CHANNEL_LABEL_TR[purchase.channel]} makasıyla fiyatlandı.`,
+    },
+  };
+
+  economy = { ...economy, ledger: recordDeal(economy.ledger, record) };
+
+  const revalued = revalueInventory(economy.inventory, economy.items, thesisContext(get()));
+  set({
+    ...economyToState({ ...economy, inventory: revalued }),
+    activeDeal: { ...deal, settled: true },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Yardımcılar
 // ---------------------------------------------------------------------------
@@ -938,6 +1197,28 @@ export function canEnterStage(s: GameState, stage: WorkbenchStage): boolean {
     }
   }
 
+  // --- Müşteri alış akışı (GDD 23.23) ---
+  // Stok seçimi her zaman açık; paket ekranı en az bir kalem ister;
+  // pazarlık, talebin karşılanabilir bir paketle karşılanmasını ister.
+  if (deal.flow === 'purchase') {
+    const purchase = deal.purchase;
+    if (!purchase) return false;
+
+    switch (stage) {
+      case 'stockPick':
+        return true;
+      case 'package':
+        return purchase.selectedItemIds.length > 0;
+      case 'negotiate':
+        // §4.1: kısmi karşılamayı kabul etmeyen müşteriye eksik paket sunulmaz.
+        return purchase.fulfilment !== 'none';
+      case 'result':
+        return isTerminal(line.negotiation.state);
+      default:
+        return false;
+    }
+  }
+
   switch (stage) {
     case 'inspect':
       return true;
@@ -986,7 +1267,11 @@ function openingLine(customer: Customer): string {
         ? 'Birkaç parça getirdim, bakar mısınız?'
         : 'Bunu bozdurmak istiyorum.';
     case 'buy':
-      return 'Bir şeye bakıyordum.';
+      // Talep spawn anında sabittir; müşteri ne aradığını ilk cümlede söyler
+      // ki oyuncu stok seçimine bilgiyle girsin (GDD 23.23).
+      return customer.demand
+        ? `${customer.demand.summary} için geldim.`
+        : 'Bir şeye bakıyordum.';
     case 'service':
       return 'Bunun tamiri mümkün mü?';
     case 'appraisal':
