@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { INTENT_MIX, PURCHASE } from './balance';
+import { INTENT_MIX, PURCHASE, TARGET_MARGIN } from './balance';
 import { createMarketForDay } from './market';
 import { spawnItem } from './item-spawn';
 import { spawnCustomer } from './customer-spawn';
@@ -26,7 +26,9 @@ import {
   recordIntent,
   rollIntent,
 } from './intent';
-import { bullionUnitValue, priceForChannel, roundTripCost } from './channels';
+import { bullionUnitValue, channelCapacity, priceForChannel, roundTripCost } from './channels';
+import { estimateBand, initialKnowledge, metalValue, trueValue } from './valuation';
+import { bullionMeta, CRAFTED_DEFAULT } from '@data/bullion';
 import { channelForDemand, packageFairValue, quotePackage } from './purchase';
 import { quoteLiquidation, financeTerms, creditLimit, supplyOffer } from './wholesaler';
 import { networkLiquidationOffer, networkLoanOffer, spawnNetwork } from './trade-network';
@@ -365,6 +367,131 @@ describe('§12.6 — Esnaf ağı iki hizmeti de sunar ve sonuçları uygular', (
       loan: { id: 'l', memberId: 'x', principal: 5_000, totalDue: 5_200, dueDay: 9, takenDay: 7 },
     };
     expect(networkLoanOffer(m, [m], 3_000, 7).blockedReason).toBeTruthy();
+  });
+});
+
+// ===========================================================================
+// §9 — DENGE İLKELERİ
+//
+// Addendum §9 bir TABLO veriyor ve tablonun her satırı sınanabilir bir iddia:
+//   Sarrafiye     : likidite yüksek, hacim yüksek, belirsizlik düşük,
+//                   marj potansiyeli düşük–orta
+//   İşçilikli ürün: likidite daha düşük, hacim daha seçici, belirsizlik
+//                   daha yüksek, marj potansiyeli daha yüksek
+//
+// "Sarrafiye ... TEK BAŞINA SÜREKLİ EN YÜKSEK KÂR SEÇENEĞİ OLMAZ."
+// ===========================================================================
+
+describe('§9 — Denge tablosu: sarrafiye ile işçilikli ürün karşıtlığı', () => {
+  const zincir = spawnItem(SEED, 77, 'chain_14k');
+
+  it('LİKİDİTE: sarrafiye yüksek, işçilikli ürün daha düşük', () => {
+    expect(bullionMeta('quarter_gold')!.liquidityClass).toBe('high');
+    // İşçilikli ürünün kanal metadatası yok; varsayılanı en düşük sınıf.
+    expect(CRAFTED_DEFAULT.liquidityClass).toBe('low');
+  });
+
+  it('HACİM: sarrafiye yüksek, işçilikli ürün daha seçici', () => {
+    const sarrafiye = bullionMeta('quarter_gold')!;
+    expect(sarrafiye.volumeBand[1]).toBeGreaterThan(CRAFTED_DEFAULT.volumeBand[1]);
+    expect(sarrafiye.bulkVolumeBand[1]).toBeGreaterThan(CRAFTED_DEFAULT.bulkVolumeBand[1]);
+
+    // Kanal derinliği de bunu taşır: aynı kanalda sarrafiye daha çok emilir.
+    expect(channelCapacity('wholesaler', sarrafiye, MARKET)).toBeGreaterThan(
+      channelCapacity('wholesaler', null, MARKET),
+    );
+  });
+
+  it('BELİRSİZLİK: işçilikli üründe değerleme bandı daha geniştir', () => {
+    const genislik = (item: ItemInstance) => {
+      const band = estimateBand(item, MARKET, initialKnowledge(item));
+      return (band.max - band.min) / Math.max(1, (band.max + band.min) / 2);
+    };
+    // Aynı bilgi seviyesinde: standart sarrafiyenin bandı dar, işçilikli
+    // ürününki geniş. Belirsizlik §9'un dördüncü sütunu.
+    expect(genislik(zincir)).toBeGreaterThan(genislik(ITEM));
+  });
+
+  it('MARJ POTANSİYELİ: sarrafiye düşük–orta, işçilikli ürün daha yüksek', () => {
+    const [sarrafiyeLo, sarrafiyeHi] = TARGET_MARGIN.bullion;
+    const [isciLo, isciHi] = TARGET_MARGIN.secondHandJewellery;
+
+    expect(isciLo).toBeGreaterThan(sarrafiyeLo);
+    expect(isciHi).toBeGreaterThan(sarrafiyeHi);
+  });
+
+  it('§9 DEĞİŞMEZ — sarrafiye tek başına SÜREKLİ en yüksek kâr seçeneği değildir', () => {
+    // Ölçülen makas: sarrafiyenin kanal makası, işçilikli ürününkinden dar.
+    // Dar makas = düşük marj. Sarrafiyenin işi ciro ve likidite, kâr değil.
+    const spread = (item: ItemInstance) =>
+      priceForChannel({
+        item,
+        market: MARKET,
+        channel: 'retailCustomer',
+        side: 'shopSells',
+        quantity: 1,
+        baseUnitValue: 10_000,
+        relationship: 50,
+      }).spreadRatio;
+
+    expect(spread(ITEM)).toBeLessThan(spread(zincir));
+  });
+
+  it('§9 — hiçbir kanal her rejimde en iyi fiyat + kapasite + hızı birden vermez', () => {
+    // Toptancı kapasitede lider ama küçük hacimde fiyatta değil.
+    const base = bullionUnitValue(ITEM, MARKET);
+    const tek = (channel: TradeChannel) =>
+      priceForChannel({
+        item: ITEM,
+        market: MARKET,
+        channel,
+        side: 'shopSells',
+        quantity: 1,
+        baseUnitValue: base,
+        relationship: 50,
+      }).unitPrice;
+
+    expect(tek('wholesaler')).toBeLessThan(tek('retailCustomer'));
+    expect(channelCapacity('wholesaler', bullionMeta('quarter_gold'), MARKET)).toBeGreaterThan(
+      channelCapacity('retailCustomer', bullionMeta('quarter_gold'), MARKET),
+    );
+  });
+});
+
+// ===========================================================================
+// §10 — DEĞİŞTİRİLMEMESİ GEREKEN SİSTEMLER
+// ===========================================================================
+
+describe('§10 — Addendum temel değerleme formülüne dokunmaz', () => {
+  it('metal değeri TEK yerde tanımlıdır: net gram × gerçek saflık × spot', () => {
+    // GDD 6.2 formülü valuation.ts'te yaşar. Kanal katmanı onu tüketir,
+    // yeniden yazmaz.
+    const beklenen = Math.round(
+      ITEM.truth.netMetalWeight * ITEM.truth.actualPurity * MARKET.goldSpot,
+    );
+    expect(metalValue(ITEM, MARKET)).toBe(beklenen);
+  });
+
+  it('kanal katmanından geçmek trueValue çıktısını değiştirmez', () => {
+    const before = trueValue(ITEM, MARKET);
+    for (const channel of ['retailCustomer', 'bulkCustomer', 'wholesaler', 'tradeNetwork'] as TradeChannel[]) {
+      priceForChannel({
+        item: ITEM,
+        market: MARKET,
+        channel,
+        side: 'shopSells',
+        quantity: 9,
+        baseUnitValue: bullionUnitValue(ITEM, MARKET),
+        relationship: 80,
+      });
+    }
+    expect(trueValue(ITEM, MARKET)).toBe(before);
+  });
+
+  it('sarrafiye birim değeri de aynı formülden türer, kopyasından değil', () => {
+    const meta = bullionMeta('quarter_gold')!;
+    const metal = meta.unitWeightGrams * meta.unitPurity * MARKET.goldSpot;
+    expect(bullionUnitValue(ITEM, MARKET)).toBe(Math.round(metal * (1 + meta.premiumRatio)));
   });
 });
 

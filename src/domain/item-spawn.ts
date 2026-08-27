@@ -16,7 +16,7 @@
  *   opsiyonel değildir; "tamamen görünmez risk çekirdeğin parçası olmaz".
  */
 
-import { CONDITION_LABEL, GOLD_KARATS, PURITY_TABLE } from './balance';
+import { CONDITION_LABEL, GOLD_KARATS, MARKET_BASE, PURITY_TABLE } from './balance';
 import { Rng, deriveSeed, makeId } from './rng';
 import { getTemplate, ITEM_TEMPLATES, type ItemTemplate } from '@data/item-templates';
 import type {
@@ -140,9 +140,15 @@ export function spawnItem(
   );
   const rarity = round2(rng.range(template.rarityBand[0], template.rarityBand[1]));
 
-  // İşçilik değeri metal değerine oranla tanımlıdır; nominal spot ile ölçeklenir
-  // ki şablon verisi piyasadan bağımsız kalsın.
-  const nominalMetalValue = netMetalWeight * actualPurity * (template.metal === 'gold' ? 4244 : 48.6);
+  // İşçilik değeri metal değerine oranla tanımlıdır ve NOMİNAL spot ile
+  // ölçeklenir ki şablon verisi piyasadan bağımsız kalsın: işçilik fiziksel
+  // bir özelliktir, ürünün hangi gün doğduğuna göre değişmemelidir.
+  //
+  // Nominal spot MARKET_BASE'ten OKUNUR, kopyalanmaz. Sayıyı buraya elle
+  // yazmak iki kopya yaratırdı; biri ayarlandığında öteki sessizce ayrışır
+  // ve işçilik değeri yanlış ölçeklenirdi.
+  const nominalSpot = template.metal === 'gold' ? MARKET_BASE.goldGram : MARKET_BASE.silverGram;
+  const nominalMetalValue = netMetalWeight * actualPurity * nominalSpot;
   const craftsmanship = Math.round(nominalMetalValue * craftsmanshipRatio);
 
   // --- Beyan / gözlem katmanı (GDD 5.3) ---
