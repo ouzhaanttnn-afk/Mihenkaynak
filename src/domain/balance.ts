@@ -35,7 +35,12 @@ export const GOLD_KARATS: Karat[] = ['8K', '14K', '18K', '22K', '24K'];
 
 /** GDD 14.1 — PLAYTEST başlangıç değerleri. */
 export const START = {
-  cash: 75_000,
+  /**
+   * PLAYTEST AYARI — final denge değeri DEĞİLDİR.
+   * Sarrafiye ekonomisini (nakitte kalma / gram alma / çeyrek stoklama /
+   * portföyü dağıtma) hızlı sınayabilmek için yükseltildi.
+   */
+  cash: 1_000_000,
   safeLimit: 250_000,
   displaySlots: 8,
   backStockSlots: 16,

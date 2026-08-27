@@ -566,3 +566,124 @@
   color: var(--text-light-3);
   cursor: default;
 }
+
+/* ===========================================================================
+   PLAYTEST — Sarrafiye alım tezgâhı ve teklif referansı
+   =========================================================================== */
+
+.counter {
+  border: 1px solid var(--line-light);
+  border-radius: var(--r-sm);
+  background: var(--stone-50);
+  overflow: hidden;
+  margin-bottom: var(--sp-3);
+}
+
+.counter__toggle {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+  background: none;
+  border: 0;
+  color: var(--text-light-1);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.counter__hint {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-caption);
+  color: var(--text-light-3);
+}
+
+.counter__list {
+  border-top: 1px solid var(--line-light);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.offerRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line-light);
+}
+
+.offerRow:last-child { border-bottom: none; }
+
+.offerRow__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.offerRow__name {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offerRow__unit {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-caption);
+  color: var(--brass-700);
+  font-weight: var(--fw-semibold);
+}
+
+.offerRow__meta {
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+}
+
+.offerRow__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: 2px;
+}
+
+.offerRow__total {
+  flex: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+}
+
+.offerRow__buy {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--brass-500);
+  border-radius: var(--r-sm);
+  background: rgba(201, 160, 74, 0.16);
+  color: var(--brass-700);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.offerRow__buy:disabled {
+  border-color: var(--line-light);
+  background: none;
+  color: var(--text-light-3);
+  cursor: default;
+}
+
+/* Stok ekranındaki adet kontrolü açık tema tonlarını kullanır. */
+.counter .qtyStep { border-left: none; padding: 0; }
+.counter .qtyStep__btn { color: var(--brass-700); width: 32px; }
+.counter .qtyStep__value { color: var(--text-light-1); }

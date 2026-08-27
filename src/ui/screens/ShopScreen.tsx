@@ -25,6 +25,8 @@ import { getServiceType } from '@data/service-types';
 import { expectedCompletionDay, findQuote } from '@domain/service';
 import { activeLine, canEnterStage, selectors, useGame } from '@state/gameStore';
 import { offerableStock } from '@domain/purchase';
+import { bullionUnitValue, marketReferenceBuy, unitPriceView } from '@domain/channels';
+import { isBullion } from '@data/bullion';
 import { CLASS_LABEL, flowPolicy, isToolRelevant } from '@domain/transaction-class';
 
 import { CustomerStrip } from '@ui/shell/CustomerStrip';
@@ -73,7 +75,15 @@ import {
   IconWorkshop,
 } from '@ui/icons';
 import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
-import type { DealLine, ExitChannel, InfoField, Money, WorkbenchStage } from '@domain/types';
+import type {
+  DealLine,
+  ExitChannel,
+  InfoField,
+  ItemInstance,
+  MarketState,
+  Money,
+  WorkbenchStage,
+} from '@domain/types';
 
 const TOOL_ICON: Record<string, typeof IconScale> = {
   scale: IconScale,
@@ -233,7 +243,12 @@ export function ShopScreen() {
               />
             )
           ) : stage === 'inspect' ? (
-            <InspectStage item={item} knowledge={line.knowledge} testResults={line.testResults} />
+            <InspectStage
+              item={item}
+              knowledge={line.knowledge}
+              testResults={line.testResults}
+              market={s.market}
+            />
           ) : stage === 'appraise' && line.band ? (
             <AppraiseStage band={line.band} />
           ) : stage === 'thesis' ? (
@@ -253,6 +268,7 @@ export function ShopScreen() {
               verifiedFields={line.knowledge.filter((k) => k.status === 'verified').length}
               totalFields={line.knowledge.length}
               liquidityAfter={liquidityPreview(s, line.negotiation.finalOffer ?? offer)}
+              reference={buildReference(item, s.market, line.negotiation.finalOffer ?? offer)}
             />
           ) : stage === 'result' && s.lastReview ? (
             <ResultStage
@@ -1183,6 +1199,31 @@ function ServiceDock({ deal }: { deal: NonNullable<GameStateDeal> }) {
 }
 
 type GameStateDeal = ReturnType<typeof useGame.getState>['activeDeal'];
+
+/**
+ * §2 — teklif ekranının piyasa referansı.
+ *
+ * Yalnız SARRAFİYEDE gösterilir: işçilikli üründe "tipik alış fiyatı" diye
+ * bir şey yoktur, değer işçilik ve taşla birlikte değişir. Orada referans
+ * uydurmak, olmayan bir kesinlik göstermek olurdu.
+ */
+function buildReference(item: ItemInstance | undefined, market: MarketState, offer: Money) {
+  if (!item || !isBullion(item.templateId)) return null;
+
+  const base = bullionUnitValue(item, market);
+  const pieceReference = marketReferenceBuy(item, market, base, 1);
+  const view = unitPriceView(item, pieceReference);
+  const offerView = unitPriceView(item, offer);
+
+  return {
+    unitReference: view.unitPrice,
+    unitOffer: offerView.unitPrice,
+    unit: view.unit,
+    quantity: 1,
+    totalReference: pieceReference,
+    totalOffer: offer,
+  };
+}
 
 /** Kabul edilirse likidite nereye düşer — "%19 → %12" (GDD 23.12). */
 function liquidityPreview(s: ReturnType<typeof useGame.getState>, price: Money): string {

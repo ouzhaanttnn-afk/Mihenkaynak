@@ -61,7 +61,7 @@ import {
   openInvoice,
   quoteLiquidation,
   repayInvoice,
-  supplyLots,
+  supplyOffer,
 } from '@domain/wholesaler';
 import { applyMove, createSession, effectiveReservation, isTerminal } from '@domain/negotiation';
 import { applyTest, estimateBand, initialKnowledge, trueValue } from '@domain/valuation';
@@ -1008,11 +1008,15 @@ export const useGame = create<GameState>((set, get) => {
     buyFromWholesaler: (templateId, quantity) => {
       const s = get();
       const probe = spawnItem(s.seed, s.spawnCounter * 100 + 7, templateId);
-      const lot = supplyLots(s.market, s.store, [probe])[0];
+      // Fiyat İSTENEN adetle hesaplanır. supplyLots() kendi "bugün sığan"
+      // adedini kullandığı için ekranda gösterilen tutarla tahsil edilen
+      // tutar ayrışıyordu — hacim makasa girdiği için birim fiyat adede
+      // bağlıdır ve iki farklı adet iki farklı fiyat verir.
+      const lot = supplyOffer(probe, Math.max(1, Math.round(quantity)), s.market, s.store);
       if (!lot) return;
 
-      const units = Math.max(1, Math.min(lot.quantity, Math.round(quantity)));
-      const amount = lot.unitPrice * units;
+      const units = lot.quantity;
+      const amount = lot.total;
       const terms = financeTerms(s.store, amount, s.market.day);
 
       if (terms.blockedReason) {

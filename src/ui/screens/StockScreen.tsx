@@ -11,16 +11,19 @@
  */
 
 import { TERM } from '@ui/terms';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { KARAT_LABEL } from '@domain/balance';
 import { CHANNEL_SHORT } from '@domain/thesis';
 import { liquidityBand, liquidityRatio, summarizeWealth } from '@domain/settlement';
 import { getTemplate } from '@data/item-templates';
+import { spawnItem } from '@domain/item-spawn';
+import { unitPriceView } from '@domain/channels';
+import { supplyOffer } from '@domain/wholesaler';
 import { useGame } from '@state/gameStore';
 
 import { IconStock, IconWarning, ProductSilhouette } from '@ui/icons';
-import { grams, pct, tl, tlSigned } from '@ui/format';
+import { grams, pct, tl, tlBare, tlSigned } from '@ui/format';
 import type { InventoryPosition } from '@domain/types';
 
 type Filter = 'all' | 'display' | 'backStock' | 'workshop' | 'dead';
@@ -114,6 +117,9 @@ export function StockScreen() {
       </header>
 
       <div className="page__scroll">
+        {/* Playtest revizyonu §4 — sarrafiye stoklama tezgâhı. */}
+        <BullionCounter />
+
         <div className="filterRail">
           {FILTERS.map((f) => (
             <button
@@ -153,6 +159,127 @@ export function StockScreen() {
     </div>
   );
 }
+
+/**
+ * PLAYTEST — SARRAFİYE ALIM TEZGÂHI
+ * Kaynak: Hızlı Sarrafiye Fiyat Görünürlüğü revizyonu · §4.
+ *
+ * "Bu sistem müşteri alım-satım döngüsünün YERİNE GEÇMEZ. Sadece sarrafiye
+ * stoklama, piyasa pozisyonu ve nakit-altın dengesini hızlı test etmek için
+ * eklenir."
+ *
+ * Fiyat hardcode DEĞİL: mevcut toptancı kanalından (`supplyOffer`) türer,
+ * yani piyasa, ürün tipi ve makas kuralları aynen işler.
+ */
+function BullionCounter() {
+  const s = useGame();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="counter">
+      <button
+        type="button"
+        className="counter__toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span>Sarrafiye Al</span>
+        <span className="counter__hint num">{tl(s.store.cash)}</span>
+      </button>
+
+      {open && (
+        <div className="counter__list">
+          {PLAYTEST_BULLION.map((templateId) => (
+            <BullionOffer key={templateId} templateId={templateId} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BullionOffer({ templateId }: { templateId: string }) {
+  const s = useGame();
+  const [qty, setQty] = useState(1);
+
+  // Sonda sabit: fiyat ürünün ŞABLONUNA bağlıdır, örneğin kimliğine değil.
+  const probe = useMemo(() => spawnItem(s.seed, 990_001, templateId), [s.seed, templateId]);
+  const lot = supplyOffer(probe, Math.max(1, qty), s.market, s.store);
+  if (!lot) return null;
+
+  const view = unitPriceView(probe, lot.unitPrice);
+  // Elde bu üründen kaç adet var.
+  const held = s.inventory
+    .filter((p) => s.items[p.itemId]?.templateId === templateId)
+    .reduce((sum, p) => sum + p.quantity, 0);
+
+  const affordable = lot.total <= s.store.cash;
+
+  return (
+    <div className="offerRow">
+      <div className="offerRow__head">
+        <span className="offerRow__name">{probe.displayName}</span>
+        <span className="offerRow__unit num">
+          {tlBare(view.unitPrice)} {view.unit}
+        </span>
+      </div>
+
+      <div className="offerRow__meta">
+        Stokta {held} · {view.perGram ? `${lot.grams.toFixed(1)} g` : `${lot.quantity} adet`} ·
+        en çok {lot.maxQuantity}
+      </div>
+
+      <div className="offerRow__controls">
+        <div className="qtyStep" role="group" aria-label={`${probe.displayName} adedi`}>
+          <button
+            type="button"
+            className="qtyStep__btn"
+            onClick={() => setQty((v) => Math.max(1, v - 1))}
+            aria-label="Bir azalt"
+          >
+            −
+          </button>
+          <span className="qtyStep__value num">{lot.quantity}</span>
+          <button
+            type="button"
+            className="qtyStep__btn"
+            onClick={() => setQty((v) => Math.min(lot.maxQuantity, v + 1))}
+            disabled={lot.quantity >= lot.maxQuantity}
+            aria-label="Bir artır"
+          >
+            +
+          </button>
+        </div>
+
+        <span className="offerRow__total num">{tl(lot.total)}</span>
+
+        <button
+          type="button"
+          className="offerRow__buy"
+          onClick={() => s.buyFromWholesaler(templateId, lot.quantity)}
+          disabled={!affordable}
+        >
+          {affordable ? 'Al' : 'Nakit yok'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** §4 — playtest havuzu. En az bu on bir ürün bulunmalı. */
+const PLAYTEST_BULLION = [
+  'gram_gold_1',
+  'gram_gold_2_5',
+  'gram_gold_5',
+  'gram_gold_10',
+  'gram_gold_20',
+  'gram_gold_50',
+  'gram_gold_100',
+  'quarter_gold',
+  'half_gold',
+  'full_gold',
+  'ata_gold',
+];
 
 function StockRow({ position }: { position: InventoryPosition }) {
   const item = useGame((s) => s.items[position.itemId]);

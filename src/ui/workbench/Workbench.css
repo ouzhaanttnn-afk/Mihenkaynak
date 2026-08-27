@@ -1763,3 +1763,44 @@
     min-height: 44px;
   }
 }
+
+/* §2 — teklif ekranında piyasa referansı. */
+.refPanel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-dark);
+  border-radius: var(--r-sm);
+  background: var(--ink-700);
+}
+
+.refPanel__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.refPanel__row--total {
+  margin-top: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line-dark);
+}
+
+.refPanel__key {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+.refPanel__val {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+  white-space: nowrap;
+}
+
+.refPanel__val--positive { color: var(--positive-soft); }
+.refPanel__val--negative { color: var(--negative-soft); }

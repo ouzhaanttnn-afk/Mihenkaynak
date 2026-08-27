@@ -419,6 +419,80 @@ export function gramsFor(item: ItemInstance, quantity: number): number {
   return round3(perUnit * quantity);
 }
 
+/**
+ * Sarrafiye birim fiyat gösterimi.
+ * Kaynak: Hızlı Sarrafiye Fiyat Görünürlüğü revizyonu · §1.
+ *
+ * Gram bazlı ürün ₺/g, adet bazlı ürün (çeyrek, yarım, tam, Ata) ₺/adet
+ * okunur. Ayrım ürünün nasıl ticaret edildiğinden gelir: gram altını
+ * gramıyla, çeyreği adediyle konuşuruz.
+ */
+export interface UnitPriceView {
+  /** Birim başına fiyat — gram bazlıda gram başına, adet bazlıda adet başına. */
+  unitPrice: Money;
+  /** '₺/g' veya '₺/adet'. */
+  unit: string;
+  /** Gram bazlı ürün mü. */
+  perGram: boolean;
+  /** Bir adedin gram karşılığı. */
+  gramsPerPiece: number;
+}
+
+/** Gram bazlı sayılan şablonlar: adı gram olan külçe/gram altın ailesi. */
+export function isPerGramProduct(templateId: string): boolean {
+  return templateId.startsWith('gram_gold') || templateId.includes('ingot');
+}
+
+/**
+ * Bir kalemin birim fiyat görünümü.
+ * `pieceTotal` bir ADEDİN toplam fiyatıdır; bölme yalnız gösterim içindir,
+ * fiyatlama mantığına dokunmaz.
+ */
+export function unitPriceView(item: ItemInstance, pieceTotal: Money): UnitPriceView {
+  const meta = bullionMeta(item.templateId);
+  const gramsPerPiece = meta?.unitWeightGrams ?? item.truth.netMetalWeight ?? 1;
+  const perGram = isPerGramProduct(item.templateId);
+
+  return {
+    unitPrice:
+      perGram && gramsPerPiece > 0 ? Math.round(pieceTotal / gramsPerPiece) : Math.round(pieceTotal),
+    unit: perGram ? '₺/g' : '₺/adet',
+    perGram,
+    gramsPerPiece,
+  };
+}
+
+/**
+ * §2 — PİYASA REFERANS ALIŞ.
+ *
+ * "İlgili ürünün mevcut piyasa koşullarına ve normal alış-satış farkına göre
+ * hesaplanan TİPİK KUYUMCU ALIŞ FİYATI."
+ *
+ * DEĞİŞMEZ: "Bu değer müşterinin gizli kabul fiyatı veya rezervasyon fiyatı
+ * DEĞİLDİR." Bu yüzden fonksiyon müşteriyi hiç görmez — yalnız ürün, piyasa
+ * ve kanal makasını alır. Rezervasyonu sızdırmak GDD 6.6'yı delerdi.
+ *
+ * Hardcode yok: fiyat mevcut piyasadan ve §6 makas kurallarından türer.
+ */
+export function marketReferenceBuy(
+  item: ItemInstance,
+  market: MarketState,
+  baseUnitValue: Money,
+  quantity = 1,
+): Money {
+  return priceForChannel({
+    item,
+    market,
+    // Tipik tezgâh alışı: dükkân alıcı, karşısında sıradan bir müşteri.
+    channel: 'retailCustomer',
+    side: 'shopBuys',
+    quantity,
+    baseUnitValue,
+    // Referans NÖTR ilişkiyle hesaplanır; belirli bir müşteriye ait değildir.
+    relationship: 50,
+  }).unitPrice;
+}
+
 export const CHANNEL_LABEL_TR: Record<TradeChannel, string> = {
   retailCustomer: 'Tezgâh müşterisi',
   bulkCustomer: 'Toplu müşteri',

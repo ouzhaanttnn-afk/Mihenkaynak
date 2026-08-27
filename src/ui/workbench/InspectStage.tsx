@@ -14,9 +14,17 @@ import { signalPressure } from '@domain/valuation';
 import { getTemplate } from '@data/item-templates';
 import { getTool } from '@data/tools';
 import { IconWarning, ProductSilhouette } from '@ui/icons';
-import { grams } from '@ui/format';
+import { grams, tlBare } from '@ui/format';
 import { relevantFields } from '@domain/transaction-class';
-import type { FieldKnowledge, InfoField, ItemInstance, TestResult } from '@domain/types';
+import { bullionUnitValue, unitPriceView } from '@domain/channels';
+import { isBullion } from '@data/bullion';
+import type {
+  FieldKnowledge,
+  InfoField,
+  ItemInstance,
+  MarketState,
+  TestResult,
+} from '@domain/types';
 
 const STATUS_TEXT: Record<FieldKnowledge['status'], string> = {
   unverified: 'doğrulanmadı',
@@ -26,12 +34,14 @@ const STATUS_TEXT: Record<FieldKnowledge['status'], string> = {
 };
 
 interface Props {
+  /** §1 birim fiyat gösterimi için güncel piyasa. */
+  market: MarketState;
   item: ItemInstance;
   knowledge: FieldKnowledge[];
   testResults: TestResult[];
 }
 
-export function InspectStage({ item, knowledge, testResults }: Props) {
+export function InspectStage({ item, knowledge, testResults, market }: Props) {
   const template = getTemplate(item.templateId);
   const pressure = signalPressure(item);
   const lastResult = testResults[testResults.length - 1];
@@ -46,6 +56,11 @@ export function InspectStage({ item, knowledge, testResults }: Props) {
   // §3 — bu üründe anlamlı olan alanlar. Bilgi setiyle AYNI kaynaktan gelir
   // ki ekran ile hesap birbirinden ayrışmasın.
   const fields = relevantFields(item);
+
+  // §1 — birim fiyat yalnız sarrafiyede anlamlıdır.
+  const unitView = isBullion(item.templateId)
+    ? unitPriceView(item, bullionUnitValue(item, market))
+    : null;
 
   // Ağırlık: doğrulanmadıysa müşteri beyanı, doğrulandıysa gerçek gösterilir.
   const weightVerified = weightStatus === 'verified';
@@ -71,6 +86,17 @@ export function InspectStage({ item, knowledge, testResults }: Props) {
             satırları hiç çizilmez: §9.2 "alakasız kondisyon/ölçü alanları"
             görünmemeli diyor ve ölü bir satır da bir alandır.
           */}
+          {/*
+            §1 — sarrafiyede oyuncu yalnız toplamı değil BİRİM fiyatı da
+            görür: gram bazlıda ₺/g, adet bazlıda ₺/adet.
+          */}
+          {unitView && (
+            <Field
+              label="Birim fiyat"
+              value={`${tlBare(unitView.unitPrice)} ${unitView.unit}`}
+              status="verified"
+            />
+          )}
           {fields.includes('weight') && (
             <Field
               label="Ağırlık"

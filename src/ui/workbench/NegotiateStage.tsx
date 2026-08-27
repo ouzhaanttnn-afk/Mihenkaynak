@@ -19,6 +19,7 @@ import { CONFIDENCE_LABEL } from '@domain/valuation';
 import { tl, tlBare, tlSigned, tonWord } from '@ui/format';
 import type {
   ExitChannel,
+  Money,
   NegotiationSession,
   ThesisOption,
   ValuationBand,
@@ -37,6 +38,19 @@ interface Props {
   totalFields: number;
   /** Kabul edilirse likidite bu değere düşer. */
   liquidityAfter: string;
+  /**
+   * §2 — Piyasa referans alışı ve oyuncunun teklifi.
+   * Referans, müşterinin gizli kabul fiyatı DEĞİLDİR; piyasa ve makas
+   * kurallarından türeyen tipik kuyumcu alış fiyatıdır.
+   */
+  reference?: {
+    unitReference: Money;
+    unitOffer: Money;
+    unit: string;
+    quantity: number;
+    totalReference: Money;
+    totalOffer: Money;
+  } | null;
 }
 
 export function NegotiateStage({
@@ -48,6 +62,7 @@ export function NegotiateStage({
   verifiedFields,
   totalFields,
   liquidityAfter,
+  reference,
 }: Props) {
   const active = selectedThesis
     ? thesisOptions.find((o) => o.channel === selectedThesis)
@@ -132,6 +147,50 @@ export function NegotiateStage({
           )
         )}
       </div>
+
+      {/*
+        §2 — TEKLİF EKRANINDA PİYASA REFERANSI.
+        Referans bir hedef değil bir ÇAPA: oyuncu kendi teklifini piyasanın
+        tipik alışına göre konumlandırır. Müşterinin kabul edeceği fiyat
+        burada YOKTUR ve olmamalıdır (GDD 6.6).
+      */}
+      {reference && (
+        <div className="refPanel">
+          <div className="refPanel__row">
+            <span className="refPanel__key">Piyasa Referans Alış</span>
+            <span className="refPanel__val num">
+              {tlBare(reference.unitReference)} {reference.unit}
+            </span>
+          </div>
+          <div className="refPanel__row">
+            <span className="refPanel__key">Senin Teklifin</span>
+            <span className="refPanel__val num">
+              {tlBare(reference.unitOffer)} {reference.unit}
+            </span>
+          </div>
+          <div className="refPanel__row">
+            <span className="refPanel__key">Referansa Göre Fark</span>
+            <span
+              className={`refPanel__val num refPanel__val--${
+                reference.unitOffer <= reference.unitReference ? 'positive' : 'negative'
+              }`}
+            >
+              {/* tlSigned zaten ₺ ekliyor; birim de ₺ taşıdığı için burada
+                  yalnız işaretli sayı ve birim yazılır. */}
+              {reference.unitOffer > reference.unitReference ? '+' : '−'}
+              {tlBare(Math.abs(reference.unitReference - reference.unitOffer))} {reference.unit}
+            </span>
+          </div>
+          {reference.quantity > 1 && (
+            <div className="refPanel__row refPanel__row--total">
+              <span className="refPanel__key">
+                {reference.quantity} × {tlBare(reference.unitOffer)}
+              </span>
+              <span className="refPanel__val num">{tlBare(reference.totalOffer)} ₺</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {session.offerHistory.length > 0 && (
         <div className="history">
