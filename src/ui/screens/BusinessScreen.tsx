@@ -13,7 +13,17 @@
 import { useState } from 'react';
 
 import { MARKET_REGIME } from '@domain/balance';
-import { LIQUIDITY_BAND_LABEL, liquidityBand, liquidityRatio, summarizeWealth } from '@domain/settlement';
+import {
+  LIQUIDITY_BAND_LABEL,
+  channelMetrics,
+  liquidityBand,
+  liquidityRatio,
+  summarizeWealth,
+  volumeSplitMetrics,
+  type Ledger,
+} from '@domain/settlement';
+import { CHANNEL_LABEL_TR } from '@domain/channels';
+import type { TradeChannel } from '@domain/types';
 import { useGame } from '@state/gameStore';
 
 import {
@@ -87,6 +97,14 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
           </div>
         </div>
 
+        {/*
+          Addendum §4.1 — "Toplu işlemler tekil müşteri metriğini
+          ŞİŞİRMEMELİ; adet, gram karşılığı, ciro, brüt marj ve KANAL BAZINDA
+          ayrıca ölçülmelidir." §6.1 aynı şeyi kanal ortalaması için ister.
+          Ölçüm koda girip ekrana çıkmasaydı, ölçülmüş sayılmazdı.
+        */}
+        <SalesBreakdown ledger={s.ledger} />
+
         {/* İlişkiler */}
         <div className="group">
           <h2 className="group__title">İlişkiler</h2>
@@ -138,6 +156,50 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
             />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Addendum §4.1 / §6.1 — SATIŞ KIRILIMI.
+ *
+ * İki ayrı soruyu ayrı ayrı yanıtlar:
+ *   1. Tekil müşteri işi ne kadar marj bırakıyor? (toplu işlem karıştırılmadan)
+ *   2. Hangi kanal ne kadar adet, gram ve ciro üretti?
+ *
+ * Hiç satış yokken panel gösterilmez: boş tablo bilgi değil gürültüdür.
+ */
+function SalesBreakdown({ ledger }: { ledger: Ledger }) {
+  const split = volumeSplitMetrics(ledger);
+  const byChannel = channelMetrics(ledger);
+  const rows = Object.entries(byChannel).filter(([, m]) => m.deals > 0);
+
+  if (split.single.deals + split.bulk.deals === 0) return null;
+
+  return (
+    <div className="group">
+      <h2 className="group__title">Satış kırılımı</h2>
+      <div className="group__body">
+        {split.single.deals > 0 && (
+          <StatLine
+            label={`Tekil müşteri · ${split.single.deals} işlem`}
+            value={`${tl(split.single.revenue)} · marj ${pct(split.single.grossMargin)}`}
+          />
+        )}
+        {split.bulk.deals > 0 && (
+          <StatLine
+            label={`Toplu müşteri · ${split.bulk.deals} işlem`}
+            value={`${tl(split.bulk.revenue)} · marj ${pct(split.bulk.grossMargin)}`}
+          />
+        )}
+        {rows.map(([channel, m]) => (
+          <StatLine
+            key={channel}
+            label={CHANNEL_LABEL_TR[channel as TradeChannel] ?? channel}
+            value={`${m.units} adet · ${m.grams.toFixed(2)} gr · ${tl(m.revenue)}`}
+          />
+        ))}
       </div>
     </div>
   );

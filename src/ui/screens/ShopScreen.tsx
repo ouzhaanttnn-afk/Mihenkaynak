@@ -179,12 +179,7 @@ export function ShopScreen() {
           ) : /* --- Müşteri alış akışı (GDD 23.23) --- */
           deal.flow === 'purchase' && deal.purchase ? (
             stage === 'package' ? (
-              <PackageStage
-                purchase={deal.purchase}
-                items={deal.purchase.selectedItemIds
-                  .map((id) => s.items[id])
-                  .filter((it): it is NonNullable<typeof it> => !!it)}
-              />
+              <PackageStage purchase={deal.purchase} items={s.items} />
             ) : stage === 'negotiate' ? (
               <NegotiateStage
                 session={line.negotiation}
@@ -207,6 +202,7 @@ export function ShopScreen() {
                 purchase={deal.purchase}
                 rows={offerableStock(deal.purchase.demand, s.inventory, s.items)}
                 onToggle={s.togglePackageItem}
+                onQuantity={s.setPackageQuantity}
               />
             )
           ) : !item ? (
@@ -422,7 +418,7 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
             label: 'Paketi boşalt',
             icon: <IconReject size={19} />,
             onPress: s.clearPackage,
-            disabled: purchase.selectedItemIds.length === 0 || locked,
+            disabled: purchase.lines.length === 0 || locked,
           },
           {
             id: 'toPackage',
@@ -430,7 +426,7 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
             icon: <IconPackage size={19} />,
             onPress: () => s.setStage('package'),
             selected: deal.stage === 'package',
-            disabled: purchase.selectedItemIds.length === 0,
+            disabled: purchase.lines.length === 0,
           },
         ]}
       />
@@ -902,14 +898,14 @@ function PurchaseDock({
   switch (deal.stage) {
     // --- STOK SEÇİMİ ---
     case 'stockPick': {
-      const count = purchase.selectedItemIds.length;
+      const count = purchase.units;
       return (
         <DecisionDock
           summaryLabel="Pakette"
           summaryValue={
             count === 0
-              ? 'Henüz kalem seçilmedi'
-              : `${count} kalem · ${tl(purchase.packageFairValue)} adil değer`
+              ? 'Henüz ürün seçilmedi'
+              : `${count} adet · ${tl(purchase.packageFairValue)} adil değer`
           }
           primary={{
             label: 'Paketi Değerle',

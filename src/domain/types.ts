@@ -300,6 +300,12 @@ export interface CustomerDemand {
   templateId: string | null;
   /** Kaç adet istiyor (§4.1 toplu müşteride bandın üstü). */
   quantity: number;
+  /**
+   * §4.1 toplu müşteri mi. "Toplu müşteri, normal tekil müşterinin sadece
+   * yüksek adetli kopyası DEĞİLDİR" — bu bayrak yalnız adedi değil, bütçe,
+   * fiyat hassasiyeti, sabır ve güven davranışını da değiştirir.
+   */
+  isBulk: boolean;
   /** §4.1 "kısmi karşılama": bu adedin altını kabul eder mi. */
   acceptsPartial: boolean;
   /** En az kaç adet kabul eder. acceptsPartial false ise quantity'ye eşittir. */
@@ -500,7 +506,21 @@ export interface MarketState {
 /** GDD 28.2 · InventoryPosition. */
 export interface InventoryPosition {
   itemId: string;
+  /**
+   * Bu pozisyondaki ADET.
+   *
+   * GDD 22.1: "Maliyet tabanı aynı stok birleştiğinde ağırlıklı/gerçek
+   * maliyetle güncellenir." Sarrafiye standart üründür ve yığılır; işçilikli
+   * ürün ayrılabilir kalemdir ve her zaman 1 adet kalır.
+   *
+   * Addendum §4.1 toplu müşterisi bu alan olmadan yalanmış olurdu: 40 çeyrek
+   * isteyen müşteriyi 40 ayrı pozisyonla karşılamak, sarrafiyeyi adetle değil
+   * kalemle ticaret yapmak demekti.
+   */
+  quantity: number;
+  /** TOPLAM maliyet tabanı (adet dahil). Birim maliyet = costBasis / quantity. */
   costBasis: Money;
+  /** TOPLAM güncel değer (adet dahil). */
   currentValue: Money;
   /** Stokta bekleme günü. */
   age: number;
@@ -658,6 +678,19 @@ export interface DealRecord {
   thesisAtDeal: ExitChannel | null;
   price: Money;
   costBasis: Money;
+
+  /**
+   * Addendum §4.1 TELEMETRİSİ: "Toplu işlemler tekil müşteri metriğini
+   * ŞİŞİRMEMELİ; adet, gram karşılığı, ciro, brüt marj ve KANAL BAZINDA
+   * ayrıca ölçülmelidir."
+   *
+   * Bu üç alan olmadan 40 çeyreklik tek işlem, defterde tek çeyreklik bir
+   * işlemle aynı satırda görünürdü ve ortalama marj yalan söylerdi.
+   */
+  units: number;
+  grams: number;
+  channel: TradeChannel | null;
+  isBulk: boolean;
   /** Yalnız tamamlanmış satışta dolar; stok potansiyeli buraya yazılmaz (GDD 34.5). */
   realizedProfit: Money | null;
 
@@ -677,14 +710,21 @@ export interface DealRecord {
  * Tek settlement kuralı (GDD 22.1 / 34.4).
  * Her ekonomik olay benzersiz transaction ID taşır; uygulanmış ID ikinci kez işlenmez.
  */
+/** Stoktan çıkan adet — kısmi satış için (Addendum §4.1). */
+export interface StockOut {
+  itemId: string;
+  quantity: number;
+}
+
 export interface SettlementTransaction {
   txId: string;
   dealId: string;
   day: GameDay;
   cashDelta: Money;
-  /** Stoğa giren / çıkan kalemler. */
+  /** Stoğa giren kalemler. Her biri 1 adettir; yığılabilir ürün birleşir. */
   itemsIn: ItemInstance[];
-  itemsOut: string[];
+  /** Stoktan çıkan adetler. Kısmi çıkış için adet taşır (§4.1). */
+  itemsOut: StockOut[];
   trustDelta: number;
   reputationDelta: number;
   xpDelta: number;
@@ -726,10 +766,19 @@ export type DealFlow = 'trade' | 'service' | 'purchase';
  * Müşteri alış akışının oturum durumu (GDD 23.23:
  * Stok seçimi → Değer/Paket → Pazarlık).
  */
+/** Pakete konan bir stok satırı (Addendum §4.1). */
+export interface PackageLine {
+  itemId: string;
+  quantity: number;
+}
+
 export interface PurchaseSession {
   demand: CustomerDemand;
-  /** Oyuncunun pakete koyduğu stok kalemleri. */
-  selectedItemIds: string[];
+  /**
+   * Oyuncunun pakete koyduğu stok satırları. Sarrafiyede bir satır birden
+   * çok ADET taşıyabilir (§4.1); işçilikli üründe adet 1'dir.
+   */
+  lines: PackageLine[];
   /** Paketin adil değeri (GDD 6.2 çıktısı; kanal katmanı öncesi). */
   packageFairValue: Money;
   /** Kanal fiyatlamasının önerdiği satış fiyatı (Addendum §6). */
@@ -738,6 +787,8 @@ export interface PurchaseSession {
   channel: TradeChannel;
   /** Paketin maliyet toplamı — kâr hesabı için (GDD 22.1 tek settlement). */
   packageCost: Money;
+  /** Pakete konan toplam adet (§4.1 telemetrisi). */
+  units: number;
   /** Talep tam mı karşılandı, kısmi mi (§4.1). */
   fulfilment: 'none' | 'partial' | 'full';
   /** Paketin fiyat gerekçesi — oyuncuya gösterilir. */

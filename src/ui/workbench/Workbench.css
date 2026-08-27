@@ -1568,18 +1568,74 @@
 
 .pickRow {
   width: 100%;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line-dark);
+  border-radius: var(--r-sm);
+  background: var(--ink-700);
+  overflow: hidden;
+}
+
+.pickRow__pick {
+  flex: 1 1 auto;
+  min-width: 0;
   /* GDD 23.22 — dokunma hedefi 44 px altına inmez. */
   min-height: 46px;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--line-dark);
-  border-radius: var(--r-sm);
-  background: var(--ink-700);
+  background: none;
+  border: 0;
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+/* §4.1 — sarrafiye adetle satılır; adet kontrolü satırın içinde yaşar. */
+.qtyStep {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: var(--sp-2);
+  border-left: 1px solid var(--line-dark);
+  padding-left: var(--sp-2);
+  align-self: stretch;
+}
+
+.qtyStep__btn {
+  /* GDD 23.22 — 44 px dokunma hedefi. */
+  width: 34px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--brass-400);
+  font-size: var(--fs-subtitle);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.qtyStep__btn:disabled {
+  color: var(--text-dark-3);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.qtyStep__value {
+  min-width: 26px;
+  text-align: center;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.pkgLines__qty {
+  margin-left: auto;
+  color: var(--brass-400);
+  font-weight: var(--fw-semibold);
 }
 
 .pickRow--on {
@@ -1703,7 +1759,7 @@
     font-size: var(--fs-label);
   }
 
-  .pickRow {
+  .pickRow__pick {
     min-height: 44px;
   }
 }

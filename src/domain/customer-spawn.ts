@@ -11,7 +11,7 @@
 import { ARCHETYPES, FIRST_NAMES_F, FIRST_NAMES_M, HONORIFIC_F, HONORIFIC_M, getArchetype } from '@data/archetypes';
 import { PURCHASE } from './balance';
 import { rollIntent, type DayCharacter } from './intent';
-import { spawnDemand } from './purchase';
+import { applyBulkProfile, spawnDemand } from './purchase';
 import { bullionMeta } from '@data/bullion';
 import { templatesForTier } from './item-spawn';
 import { spawnItem } from './item-spawn';
@@ -141,30 +141,35 @@ export function spawnCustomer(
   const id = makeId('cust', rootSeed, spawnIndex);
   const lineIds = items.map((_, i) => `${id}_line${i}`);
 
+  // §4.1 — toplu müşteri AYRI BİR MÜŞTERİDİR. Profil dönüşümü en sonda
+  // uygulanır ki arketip, gün karakteri ve RNG çekilişleri bozulmasın;
+  // toplu olmak müşteriyi yeniden üretmez, davranışını değiştirir.
+  const base: Customer = {
+    id,
+    displayName,
+    archetype: archetypeId,
+    intent,
+    patienceMax,
+    knowledge,
+    urgency,
+    priceSensitivity,
+    status,
+    budget,
+    reservationPrice,
+    purchaseCeilingRatio: clamp(purchaseCeilingRatio, 0.95, 1.45),
+    demand,
+    patience: patienceMax,
+    // Yeni müşteride mağaza güveni semt itibarından türer (GDD 10.1).
+    trust: clamp(Math.round(store.reputation * 0.6 + rng.range(-8, 12)), 5, 95),
+    suspicion: 0,
+    visitHistory: [],
+    preferences: archetype.preferredFamilies,
+    referralSource: null,
+    lineIds,
+  };
+
   return {
-    customer: {
-      id,
-      displayName,
-      archetype: archetypeId,
-      intent,
-      patienceMax,
-      knowledge,
-      urgency,
-      priceSensitivity,
-      status,
-      budget,
-      reservationPrice,
-      purchaseCeilingRatio: clamp(purchaseCeilingRatio, 0.95, 1.45),
-      demand,
-      patience: patienceMax,
-      // Yeni müşteride mağaza güveni semt itibarından türer (GDD 10.1).
-      trust: clamp(Math.round(store.reputation * 0.6 + rng.range(-8, 12)), 5, 95),
-      suspicion: 0,
-      visitHistory: [],
-      preferences: archetype.preferredFamilies,
-      referralSource: null,
-      lineIds,
-    },
+    customer: applyBulkProfile(base),
     items,
     fromDynamicPool,
   };

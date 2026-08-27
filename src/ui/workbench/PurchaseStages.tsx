@@ -15,7 +15,7 @@
  * GDD 6.6 gereği müşterinin tavanı hiçbir yerde sayı olarak gösterilmez.
  */
 
-import { matchDemand, type DemandMatch } from '@domain/purchase';
+import { demandOutcome, matchDemand, type DemandMatch, type DemandOutcome } from '@domain/purchase';
 import { CHANNEL_LABEL_TR } from '@domain/channels';
 import { getTemplate } from '@data/item-templates';
 import { IconPackage, IconWarning, ProductSilhouette } from '@ui/icons';
@@ -41,13 +41,19 @@ export function StockPickStage({
   purchase,
   rows,
   onToggle,
+  onQuantity,
 }: {
   purchase: PurchaseSession;
   rows: { position: InventoryPosition; item: ItemInstance }[];
   onToggle: (itemId: string) => void;
+  onQuantity: (itemId: string, quantity: number) => void;
 }) {
   const demand = purchase.demand;
-  const selected = new Set(purchase.selectedItemIds);
+  const picked = new Map(purchase.lines.map((l) => [l.itemId, l.quantity]));
+  const available = rows
+    .filter((r) => matchDemand(demand, r.item) !== 'off')
+    .reduce((sum, r) => sum + r.position.quantity, 0);
+  const outcome = demandOutcome(demand, available);
 
   return (
     <div className="svc">
@@ -62,9 +68,25 @@ export function StockPickStage({
             {demand.acceptsPartial && demand.minQuantity < demand.quantity && (
               <> · en az {demand.minQuantity} adede razı</>
             )}
+            {demand.isBulk && <> · toplu müşteri</>}
           </p>
         </div>
       </div>
+
+      {/*
+        §4.1 — "Toplu talepler stok yetersizliğinde reddedilebilir, kısmen
+        karşılanabilir veya uygun ticari kanal üzerinden tedarik edilerek
+        tamamlanabilir." Durum sessizce yutulmaz; oyuncu hangi yolda
+        olduğunu görür.
+      */}
+      {outcome !== 'full' && rows.length > 0 && (
+        <p className="svc__problem">
+          <span className="svc__problemIcon">
+            <IconWarning size={15} />
+          </span>
+          {outcomeText(outcome, available, demand)}
+        </p>
+      )}
 
       {rows.length === 0 ? (
         <p className="svc__note svc__note--center">
@@ -76,27 +98,60 @@ export function StockPickStage({
         <ul className="pickList">
           {rows.map(({ position, item }) => {
             const match = matchDemand(demand, item);
-            const isOn = selected.has(item.id);
+            const qty = picked.get(item.id) ?? 0;
+            const isOn = qty > 0;
+            // Sarrafiye adetle satılır; işçilikli ürün tektir.
+            const stackable = position.quantity > 1;
+
             return (
               <li key={item.id}>
-                <button
-                  type="button"
-                  className={`pickRow ${isOn ? 'pickRow--on' : ''}`}
-                  onClick={() => onToggle(item.id)}
-                  aria-pressed={isOn}
-                >
-                  <span className="pickRow__art">
-                    <ProductSilhouette kind={getTemplate(item.templateId).silhouette} size={30} />
-                  </span>
-                  <span className="pickRow__body">
-                    <span className="pickRow__name">{item.displayName}</span>
-                    <span className={`pickRow__match pickRow__match--${match}`}>
-                      {MATCH_LABEL[match]}
-                      {position.location === 'backStock' && ' · arka stok'}
+                <div className={`pickRow ${isOn ? 'pickRow--on' : ''}`}>
+                  <button
+                    type="button"
+                    className="pickRow__pick"
+                    onClick={() => onToggle(item.id)}
+                    aria-pressed={isOn}
+                  >
+                    <span className="pickRow__art">
+                      <ProductSilhouette
+                        kind={getTemplate(item.templateId).silhouette}
+                        size={30}
+                      />
                     </span>
-                  </span>
-                  <span className="pickRow__value">{tl(position.currentValue)}</span>
-                </button>
+                    <span className="pickRow__body">
+                      <span className="pickRow__name">{item.displayName}</span>
+                      <span className={`pickRow__match pickRow__match--${match}`}>
+                        {MATCH_LABEL[match]}
+                        {stackable && ` · stokta ${position.quantity}`}
+                        {position.location === 'backStock' && ' · arka stok'}
+                      </span>
+                    </span>
+                    <span className="pickRow__value">{tl(position.currentValue)}</span>
+                  </button>
+
+                  {isOn && stackable && (
+                    <div className="qtyStep" role="group" aria-label={`${item.displayName} adedi`}>
+                      <button
+                        type="button"
+                        className="qtyStep__btn"
+                        onClick={() => onQuantity(item.id, qty - 1)}
+                        aria-label="Bir azalt"
+                      >
+                        −
+                      </button>
+                      <span className="qtyStep__value num">{qty}</span>
+                      <button
+                        type="button"
+                        className="qtyStep__btn"
+                        onClick={() => onQuantity(item.id, qty + 1)}
+                        disabled={qty >= position.quantity}
+                        aria-label="Bir artır"
+                      >
+                        +
+                      </button>
+                    </div>
+                  )}
+                </div>
               </li>
             );
           })}
@@ -104,6 +159,19 @@ export function StockPickStage({
       )}
     </div>
   );
+}
+
+function outcomeText(outcome: DemandOutcome, available: number, demand: CustomerDemand): string {
+  switch (outcome) {
+    case 'partial':
+      return `Stokta ${available} adet var; ${demand.quantity} isteniyor. Müşteri eksiğe razı.`;
+    case 'sourceNeeded':
+      return `Stokta ${available} adet var; müşteri ${demand.quantity} adedin altını kabul etmiyor. Ticari kanaldan tedarik gerekir.`;
+    case 'reject':
+      return 'Bu talebi karşılayacak mal yok.';
+    default:
+      return '';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -115,7 +183,7 @@ export function PackageStage({
   items,
 }: {
   purchase: PurchaseSession;
-  items: ItemInstance[];
+  items: Record<string, ItemInstance>;
 }) {
   const potential = purchase.suggestedPrice - purchase.packageCost;
 
@@ -126,18 +194,23 @@ export function PackageStage({
           <IconPackage size={20} />
         </span>
         <div>
-          <h2 className="svc__title">Paket · {items.length} kalem</h2>
+          <h2 className="svc__title">Paket · {purchase.units} adet</h2>
           <p className="svc__meta">{fulfilmentText(purchase, purchase.demand)}</p>
         </div>
       </div>
 
       <ul className="pkgLines">
-        {items.map((item) => (
-          <li key={item.id} className="pkgLines__row">
-            <ProductSilhouette kind={getTemplate(item.templateId).silhouette} size={22} />
-            <span>{item.displayName}</span>
-          </li>
-        ))}
+        {purchase.lines.map((line) => {
+          const item = items[line.itemId];
+          if (!item) return null;
+          return (
+            <li key={line.itemId} className="pkgLines__row">
+              <ProductSilhouette kind={getTemplate(item.templateId).silhouette} size={22} />
+              <span>{item.displayName}</span>
+              {line.quantity > 1 && <span className="pkgLines__qty num">×{line.quantity}</span>}
+            </li>
+          );
+        })}
       </ul>
 
       {/*
@@ -191,7 +264,7 @@ function fulfilmentText(purchase: PurchaseSession, demand: CustomerDemand): stri
       return 'Talep tam karşılandı.';
     case 'partial':
       // §4.1 "Toplu talepler ... kısmen karşılanabilir."
-      return `Kısmi karşılama · ${purchase.selectedItemIds.length}/${demand.quantity} adet.`;
+      return `Kısmi karşılama · ${purchase.units}/${demand.quantity} adet.`;
     default:
       return demand.acceptsPartial
         ? `Yetersiz · en az ${demand.minQuantity} adet gerekiyor.`

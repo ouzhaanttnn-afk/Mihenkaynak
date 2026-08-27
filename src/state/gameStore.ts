@@ -24,10 +24,12 @@ import {
 import {
   createPurchaseSession,
   maxPackageLines,
+  packageFitPenalty,
+  packageGrams,
   purchaseCeiling,
   repricePackage,
 } from '@domain/purchase';
-import { CHANNEL_LABEL_TR } from '@domain/channels';
+import { CHANNEL_LABEL_TR, gramsFor } from '@domain/channels';
 import { applyMove, createSession, effectiveReservation, isTerminal } from '@domain/negotiation';
 import { applyTest, estimateBand, initialKnowledge, trueValue } from '@domain/valuation';
 import {
@@ -77,6 +79,8 @@ import type {
   Money,
   NegotiationMove,
   NegotiationState,
+  PackageLine,
+  PurchaseSession,
   ServiceJob,
   ServiceVenue,
   SettlementTransaction,
@@ -163,8 +167,10 @@ export interface GameState {
   declineServiceJob: () => void;
   deliverJob: (jobId: string) => void;
 
-  // --- Müşteri alış akışı (GDD 23.23 · Addendum §3) ---
+  // --- Müşteri alış akışı (GDD 23.23 · Addendum §3, §4.1) ---
   togglePackageItem: (itemId: string) => void;
+  /** §4.1 — sarrafiye adetle satılır; paket satırının adedini değiştirir. */
+  setPackageQuantity: (itemId: string, quantity: number) => void;
   clearPackage: () => void;
 
   runTest: (toolId: string) => void;
@@ -710,48 +716,54 @@ export const useGame = create<GameState>((set, get) => {
       const deal = s.activeDeal;
       const customer = s.activeCustomer;
       if (!deal || !customer || !deal.purchase) return;
-      // Pazarlık başladıktan sonra paket kilitlenir: paketi değiştirip
-      // müşterinin tavanını yeniden zar atmak GDD 34.2'yi delerdi.
-      const line = activeLine(deal);
-      if (line && line.negotiation.offerHistory.length > 0) {
+      if (packageLocked(deal)) {
         pushToast(set, get, 'Pazarlık başladı; paket artık değiştirilemez.', 'negative');
         return;
       }
 
-      const selected = deal.purchase.selectedItemIds;
-      const already = selected.includes(itemId);
+      const lines = deal.purchase.lines;
+      const existing = lines.find((l) => l.itemId === itemId);
       const limit = maxPackageLines(s.store);
 
-      if (!already && selected.length >= limit) {
+      if (!existing && lines.length >= limit) {
         pushToast(set, get, `Bu dükkân kademesinde pakete en fazla ${limit} kalem konur.`, 'negative');
         return;
       }
 
-      const nextIds = already ? selected.filter((id) => id !== itemId) : [...selected, itemId];
-      const purchase = repricePackage(
-        deal.purchase,
-        nextIds,
-        s.items,
-        s.inventory,
-        customer,
-        s.market,
-      );
+      // §4.1 — yeni satır talebin gerektirdiği kadar adetle açılır; stok
+      // yetmiyorsa olan kadarıyla. Oyuncuyu 40 kez dokunmaya zorlamak
+      // "toplu müşteri" fikrini ekranda yalanlardı.
+      const next = existing
+        ? lines.filter((l) => l.itemId !== itemId)
+        : [...lines, { itemId, quantity: openingQuantity(s, deal.purchase, itemId) }];
 
-      set({
-        activeDeal: { ...deal, purchase, lines: syncPackageLine(deal.lines, nextIds) },
-      });
+      applyPackage(set, get, next);
+    },
+
+    setPackageQuantity: (itemId, quantity) => {
+      const s = get();
+      const deal = s.activeDeal;
+      if (!deal?.purchase) return;
+      if (packageLocked(deal)) return;
+
+      const position = s.inventory.find((p) => p.itemId === itemId);
+      if (!position) return;
+
+      // Stokta olmayan adedi satmak stok uydurmaktır (GDD 34.4).
+      const capped = Math.max(0, Math.min(position.quantity, Math.round(quantity)));
+      const next =
+        capped <= 0
+          ? deal.purchase.lines.filter((l) => l.itemId !== itemId)
+          : deal.purchase.lines.map((l) => (l.itemId === itemId ? { ...l, quantity: capped } : l));
+
+      applyPackage(set, get, next);
     },
 
     clearPackage: () => {
       const s = get();
       const deal = s.activeDeal;
-      const customer = s.activeCustomer;
-      if (!deal || !customer || !deal.purchase) return;
-      const line = activeLine(deal);
-      if (line && line.negotiation.offerHistory.length > 0) return;
-
-      const purchase = repricePackage(deal.purchase, [], s.items, s.inventory, customer, s.market);
-      set({ activeDeal: { ...deal, purchase, lines: syncPackageLine(deal.lines, []) } });
+      if (!deal?.purchase || packageLocked(deal)) return;
+      applyPackage(set, get, []);
     },
 
     negotiationMove: (move) => {
@@ -774,7 +786,7 @@ export const useGame = create<GameState>((set, get) => {
         direction: (isPurchase ? 'shopSells' : 'shopBuys') as TradeSide,
         reputation: s.store.reputation,
         buyCeiling: effectiveCeiling(options, line.selectedThesis),
-        purchaseCeiling: isPurchase ? effectivePurchaseCeiling(deal, customer) : undefined,
+        purchaseCeiling: isPurchase ? effectivePurchaseCeiling(deal, customer, s) : undefined,
         knowledge: line.knowledge,
       };
 
@@ -974,6 +986,11 @@ function settleLine(
     thesisAtDeal: line.selectedThesis,
     price,
     costBasis: accepted ? price : 0,
+    // Alış tarafı tek kalemdir; §4.1 telemetrisi satış tarafında iş görür.
+    units: 1,
+    grams: gramsFor(item, 1),
+    channel: null,
+    isBulk: false,
     // GDD 34.5 — alışta realize kâr YOKTUR; kâr satışta doğar.
     realizedProfit: null,
     trustDelta: 0,
@@ -985,6 +1002,44 @@ function settleLine(
 
   const revalued = revalueInventory(economy.inventory, economy.items, thesisContext(get()));
   set({ ...economyToState({ ...economy, inventory: revalued }), lastReview: review });
+}
+
+/** Pazarlık başladıysa paket kilitlidir (GDD 34.2 tavanı yeniden zar atılamaz). */
+function packageLocked(deal: ActiveDeal): boolean {
+  return deal.lines.some((l) => l.negotiation.offerHistory.length > 0);
+}
+
+/**
+ * §4.1 — bir satır pakete ilk konduğunda kaç adetle açılır.
+ * Talebin eksiği kadar, stokta olanı aşmadan. Toplu müşteriye tek tek adet
+ * eklettirmek, "ayrı hacim bandı" fikrini arayüzde geçersiz kılardı.
+ */
+function openingQuantity(s: GameState, purchase: PurchaseSession, itemId: string): number {
+  const position = s.inventory.find((p) => p.itemId === itemId);
+  if (!position) return 1;
+  const missing = Math.max(1, purchase.demand.quantity - purchase.units);
+  return Math.max(1, Math.min(position.quantity, missing));
+}
+
+/** Paketi yeniden fiyatlayıp state'e yazar — tek giriş noktası. */
+function applyPackage(
+  set: (partial: Partial<GameState>) => void,
+  get: () => GameState,
+  lines: PackageLine[],
+): void {
+  const s = get();
+  const deal = s.activeDeal;
+  const customer = s.activeCustomer;
+  if (!deal?.purchase || !customer) return;
+
+  const purchase = repricePackage(deal.purchase, lines, s.items, s.inventory, customer, s.market);
+  set({
+    activeDeal: {
+      ...deal,
+      purchase,
+      lines: syncPackageLine(deal.lines, purchase.lines.map((l) => l.itemId)),
+    },
+  });
 }
 
 /**
@@ -1003,7 +1058,7 @@ function syncPackageLine(lines: DealLine[], itemIds: string[]): DealLine[] {
  * Yanlış mal sunmak tavanı düşürür — §9'un "her koşulda en iyi sonuç yok"
  * ilkesinin müşteri tarafındaki karşılığı.
  */
-function effectivePurchaseCeiling(deal: ActiveDeal, customer: Customer): Money {
+function effectivePurchaseCeiling(deal: ActiveDeal, customer: Customer, s: GameState): Money {
   const purchase = deal.purchase;
   if (!purchase) return customer.reservationPrice;
 
@@ -1014,7 +1069,11 @@ function effectivePurchaseCeiling(deal: ActiveDeal, customer: Customer): Money {
   const fulfilmentFactor =
     purchase.fulfilment === 'full' ? 1 : purchase.fulfilment === 'partial' ? 0.94 : 0.8;
 
-  return Math.round(base * fulfilmentFactor);
+  // Yanlış mal sunmak tavanı düşürür (§9 — hiçbir seçim her koşulda en iyi
+  // sonucu vermez).
+  const { ceilingMultiplier } = packageFitPenalty(purchase.demand, purchase.lines, s.items);
+
+  return Math.round(base * fulfilmentFactor * ceilingMultiplier);
 }
 
 /**
@@ -1040,8 +1099,8 @@ function settlePurchase(
   let economy = economyOf(s);
 
   if (accepted) {
-    const soldItems = purchase.selectedItemIds
-      .map((id) => s.items[id])
+    const soldItems = purchase.lines
+      .map((l) => s.items[l.itemId])
       .filter((it): it is ItemInstance => !!it);
 
     const tx: SettlementTransaction = {
@@ -1051,7 +1110,7 @@ function settlePurchase(
       day: s.market.day,
       cashDelta: price,
       itemsIn: [],
-      itemsOut: soldItems.map((it) => it.id),
+      itemsOut: purchase.lines.map((l) => ({ itemId: l.itemId, quantity: l.quantity })),
       trustDelta: 0,
       reputationDelta: Math.round(((customer.trust - 50) / 50) * 2),
       xpDelta: xpForDeal({
@@ -1059,7 +1118,10 @@ function settlePurchase(
         confidence: 'high',
         margin: purchase.packageCost > 0 ? (price - purchase.packageCost) / purchase.packageCost : 0,
       }),
-      label: `${soldItems.length} kalem satışı`,
+      label:
+        purchase.units > soldItems.length
+          ? `${purchase.units} adet sarrafiye satışı`
+          : `${soldItems.length} kalem satışı`,
     };
 
     const outcome = applyTransaction(economy, tx);
@@ -1076,7 +1138,7 @@ function settlePurchase(
     dealId: `${deal.dealId}_pkg`,
     customerId: customer.id,
     lineIds: deal.lines.map((l) => l.lineId),
-    itemIds: purchase.selectedItemIds,
+    itemIds: purchase.lines.map((l) => l.itemId),
     side: 'sell',
     day: s.market.day,
     clockMinutes: s.market.clockMinutes,
@@ -1092,6 +1154,12 @@ function settlePurchase(
     price: accepted ? price : 0,
     costBasis: accepted ? purchase.packageCost : 0,
     realizedProfit: accepted ? price - purchase.packageCost : null,
+    // §4.1 — adet, gram ve kanal ayrı ölçülür ki toplu işlem tekil müşteri
+    // ortalamasını şişirmesin.
+    units: purchase.units,
+    grams: packageGrams(purchase.lines, s.items),
+    channel: purchase.channel,
+    isBulk: purchase.demand.isBulk,
     trustDelta: 0,
     reputationDelta: 0,
     reviewData: {
@@ -1208,7 +1276,7 @@ export function canEnterStage(s: GameState, stage: WorkbenchStage): boolean {
       case 'stockPick':
         return true;
       case 'package':
-        return purchase.selectedItemIds.length > 0;
+        return purchase.lines.length > 0;
       case 'negotiate':
         // §4.1: kısmi karşılamayı kabul etmeyen müşteriye eksik paket sunulmaz.
         return purchase.fulfilment !== 'none';

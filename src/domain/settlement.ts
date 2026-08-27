@@ -19,6 +19,7 @@
  */
 
 import { LIQUIDITY_BANDS, XP } from './balance';
+import { isBullion } from '@data/bullion';
 import type {
   DealRecord,
   GameDay,
@@ -26,6 +27,7 @@ import type {
   ItemInstance,
   Money,
   SettlementTransaction,
+  StockOut,
   StoreState,
 } from './types';
 
@@ -96,23 +98,31 @@ export function applyTransaction(
 
   for (const incoming of tx.itemsIn) {
     items[incoming.id] = incoming;
-    inventory = upsertPosition(inventory, {
-      itemId: incoming.id,
-      costBasis: incoming.buyCost ?? 0,
-      currentValue: incoming.buyCost ?? 0,
-      age: 0,
-      demand: 'steady',
-      thesis: incoming.thesis,
-      location: incoming.location === 'display' ? 'display' : 'backStock',
-      expectedExitValues: {},
-    });
+    inventory = upsertPosition(
+      inventory,
+      {
+        itemId: incoming.id,
+        quantity: 1,
+        costBasis: incoming.buyCost ?? 0,
+        currentValue: incoming.buyCost ?? 0,
+        age: 0,
+        demand: 'steady',
+        thesis: incoming.thesis,
+        location: incoming.location === 'display' ? 'display' : 'backStock',
+        expectedExitValues: {},
+      },
+      items,
+    );
   }
 
-  // --- Stok çıkışları ---
-  for (const outId of tx.itemsOut) {
-    inventory = inventory.filter((p) => p.itemId !== outId);
-    const item = items[outId];
-    if (item) items[outId] = { ...item, location: 'sold' };
+  // --- Stok çıkışları: adet bazlı (Addendum §4.1 kısmi karşılama) ---
+  for (const out of tx.itemsOut) {
+    inventory = removeUnits(inventory, out);
+    // Kalem yalnız pozisyonun tamamı tükendiğinde 'sold' olur; kısmi satışta
+    // stokta hâlâ aynı üründen var demektir.
+    const stillHeld = inventory.some((p) => p.itemId === out.itemId);
+    const item = items[out.itemId];
+    if (item && !stillHeld) items[out.itemId] = { ...item, location: 'sold' };
   }
 
   // --- İlişki ve ilerleme ---
@@ -162,11 +172,96 @@ export function recordDeal(ledger: Ledger, deal: DealRecord): Ledger {
 function upsertPosition(
   inventory: InventoryPosition[],
   incoming: InventoryPosition,
+  items: Record<string, ItemInstance>,
 ): InventoryPosition[] {
-  return [...inventory, incoming];
+  const incomingItem = items[incoming.itemId];
+  const key = incomingItem ? stackKey(incomingItem, incoming.location) : null;
+  if (!key) return [...inventory, incoming];
+
+  const index = inventory.findIndex((p) => {
+    const item = items[p.itemId];
+    return !!item && stackKey(item, p.location) === key;
+  });
+  if (index < 0) return [...inventory, incoming];
+
+  const existing = inventory[index]!;
+  const merged: InventoryPosition = {
+    ...existing,
+    quantity: existing.quantity + incoming.quantity,
+    // Toplamlar toplanır; birim maliyet böylece kendiliğinden AĞIRLIKLI
+    // ortalamadır (GDD 22.1). Ayrı bir formül yazmak, aynı gerçeği iki yerde
+    // tutup birinin ötekinden sapmasına izin vermek olurdu.
+    costBasis: existing.costBasis + incoming.costBasis,
+    currentValue: existing.currentValue + incoming.currentValue,
+    // Yığın yaşı en yeni girişe göre değil, en eskiye göre sayılır: stok
+    // yaşlanma maliyeti gizlenmemeli (GDD 8.3).
+    age: Math.max(existing.age, incoming.age),
+  };
+  return inventory.map((p, i) => (i === index ? merged : p));
 }
 
-/** Ağırlıklı ortalama maliyet — yığın ürün birleşmesinde kullanılır. */
+/**
+ * Yığılabilirlik anahtarı. Yalnız STANDART ürün yığılır: aynı şablon, aynı
+ * gerçek ayar, aynı kondisyon, aynı konum ve gizli kusursuz.
+ *
+ * İşçilikli ürün asla yığılmaz — iki 22 ayar bilezik birbirinin aynısı
+ * değildir ve maliyetlerini ortalamak, hangi bileziği kâra sattığınızı
+ * ölçülemez hale getirirdi (GDD 12.3 "cost basis KALEM BAZINDADIR").
+ */
+export function stackKey(item: ItemInstance, location: InventoryPosition['location']): string | null {
+  if (!isBullion(item.templateId)) return null;
+  if (item.truth.hiddenFlaws.length > 0) return null;
+  return [
+    item.templateId,
+    item.truth.actualKarat,
+    item.truth.condition,
+    location,
+  ].join('|');
+}
+
+/**
+ * Bir pozisyondan adet düşer. Toplam maliyet ve değer BİRİM oranında iner —
+ * GDD 31.3: "Item cost basis satışta yalnız SATILAN MİKTAR kadar realize olur."
+ *
+ * Adet biterse pozisyon düşer. İstenenden az adet varsa olan kadarı çıkar;
+ * eksi adet üretmek stok uydurmak olurdu.
+ */
+export function removeUnits(inventory: InventoryPosition[], out: StockOut): InventoryPosition[] {
+  const index = inventory.findIndex((p) => p.itemId === out.itemId);
+  if (index < 0) return inventory;
+
+  const position = inventory[index]!;
+  const taken = Math.min(position.quantity, Math.max(0, Math.round(out.quantity)));
+  if (taken <= 0) return inventory;
+  if (taken >= position.quantity) return inventory.filter((_, i) => i !== index);
+
+  const remaining = position.quantity - taken;
+  const share = remaining / position.quantity;
+  return inventory.map((p, i) =>
+    i === index
+      ? {
+          ...p,
+          quantity: remaining,
+          costBasis: Math.round(p.costBasis * share),
+          currentValue: Math.round(p.currentValue * share),
+        }
+      : p,
+  );
+}
+
+/** Satılan adedin realize olan maliyet tabanı (GDD 31.3). */
+export function costBasisForUnits(position: InventoryPosition, quantity: number): Money {
+  if (position.quantity <= 0) return 0;
+  const taken = Math.min(position.quantity, Math.max(0, quantity));
+  return Math.round((position.costBasis / position.quantity) * taken);
+}
+
+/** Bir pozisyonun birim maliyeti. */
+export function unitCostBasis(position: InventoryPosition): Money {
+  return position.quantity > 0 ? Math.round(position.costBasis / position.quantity) : 0;
+}
+
+/** Ağırlıklı ortalama maliyet — dış çağrılar ve testler için. */
 export function weightedCostBasis(
   existing: { qty: number; costBasis: Money },
   incoming: { qty: number; costBasis: Money },
@@ -174,6 +269,73 @@ export function weightedCostBasis(
   const totalQty = existing.qty + incoming.qty;
   if (totalQty <= 0) return 0;
   return Math.round((existing.costBasis * existing.qty + incoming.costBasis * incoming.qty) / totalQty);
+}
+
+// ---------------------------------------------------------------------------
+// §4.1 — KANAL VE HACİM TELEMETRİSİ
+// ---------------------------------------------------------------------------
+
+/**
+ * Addendum §4.1: "Toplu işlemler tekil müşteri metriğini ŞİŞİRMEMELİ; adet,
+ * gram karşılığı, ciro, brüt marj ve kanal bazında AYRICA ölçülmelidir."
+ *
+ * Addendum §6.1: "Telemetri, gerçekleşen ortalama ve dağılımı KANAL BAZINDA
+ * raporlamalıdır."
+ */
+export interface ChannelMetrics {
+  deals: number;
+  units: number;
+  grams: number;
+  revenue: Money;
+  costBasis: Money;
+  /** Brüt marj oranı — ciro üzerinden. */
+  grossMargin: number;
+}
+
+function emptyMetrics(): ChannelMetrics {
+  return { deals: 0, units: 0, grams: 0, revenue: 0, costBasis: 0, grossMargin: 0 };
+}
+
+function accumulate(m: ChannelMetrics, deal: DealRecord): ChannelMetrics {
+  const revenue = m.revenue + deal.price;
+  const costBasis = m.costBasis + deal.costBasis;
+  return {
+    deals: m.deals + 1,
+    units: m.units + (deal.units || 1),
+    grams: Math.round((m.grams + deal.grams) * 1000) / 1000,
+    revenue,
+    costBasis,
+    grossMargin: revenue > 0 ? (revenue - costBasis) / revenue : 0,
+  };
+}
+
+/**
+ * Satış işlemlerini kanal bazında toplar. Yalnız GERÇEKLEŞMİŞ satışlar
+ * sayılır — reddedilen pazarlık ciro üretmez.
+ */
+export function channelMetrics(ledger: Ledger): Record<string, ChannelMetrics> {
+  const out: Record<string, ChannelMetrics> = {};
+  for (const deal of ledger.deals) {
+    if (deal.side !== 'sell' || deal.price <= 0) continue;
+    const key = deal.channel ?? 'unknown';
+    out[key] = accumulate(out[key] ?? emptyMetrics(), deal);
+  }
+  return out;
+}
+
+/**
+ * §4.1 "toplu işlemler tekil müşteri metriğini şişirmemeli" — bu yüzden iki
+ * havuz AYRI tutulur ve hiçbir ortalama ikisini karıştırmaz.
+ */
+export function volumeSplitMetrics(ledger: Ledger): { single: ChannelMetrics; bulk: ChannelMetrics } {
+  let single = emptyMetrics();
+  let bulk = emptyMetrics();
+  for (const deal of ledger.deals) {
+    if (deal.side !== 'sell' || deal.price <= 0) continue;
+    if (deal.isBulk) bulk = accumulate(bulk, deal);
+    else single = accumulate(single, deal);
+  }
+  return { single, bulk };
 }
 
 // ---------------------------------------------------------------------------

@@ -351,7 +351,10 @@ export function revalueInventory(
 
     return {
       ...position,
-      currentValue: mark.expectedNet,
+      // Pozisyon toplam taşır; kanal ekonomisi BİRİM üzerinden kuruluyor.
+      // Adetle çarpmayı unutmak, 40 çeyreklik yığını tek çeyrek gibi
+      // değerlemek olurdu (Addendum §4.1).
+      currentValue: mark.expectedNet * position.quantity,
       expectedExitValues,
     };
   });

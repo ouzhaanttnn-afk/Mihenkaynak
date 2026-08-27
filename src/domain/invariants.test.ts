@@ -673,7 +673,8 @@ describe('GDD 14.3 — Stok bugünkü piyasaya göre yeniden değerlenir', () =>
 describe('GDD 14.2 — Likidite oranı', () => {
   it('Nakit / (Nakit + Stok Maliyet Tabanı) formülünü uygular', () => {
     const inventory = [
-      { itemId: 'a', costBasis: 30_000, currentValue: 31_000, age: 0, demand: 'steady' as const, thesis: null, location: 'backStock' as const, expectedExitValues: {} },
+      { itemId: 'a', quantity: 1,
+        costBasis: 30_000, currentValue: 31_000, age: 0, demand: 'steady' as const, thesis: null, location: 'backStock' as const, expectedExitValues: {} },
     ];
     expect(liquidityRatio(70_000, inventory)).toBeCloseTo(0.7, 5);
     expect(liquidityRatio(0, inventory)).toBe(0);

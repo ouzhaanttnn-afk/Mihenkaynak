@@ -155,6 +155,7 @@ describe('GDD 23.23 — Müşteri alış akışı', () => {
       items[item.id] = item;
       inventory.push({
         itemId: item.id,
+        quantity: 1,
         costBasis: 10_000,
         currentValue: 11_000,
         age: 1,
@@ -224,12 +225,12 @@ describe('GDD 23.23 — Müşteri alış akışı', () => {
   it('Addendum §10 — paket fiyatı temel değerlemeyi DEĞİŞTİRMEZ', () => {
     const customer = buyer();
     const { items } = stock(['quarter_gold', 'quarter_gold']);
-    const list = Object.values(items);
-    const fairBefore = packageFairValue(list, MARKET);
+    const lines = Object.keys(items).map((itemId) => ({ itemId, quantity: 1 }));
+    const fairBefore = packageFairValue(lines, items, MARKET);
 
-    quotePackage(list, customer.demand!, customer, MARKET);
+    quotePackage(lines, customer.demand!, customer, MARKET, items);
 
-    expect(packageFairValue(list, MARKET)).toBe(fairBefore);
+    expect(packageFairValue(lines, items, MARKET)).toBe(fairBefore);
   });
 
   it('paket değiştikçe fiyat ve karşılama durumu yeniden TÜREtilir', () => {
@@ -241,8 +242,9 @@ describe('GDD 23.23 — Müşteri alış akışı', () => {
     expect(empty.suggestedPrice).toBe(0);
     expect(empty.fulfilment).toBe('none');
 
-    const one = repricePackage(empty, [ids[0]!], items, inventory, customer, MARKET);
-    const two = repricePackage(empty, ids.slice(0, 2), items, inventory, customer, MARKET);
+    const line = (id: string) => ({ itemId: id, quantity: 1 });
+    const one = repricePackage(empty, [line(ids[0]!)], items, inventory, customer, MARKET);
+    const two = repricePackage(empty, ids.slice(0, 2).map(line), items, inventory, customer, MARKET);
 
     expect(two.packageFairValue).toBeGreaterThan(one.packageFairValue);
     expect(two.packageCost).toBeGreaterThan(one.packageCost);

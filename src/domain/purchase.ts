@@ -23,10 +23,11 @@
  */
 
 import { PURCHASE } from './balance';
+import { costBasisForUnits } from './settlement';
 import { bullionMeta, isBullion } from '@data/bullion';
 import { getArchetype } from '@data/archetypes';
 import { getTemplate } from '@data/item-templates';
-import { bullionUnitValue, priceForChannel, CHANNEL_LABEL_TR } from './channels';
+import { bullionUnitValue, gramsFor, priceForChannel, CHANNEL_LABEL_TR } from './channels';
 import { trueValue } from './valuation';
 import { Rng, deriveSeed } from './rng';
 import type { DayCharacter } from './intent';
@@ -37,6 +38,7 @@ import type {
   ItemInstance,
   MarketState,
   Money,
+  PackageLine,
   PurchaseSession,
   StoreState,
   TradeChannel,
@@ -92,6 +94,7 @@ export function spawnDemand(
     wantsBullion,
     templateId,
     quantity,
+    isBulk,
     acceptsPartial,
     minQuantity,
     summary: demandSummary(templateId, families, quantity, isBulk),
@@ -163,11 +166,19 @@ export function offerableStock(
  * adet, işçilikli üründe kalemin gerçek değeri. Bu dosya formülü YENİDEN
  * YAZMAZ, yalnız toplar (Addendum §10).
  */
-export function packageFairValue(items: ItemInstance[], market: MarketState): Money {
-  return items.reduce(
-    (sum, item) => sum + (isBullion(item.templateId) ? bullionUnitValue(item, market) : trueValue(item, market)),
-    0,
-  );
+export function packageFairValue(
+  lines: PackageLine[],
+  items: Record<string, ItemInstance>,
+  market: MarketState,
+): Money {
+  return lines.reduce((sum, line) => {
+    const item = items[line.itemId];
+    if (!item) return sum;
+    const unit = isBullion(item.templateId)
+      ? bullionUnitValue(item, market)
+      : trueValue(item, market);
+    return sum + unit * line.quantity;
+  }, 0);
 }
 
 /**
@@ -186,33 +197,38 @@ export function channelForDemand(demand: CustomerDemand): TradeChannel {
  * Öneri yalnız kanal makasının nereye düştüğünü gösterir.
  */
 export function quotePackage(
-  items: ItemInstance[],
+  lines: PackageLine[],
   demand: CustomerDemand,
   customer: Customer,
   market: MarketState,
+  items: Record<string, ItemInstance>,
 ): { fair: Money; suggested: Money; channel: TradeChannel; rationale: string } {
-  const fair = packageFairValue(items, market);
+  const fair = packageFairValue(lines, items, market);
+  const units = packageUnits(lines);
   const channel = channelForDemand(demand);
+  const first = lines.length > 0 ? items[lines[0]!.itemId] : undefined;
 
-  if (items.length === 0 || fair <= 0) {
+  if (units === 0 || fair <= 0 || !first) {
     return { fair: 0, suggested: 0, channel, rationale: 'Pakette ürün yok.' };
   }
 
-  // Kanal motoru BİRİM fiyatlar; paket tek bir birim gibi fiyatlanır ve
-  // adet etkisi `quantity` üzerinden makasa girer.
+  // Kanal motoru BİRİM fiyatlar. Paketin birim adil değeri üzerinden
+  // fiyatlayıp adetle çarpmak, §6'nın hacim katmanının gerçekten çalışmasını
+  // sağlar: 40 adet, 1 adedin 40 katı DEĞİLDİR.
+  const unitFair = Math.round(fair / units);
   const quote = priceForChannel({
-    item: items[0]!,
+    item: first,
     market,
     channel,
     side: 'shopSells',
-    quantity: Math.max(items.length, demand.quantity),
-    baseUnitValue: fair,
+    quantity: units,
+    baseUnitValue: unitFair,
     relationship: customer.trust,
   });
 
   return {
     fair,
-    suggested: quote.unitPrice,
+    suggested: quote.unitPrice * units,
     channel,
     rationale: `${CHANNEL_LABEL_TR[channel]} · ${quote.rationale}`,
   };
@@ -242,46 +258,80 @@ export function fulfilmentOf(demand: CustomerDemand, count: number): PurchaseSes
   return count >= demand.minQuantity && demand.acceptsPartial ? 'partial' : 'none';
 }
 
-/** Paketin defter maliyeti — kâr ve settlement için (GDD 22.1). */
-export function packageCost(itemIds: string[], inventory: InventoryPosition[]): Money {
+/**
+ * Paketin defter maliyeti — kâr ve settlement için (GDD 22.1).
+ * GDD 31.3: "cost basis satışta yalnız SATILAN MİKTAR kadar realize olur."
+ * Bu yüzden pozisyonun tamamı değil, satılan adedin payı sayılır.
+ */
+export function packageCost(lines: PackageLine[], inventory: InventoryPosition[]): Money {
   const byId = new Map(inventory.map((p) => [p.itemId, p]));
-  return itemIds.reduce((sum, id) => sum + (byId.get(id)?.costBasis ?? 0), 0);
+  return lines.reduce((sum, line) => {
+    const position = byId.get(line.itemId);
+    return sum + (position ? costBasisForUnits(position, line.quantity) : 0);
+  }, 0);
+}
+
+/** Pakete konan toplam adet. */
+export function packageUnits(lines: PackageLine[]): number {
+  return lines.reduce((sum, l) => sum + l.quantity, 0);
+}
+
+/**
+ * Paketin gram karşılığı — §4.1 "adet, GRAM KARŞILIĞI, ciro, brüt marj ...
+ * ayrıca ölçülmelidir."
+ */
+export function packageGrams(lines: PackageLine[], items: Record<string, ItemInstance>): number {
+  const total = lines.reduce((sum, line) => {
+    const item = items[line.itemId];
+    if (!item) return sum;
+    return sum + gramsFor(item, line.quantity);
+  }, 0);
+  return Math.round(total * 1000) / 1000;
 }
 
 /** Yeni bir alış oturumu. */
 export function createPurchaseSession(demand: CustomerDemand): PurchaseSession {
   return {
     demand,
-    selectedItemIds: [],
+    lines: [],
     packageFairValue: 0,
     suggestedPrice: 0,
     channel: channelForDemand(demand),
     packageCost: 0,
+    units: 0,
     fulfilment: 'none',
     rationale: 'Paket henüz boş.',
   };
 }
 
-/** Paket değiştikçe oturumu yeniden türetir — saf fonksiyon. */
+/**
+ * Paket değiştikçe oturumu yeniden türetir — saf fonksiyon.
+ *
+ * §4.1 "Hacim büyüdükçe fiyat etkisi ve makas doğrusal olmak zorunda
+ * değildir." Fiyat her seferinde ADET üzerinden yeniden hesaplanır; paketi
+ * büyütmek fiyatı çarpmaz, kanal makasını yeniden çalıştırır.
+ */
 export function repricePackage(
   session: PurchaseSession,
-  itemIds: string[],
+  lines: PackageLine[],
   items: Record<string, ItemInstance>,
   inventory: InventoryPosition[],
   customer: Customer,
   market: MarketState,
 ): PurchaseSession {
-  const picked = itemIds.map((id) => items[id]).filter((it): it is ItemInstance => !!it);
-  const quote = quotePackage(picked, session.demand, customer, market);
+  const clean = lines.filter((l) => l.quantity > 0 && !!items[l.itemId]);
+  const units = packageUnits(clean);
+  const quote = quotePackage(clean, session.demand, customer, market, items);
 
   return {
     ...session,
-    selectedItemIds: itemIds,
+    lines: clean,
     packageFairValue: quote.fair,
     suggestedPrice: quote.suggested,
     channel: quote.channel,
-    packageCost: packageCost(itemIds, inventory),
-    fulfilment: fulfilmentOf(session.demand, picked.length),
+    packageCost: packageCost(clean, inventory),
+    units,
+    fulfilment: fulfilmentOf(session.demand, units),
     rationale: quote.rationale,
   };
 }
@@ -293,36 +343,110 @@ export function repricePackage(
  */
 export function packageFitPenalty(
   demand: CustomerDemand,
-  items: ItemInstance[],
+  lines: PackageLine[],
+  items: Record<string, ItemInstance>,
 ): { patienceCost: number; ceilingMultiplier: number } {
-  if (items.length === 0) return { patienceCost: 0, ceilingMultiplier: 1 };
+  if (lines.length === 0) return { patienceCost: 0, ceilingMultiplier: 1 };
 
-  const offCount = items.filter((it) => matchDemand(demand, it) === 'off').length;
-  const exactCount = items.filter((it) => matchDemand(demand, it) === 'exact').length;
+  let offUnits = 0;
+  let exactUnits = 0;
+  for (const line of lines) {
+    const item = items[line.itemId];
+    if (!item) continue;
+    const match = matchDemand(demand, item);
+    if (match === 'off') offUnits += line.quantity;
+    if (match === 'exact') exactUnits += line.quantity;
+  }
 
-  const patienceCost = offCount * PURCHASE.offMatchPatienceCost;
+  const patienceCost = offUnits * PURCHASE.offMatchPatienceCost;
   const ceilingMultiplier =
-    1 -
-    offCount * PURCHASE.offMatchCeilingCut +
-    Math.min(exactCount, items.length) * PURCHASE.exactMatchCeilingBonus;
+    1 - offUnits * PURCHASE.offMatchCeilingCut + exactUnits * PURCHASE.exactMatchCeilingBonus;
 
   return { patienceCost, ceilingMultiplier: Math.max(0.7, Math.min(1.12, ceilingMultiplier)) };
 }
 
-/** Stok yeterliliği — oyuncuya "kaç adet verebilirsin" göstergesi (§4.1). */
-export function availableForDemand(
+/**
+ * §4.1 "Toplu talepler STOK YETERSİZLİĞİNDE reddedilebilir, kısmen
+ * karşılanabilir veya uygun ticari kanal üzerinden tedarik edilerek
+ * tamamlanabilir."
+ *
+ * Kaç ADET verilebilir — pozisyon sayısı değil. Sarrafiye yığıldığı için
+ * tek pozisyon 40 adet taşıyabilir; pozisyon saymak stoğu yok saymaktı.
+ */
+export function availableUnits(
   demand: CustomerDemand,
   inventory: InventoryPosition[],
   items: Record<string, ItemInstance>,
 ): number {
-  return offerableStock(demand, inventory, items).filter((r) => r.match !== 'off').length;
+  return offerableStock(demand, inventory, items)
+    .filter((r) => r.match !== 'off')
+    .reduce((sum, r) => sum + r.position.quantity, 0);
+}
+
+/** §4.1 üç sonuçtan hangisi mümkün. */
+export type DemandOutcome = 'full' | 'partial' | 'sourceNeeded' | 'reject';
+
+/**
+ * §4.1'in üç yolunu ayırt eder. `sourceNeeded`, stok yetmediği ama müşterinin
+ * eksiğe razı OLMADIĞI durumdur: talep ancak ticari kanaldan tedarikle
+ * tamamlanabilir (§4.2 toptancı). O tedarik akışı ayrı bir sistemdir; burada
+ * yalnız durum teşhis edilir, sessizce "reddedildi"ye çevrilmez.
+ */
+export function demandOutcome(demand: CustomerDemand, available: number): DemandOutcome {
+  if (available >= demand.quantity) return 'full';
+  if (available <= 0) return 'reject';
+  if (demand.acceptsPartial && available >= demand.minQuantity) return 'partial';
+  return 'sourceNeeded';
 }
 
 export function storeCanServe(demand: CustomerDemand, available: number): boolean {
-  return available >= (demand.acceptsPartial ? demand.minQuantity : demand.quantity);
+  const outcome = demandOutcome(demand, available);
+  return outcome === 'full' || outcome === 'partial';
 }
 
 /** Mağaza kademesi paketin üst sınırını belirler (GDD 12). */
 export function maxPackageLines(store: StoreState): number {
   return PURCHASE.maxPackageLinesByTier[store.storeTier] ?? 3;
+}
+
+// ---------------------------------------------------------------------------
+// §4.1 — TOPLU MÜŞTERİ AYRI BİR MÜŞTERİDİR
+// ---------------------------------------------------------------------------
+
+/**
+ * §4.1 DEĞİŞMEZ: "Toplu müşteri, normal tekil müşterinin sadece YÜKSEK ADETLİ
+ * KOPYASI DEĞİLDİR; ayrı hacim bandı, bütçe, fiyat hassasiyeti, kısmi
+ * karşılama ve GÜVEN DAVRANIŞI kullanır."
+ *
+ * Bu fonksiyon spawn edilmiş bir müşteriyi toplu profiline çevirir. Adedi
+ * büyütüp bırakmak, addendum'un açıkça yasakladığı şeydi.
+ *
+ * Toplu müşterinin karakteri:
+ *   · Fiyata çok daha duyarlı — birim farkı adetle çarpılıyor.
+ *   · Daha sabırlı — büyük iş pazarlık ister, kapıdan dönmez.
+ *   · Jeste değil rakama bakar — ilişki primi tekil müşterininkinden düşük.
+ *   · Ödeme tavanı DAR — piyasayı biliyor, perakende primini ödemez.
+ */
+export function applyBulkProfile(customer: Customer): Customer {
+  if (!customer.demand?.isBulk) return customer;
+  const b = PURCHASE.bulk;
+
+  return {
+    ...customer,
+    priceSensitivity: clamp(Math.round(customer.priceSensitivity * b.priceSensitivityFactor), 0, 100),
+    patienceMax: Math.round(customer.patienceMax * b.patienceFactor),
+    patience: Math.round(customer.patienceMax * b.patienceFactor),
+    // Toplu alıcı dükkâna güvenmekten çok fiyatına bakar: yeni ilişkiye
+    // tekil müşteriden daha temkinli başlar ve jestle hızlı ısınmaz.
+    trust: clamp(Math.round(customer.trust * b.trustFactor), 0, 100),
+    purchaseCeilingRatio: clamp(
+      1 + (customer.purchaseCeilingRatio - 1) * b.ceilingCompression,
+      0.95,
+      1.45,
+    ),
+  };
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
 }

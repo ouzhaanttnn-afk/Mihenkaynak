@@ -168,7 +168,12 @@ function StockRow({ position }: { position: InventoryPosition }) {
       </span>
 
       <div className="row__body">
-        <div className="row__title">{item.displayName}</div>
+        <div className="row__title">
+          {item.displayName}
+          {/* §4.1 — yığılmış sarrafiyede adet gizlenmez; maliyet ve değer
+              toplamdır, tek parçanınki değil. */}
+          {position.quantity > 1 && <span className="row__qty num"> ×{position.quantity}</span>}
+        </div>
         <div className="row__meta">
           {KARAT_LABEL[item.declared.claimedKarat]} · {grams(item.truth.grossWeight)} ·{' '}
           {position.age} gün{' '}

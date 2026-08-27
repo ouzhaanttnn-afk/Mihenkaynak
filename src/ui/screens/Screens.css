@@ -445,3 +445,9 @@
   flex: 0 0 auto;
   color: var(--stone-400);
 }
+
+/* §4.1 — yığılmış sarrafiye pozisyonunun adedi. */
+.row__qty {
+  color: var(--brass-400);
+  font-weight: var(--fw-semibold);
+}

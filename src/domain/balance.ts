@@ -276,6 +276,22 @@ export const PURCHASE = {
 
   /** Mağaza kademesine göre paketteki azami kalem sayısı. */
   maxPackageLinesByTier: { 1: 2, 2: 3, 3: 4, 4: 5 } as Record<number, number>,
+
+  /**
+   * §4.1 — TOPLU MÜŞTERİ PROFİLİ.
+   * "Toplu müşteri, normal tekil müşterinin sadece yüksek adetli kopyası
+   * değildir." Aşağıdaki katsayılar o cümlenin sayısal karşılığıdır.
+   */
+  bulk: {
+    /** Fiyat hassasiyeti: birim farkı adetle çarpıldığı için çok daha yüksek. */
+    priceSensitivityFactor: 1.45,
+    /** Sabır: büyük iş pazarlık ister, kapıdan dönmez. */
+    patienceFactor: 1.3,
+    /** Güven: ilişkiye değil rakama bakar; temkinli başlar. */
+    trustFactor: 0.85,
+    /** Ödeme tavanı: perakende priminin yalnız bu kadarını öder. */
+    ceilingCompression: 0.45,
+  },
 } as const;
 
 export const CHANNEL = {
