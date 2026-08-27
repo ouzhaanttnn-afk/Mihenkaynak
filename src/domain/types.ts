@@ -1,0 +1,604 @@
+/**
+ * MIHENKAYNAK — Çekirdek veri modelleri
+ * Kaynak: GDD v2.3 · Bölüm 28.2 "Temel veri nesneleri".
+ *
+ * Bu katman saf TypeScript'tir: React, DOM veya store bağımlılığı içermez.
+ * Amaç GDD 28.1 "sistemler veri güdümlü olmalı; içerik koddan ayrılmalı"
+ * kuralını yapısal olarak zorlamaktır.
+ */
+
+// ---------------------------------------------------------------------------
+// Temel birimler
+// ---------------------------------------------------------------------------
+
+/** Oyun içi para birimi (TL). Kuruş yok; tam sayı olarak tutulur. */
+export type Money = number;
+
+/** Gram. Ondalıklı. */
+export type Grams = number;
+
+/** 0–1 aralığında saflık katsayısı (GDD 6.1). */
+export type Purity = number;
+
+/** 0–100 aralığında normalize edilmiş davranış/ilişki parametresi. */
+export type Scale100 = number;
+
+/** Oyun günü sayacı (1'den başlar). */
+export type GameDay = number;
+
+// ---------------------------------------------------------------------------
+// Ürün taksonomisi (GDD 5.1)
+// ---------------------------------------------------------------------------
+
+export type ItemFamily =
+  | 'bullion' // Yatırım altını
+  | 'classic' // Klasik takı
+  | 'stoneSet' // Taşlı ürün
+  | 'silver' // Gümüş
+  | 'collectible' // Koleksiyon / vintage
+  | 'service'; // Servis ürünü
+
+export type MetalKind = 'gold' | 'silver';
+
+/** GDD 6.1 saflık / ayar modeli. */
+export type Karat = '8K' | '14K' | '18K' | '22K' | '24K' | 'AG925' | 'AG800';
+
+/** GDD 5.2 · condition — aşınma, kırık, eksik parça, çizik, deformasyon. */
+export type ConditionGrade = 'pristine' | 'good' | 'worn' | 'damaged' | 'broken';
+
+/** GDD 5.2 · hiddenFlaw — kaplama, dolgu, içi boşluk, sahte damga, kırık mekanizma. */
+export type HiddenFlawKind =
+  | 'plated' // Kaplama
+  | 'filled' // Dolgu / içi boşluk
+  | 'hollow' // İçi boş gövde
+  | 'fakeHallmark' // Sahte damga
+  | 'brokenMechanism' // Kırık kilit/mekanizma
+  | 'solderRepair'; // Gizlenmiş lehim onarımı
+
+export interface HiddenFlaw {
+  kind: HiddenFlawKind;
+  /** Gerçek değerden düşülen oran (0–1). */
+  severity: number;
+  /**
+   * GDD 7.3 — "tamamen görünmez risk çekirdeğin parçası olmaz".
+   * Her kusur en az bir okunabilir sinyal taşımak zorundadır.
+   */
+  readableSignal: SuspicionSignal;
+}
+
+/** İşleme girmeden oyuncunun görebileceği şüphe sinyali (GDD 7.3). */
+export interface SuspicionSignal {
+  id: string;
+  /** Oyuncuya gösterilen kısa metin. Kesin sahte alarmı değildir. */
+  label: string;
+  /** Sinyalin ne kadar dikkat çektiği; UI yoğunluğunu belirler. */
+  strength: 'faint' | 'noticeable' | 'strong';
+}
+
+/** GDD 5.2 · stoneData. */
+export interface StoneData {
+  kind: 'none' | 'diamond' | 'zircon' | 'ruby' | 'sapphire' | 'emerald' | 'unknown';
+  /** Taşın gerçek olup olmadığı — lup/taş tester ile çözülür. */
+  genuine: boolean;
+  /** Kalite bandı 0–1. */
+  qualityBand: number;
+  /** Taşın kendi başına çıkarılabilir değeri. */
+  extractableValue: Money;
+  count: number;
+}
+
+/** GDD 5.2 — spawn anında sabitlenen gerçek durum katmanı. */
+export interface HiddenTruth {
+  grossWeight: Grams;
+  netMetalWeight: Grams;
+  actualPurity: Purity;
+  actualKarat: Karat;
+  condition: ConditionGrade;
+  stoneData: StoneData;
+  /** Yeniden satışta korunabilecek işçilik/tasarım değeri. */
+  craftsmanship: Money;
+  hiddenFlaws: HiddenFlaw[];
+  /** 0–1; geç oyun nadirlik. */
+  rarity: number;
+  /** Kanıtlanmış hikâye/köken. */
+  provenance: string | null;
+  demandTags: string[];
+}
+
+/** Oyuncunun test yapmadan gördüğü beyan/gözlem katmanı (GDD 5.3). */
+export interface DeclaredInfo {
+  /** Müşterinin beyan ettiği ayar. Gerçekten farklı olabilir. */
+  claimedKarat: Karat;
+  claimedWeight: Grams | null;
+  itemTypeLabel: string;
+  /** Gözle görülebilen kondisyon. Gerçek kondisyondan daha iyimser olabilir. */
+  visibleCondition: ConditionGrade;
+  /** Damga/renk/biçim gibi doğrulanmamış ipuçları + kusur sinyalleri. */
+  observableSignals: SuspicionSignal[];
+}
+
+/** GDD 28.2 · ItemInstance. */
+export interface ItemInstance {
+  id: string;
+  templateId: string;
+  family: ItemFamily;
+  metal: MetalKind;
+  displayName: string;
+
+  /** Spawn anında sabitlenir; reload/reroll ile değişmez (GDD 5.4 / 34.1). */
+  truth: HiddenTruth;
+  declared: DeclaredInfo;
+
+  /** Stoğa girdiyse dolar. */
+  buyCost: Money | null;
+  acquiredDay: GameDay | null;
+  thesis: ExitChannel | null;
+  location: 'customer' | 'display' | 'backStock' | 'workshop' | 'sold' | 'melted';
+  flags: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Değerleme (GDD 6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Testlerin cevapladığı bilgi alanları (GDD 7.1 "Bilgi alanı ilkesi").
+ * Her test farklı bir soruya cevap verir; hepsini basmak rasyonel değildir.
+ */
+export type InfoField = 'weight' | 'purity' | 'coreIntegrity' | 'stone' | 'condition';
+
+/** Tek bir bilgi alanının bilinme durumu. */
+export interface FieldKnowledge {
+  field: InfoField;
+  /** 0 = hiç bilinmiyor, 1 = kesin. Testlerle artar, diminishing return uygulanır. */
+  certainty: number;
+  /** Bu alanda çalışmış testlerin id listesi (diminishing return için). */
+  testsApplied: string[];
+  /** Oyuncuya gösterilecek durum metni. GDD 23.3 — "?" değil anlamlı durum. */
+  status: 'unverified' | 'partial' | 'verified' | 'conflicting';
+}
+
+export type ConfidenceLevel = 'low' | 'medium' | 'high';
+
+/** GDD 6.3 — değerleme motorunun resmi çıktısı. */
+export interface ValuationBand {
+  min: Money;
+  max: Money;
+  /** Bandın orta noktası; "adil fiyat" değil, karar referansıdır. */
+  mid: Money;
+  confidence: ConfidenceLevel;
+  /** 0–1; bandın gerçek değere göre normalize genişliği. */
+  relativeWidth: number;
+  breakdown: ValuationBreakdown;
+}
+
+/** GDD 23.7 "Değerle" — metal / taş / işçilik / risk / piyasa satırları. */
+export interface ValuationBreakdown {
+  metal: Money;
+  stone: Money;
+  craftsmanship: Money;
+  rarityPremium: Money;
+  /** Negatif değer: kondisyon + kusur riski kesintisi. */
+  riskDeduction: Money;
+  /** Bilgilendirici: piyasa rejiminin bandı ne kadar genişlettiği. */
+  marketInfluence: Money;
+}
+
+// ---------------------------------------------------------------------------
+// Test araçları (GDD 7 / EK D)
+// ---------------------------------------------------------------------------
+
+export interface TestTool {
+  id: string;
+  name: string;
+  /** GDD 23.11 — ikon tek başına anlam taşımaz, kısa metin etiketi zorunlu. */
+  shortLabel: string;
+  /** Hangi belirsizliği azaltır. */
+  infoFields: InfoField[];
+  /** Saniye cinsinden süre; müşteri sabrına maliyet. */
+  durationSec: number;
+  /** Sarf/bakım maliyeti. */
+  cost: Money;
+  /** 0–1; tek başına ne kadar güvenilir (yüksek = az hata). */
+  reliability: number;
+  /** Bu test tek seferde ilgili alanın belirsizliğini ne kadar kapatır (0–1). */
+  certaintyGain: number;
+  /** Hangi oyuncu seviyesinde açılır. */
+  unlockLevel: number;
+  description: string;
+}
+
+/** Bir testin çalıştırılmış sonucu. */
+export interface TestResult {
+  toolId: string;
+  itemId: string;
+  /** Testin oyuncuya söylediği okunabilir çıktı. */
+  readout: string;
+  /** Sonuç şüphe uyandırıyor mu (çelişkili sinyal). */
+  raisesSuspicion: boolean;
+  fields: InfoField[];
+  /** GDD 7.2 — bu çağrıda gerçekte kazanılan kesinlik (azalan getiri sonrası). */
+  effectiveGain: number;
+  /** Müşteri sabrından düşülen miktar. */
+  patienceCost: number;
+  runAtSec: number;
+}
+
+// ---------------------------------------------------------------------------
+// İşlem Tezi ve çıkış kanalları (GDD 8.1)
+// ---------------------------------------------------------------------------
+
+export type ExitChannel =
+  | 'wholesale' // Toptan Likidite
+  | 'retail' // Vitrin / Perakende
+  | 'melt' // Eritme / HAS
+  | 'serviceResale' // Servis + Satış
+  | 'collection'; // Koleksiyon Bekletme
+
+export type RiskLevel = 'low' | 'medium' | 'high';
+export type LiquidityLevel = 'low' | 'medium' | 'high';
+
+/** GDD EK E — İşlem Tezi tasarım şablonu. */
+export interface ThesisOption {
+  channel: ExitChannel;
+  label: string;
+  /** Masraf ve iskontolar sonrası beklenen net gelir. */
+  expectedNet: Money;
+  /** Nakit ne zaman geri döner (oyun günü). */
+  daysToCash: [number, number];
+  marketRisk: RiskLevel;
+  demandRisk: RiskLevel;
+  /** Kapasite tüketimi: vitrin slotu / servis slotu. */
+  capacityCost: { display: number; workshop: number };
+  liquidity: LiquidityLevel;
+  /** Bu kanalı baz alan alış tavanı (GDD 6.4). */
+  buyCeiling: Money;
+  /** Neden bu kanal rasyonel / değil. */
+  rationale: string;
+}
+
+// ---------------------------------------------------------------------------
+// Müşteri (GDD 9)
+// ---------------------------------------------------------------------------
+
+export type CustomerIntent =
+  | 'sell' // Dükkana ürün satıyor / bozduruyor
+  | 'buy' // Dükkandan ürün alıyor
+  | 'service' // Servis istiyor
+  | 'appraisal'; // Ekspertiz / danışma
+
+export type ArchetypeId =
+  | 'urgentCash' // Acil nakit arayan
+  | 'investor' // Yatırımcı
+  | 'giftBuyer' // Hediye alıcısı
+  | 'weddingShopper' // Düğün müşterisi
+  | 'collector' // Koleksiyoncu
+  | 'vip' // VIP
+  | 'informedSeller' // Bilinçli satıcı
+  | 'opportunist'; // Fırsatçı
+
+/** GDD EK C — müşteri arketipi tasarım şablonu. */
+export interface Archetype {
+  id: ArchetypeId;
+  name: string;
+  /** Davranış etiketi — UI'da müşteri şeridinde görünür. */
+  demeanor: string;
+  patienceBand: [Scale100, Scale100];
+  knowledgeBand: [Scale100, Scale100];
+  urgencyBand: [Scale100, Scale100];
+  priceSensitivityBand: [Scale100, Scale100];
+  statusBand: [Scale100, Scale100];
+  /** Rezervasyon fiyatının adil değere oranı bandı (satarken). */
+  reservationRatioBand: [number, number];
+  /** Kapanış skoru eşiği — profile göre değişir (GDD 11.3). */
+  closeThreshold: number;
+  /** Gerekçe hamlesine tepki çarpanı. */
+  reasonResponsiveness: number;
+  /** Jest hamlesine tepki çarpanı. */
+  gestureResponsiveness: number;
+  goodStrategy: string;
+  badStrategy: string;
+  preferredFamilies: ItemFamily[];
+}
+
+/** GDD 28.2 · Customer. */
+export interface Customer {
+  id: string;
+  displayName: string;
+  archetype: ArchetypeId;
+  intent: CustomerIntent;
+
+  // --- Spawn anında sabitlenenler (GDD 9.3) ---
+  patienceMax: Scale100;
+  knowledge: Scale100;
+  urgency: Scale100;
+  priceSensitivity: Scale100;
+  status: Scale100;
+  budget: Money;
+  /** Gerçek kabul sınırı. Oyuncuya asla doğrudan gösterilmez (GDD 6.6). */
+  reservationPrice: Money;
+
+  // --- İşlem sırasında değişenler (GDD 9.4) ---
+  patience: Scale100;
+  /** Mağaza güveni — kişisel hafızadan gelir, işlem içinde de değişir. */
+  trust: Scale100;
+  suspicion: Scale100;
+
+  visitHistory: VisitRecord[];
+  preferences: string[];
+  referralSource: string | null;
+
+  /** Bu ziyarette getirdiği kalemler. Çoklu ürün müşterisinde 2–4 (GDD 12). */
+  lineIds: string[];
+}
+
+export interface VisitRecord {
+  day: GameDay;
+  dealId: string | null;
+  outcome: 'accepted' | 'rejected' | 'walkedOut' | 'serviceBooked';
+  /** Bu ziyaretin kişisel güvene etkisi. */
+  trustDelta: number;
+  note: string;
+}
+
+// ---------------------------------------------------------------------------
+// Pazarlık (GDD 11)
+// ---------------------------------------------------------------------------
+
+/** GDD 11.1 durum makinesi. */
+export type NegotiationState = 'OPEN' | 'HARDENING' | 'FINAL_OFFER' | 'ACCEPTED' | 'REJECTED';
+
+export type NegotiationMoveKind =
+  | 'offer' // Net teklif
+  | 'reason' // Gerekçe göster
+  | 'gesture' // Jest yap
+  | 'package' // Paket teklif
+  | 'requestCounter' // Karşı teklif iste
+  | 'reject' // İşlemi reddet
+  | 'acceptCounter'; // Müşterinin karşı teklifini kabul et
+
+export interface NegotiationMove {
+  kind: NegotiationMoveKind;
+  amount?: Money;
+  /** 'reason' hamlesi için: hangi doğrulanmış veriye dayanıyor (GDD 11.5). */
+  reasonEvidence?: { field: InfoField; toolId: string; claim: string };
+  atRound: number;
+}
+
+/** Müşterinin bir hamleye verdiği deterministik yanıt. */
+export interface NegotiationResponse {
+  state: NegotiationState;
+  /** Müşteri mesajı — aynı yüzeyde gösterilir, yeni ekran açmaz (GDD 23.24). */
+  message: string;
+  counterOffer: Money | null;
+  patienceDelta: number;
+  trustDelta: number;
+  suspicionDelta: number;
+  /** Anti-spam: aynı/çok yakın teklif tekrarlandı mı (GDD 11.4). */
+  wasRepeatOffer: boolean;
+  /** Terminal durumda anlaşılan fiyat. */
+  settledPrice: Money | null;
+}
+
+/** Bir kalem için pazarlık oturumu. Çoklu üründe kalem başına ayrıdır (GDD 12.1). */
+export interface NegotiationSession {
+  lineId: string;
+  itemId: string;
+  state: NegotiationState;
+  round: number;
+  offerHistory: Money[];
+  moveHistory: NegotiationMove[];
+  /** Müşterinin masadaki son karşı teklifi. */
+  activeCounter: Money | null;
+  /** FINAL_OFFER durumundaki geri dönülmez fiyat. */
+  finalOffer: Money | null;
+  settledPrice: Money | null;
+  /** Kullanılmış gerekçe kanıtları — aynı gerekçe iki kez değer üretmez. */
+  usedReasons: string[];
+  gesturesUsed: number;
+}
+
+// ---------------------------------------------------------------------------
+// Piyasa (GDD 13)
+// ---------------------------------------------------------------------------
+
+export type MarketRegime = 'calm' | 'normal' | 'volatile' | 'shock';
+
+export interface MarketAsset {
+  id: 'goldGram' | 'silverGram' | 'usd' | 'eur' | 'quarterGold';
+  label: string;
+  price: number;
+  /** Gün açılışına göre yüzde değişim. */
+  changePct: number;
+  /** Kısa trend serisi — mini grafik için. */
+  history: number[];
+  unit: string;
+}
+
+export interface MarketEvent {
+  id: string;
+  label: string;
+  description: string;
+  /** Etkilediği sistemler — GDD 20.2 "en az iki sistem". */
+  affects: string[];
+  counterplay: string[];
+  startedDay: GameDay;
+  durationDays: number;
+}
+
+/** GDD 28.2 · MarketState. */
+export interface MarketState {
+  day: GameDay;
+  /** Dakika cinsinden gün içi saat (açılış 09:00 = 540). */
+  clockMinutes: number;
+  goldSpot: number;
+  silverSpot: number;
+  fxIndex: number;
+  regime: MarketRegime;
+  /** Günün ana yönü: -1 düşüş, 0 yatay, +1 yükseliş. */
+  trend: -1 | 0 | 1;
+  volatility: number;
+  activeEvent: MarketEvent | null;
+  assets: MarketAsset[];
+  /** QA aynı günü tekrar oynayabilsin diye (GDD 28.3). */
+  seed: number;
+}
+
+// ---------------------------------------------------------------------------
+// Mağaza / işletme (GDD 14, 28.2)
+// ---------------------------------------------------------------------------
+
+/** GDD 28.2 · InventoryPosition. */
+export interface InventoryPosition {
+  itemId: string;
+  costBasis: Money;
+  currentValue: Money;
+  /** Stokta bekleme günü. */
+  age: number;
+  demand: 'cold' | 'steady' | 'hot';
+  thesis: ExitChannel | null;
+  location: 'display' | 'backStock' | 'workshop';
+  expectedExitValues: Partial<Record<ExitChannel, Money>>;
+}
+
+/** GDD 28.2 · SupplierAccount. */
+export interface SupplierAccount {
+  trust: Scale100;
+  limit: Money;
+  /** Vade gün sayısı. */
+  terms: number;
+  openInvoices: { id: string; amount: Money; dueDay: GameDay }[];
+  priceBand: number;
+  specialLotEligibility: boolean;
+}
+
+/** GDD 28.2 · ServiceJob. */
+export interface ServiceJob {
+  jobId: string;
+  type: string;
+  itemId: string;
+  customerId: string | null;
+  /** Kalan süre (oyun günü). */
+  duration: number;
+  remainingDays: number;
+  risk: number;
+  partsCost: Money;
+  assignedStaff: string | null;
+  promisedDay: GameDay;
+  fee: Money;
+  result: 'pending' | 'success' | 'failed' | 'delivered';
+}
+
+/** GDD 28.2 · StoreState. */
+export interface StoreState {
+  name: string;
+  cash: Money;
+  reputation: Scale100;
+  level: number;
+  xp: number;
+  xpToNext: number;
+  storeTier: 1 | 2 | 3 | 4 | 5;
+  displaySlots: number;
+  backStockSlots: number;
+  workshopCapacity: number;
+  staff: string[];
+  supplier: SupplierAccount;
+  payables: { id: string; amount: Money; dueDay: GameDay; label: string }[];
+  /** Günlük kira + sabit gider (GDD 14.1). */
+  dailyOverhead: Money;
+}
+
+// ---------------------------------------------------------------------------
+// İşlem kaydı ve settlement (GDD 22)
+// ---------------------------------------------------------------------------
+
+/** GDD 28.2 · DealRecord. */
+export interface DealRecord {
+  dealId: string;
+  customerId: string;
+  lineIds: string[];
+  itemIds: string[];
+  side: 'buy' | 'sell' | 'service' | 'appraisal';
+  day: GameDay;
+  clockMinutes: number;
+
+  // Değerleme
+  testsUsed: string[];
+  estimateBand: { min: Money; max: Money };
+  confidence: ConfidenceLevel;
+  /** Sonradan açılan rapor için gerçek değer. */
+  actualValue: Money;
+
+  // Pazarlık
+  offerHistory: Money[];
+  finalState: NegotiationState;
+  movesUsed: NegotiationMoveKind[];
+
+  // Ekonomi
+  thesisAtDeal: ExitChannel | null;
+  price: Money;
+  costBasis: Money;
+  /** Yalnız tamamlanmış satışta dolar; stok potansiyeli buraya yazılmaz (GDD 34.5). */
+  realizedProfit: Money | null;
+
+  // İlişki
+  trustDelta: number;
+  reputationDelta: number;
+
+  // Öğrenme (GDD 22.3)
+  reviewData: {
+    missedSignals: string[];
+    keyDecisionPoint: string;
+    alternativeChannelNote: string;
+  };
+}
+
+/**
+ * Tek settlement kuralı (GDD 22.1 / 34.4).
+ * Her ekonomik olay benzersiz transaction ID taşır; uygulanmış ID ikinci kez işlenmez.
+ */
+export interface SettlementTransaction {
+  txId: string;
+  dealId: string;
+  day: GameDay;
+  cashDelta: Money;
+  /** Stoğa giren / çıkan kalemler. */
+  itemsIn: ItemInstance[];
+  itemsOut: string[];
+  trustDelta: number;
+  reputationDelta: number;
+  xpDelta: number;
+  label: string;
+}
+
+// ---------------------------------------------------------------------------
+// İşlem Masası aşamaları (GDD 23.6 / 23.10.2)
+// ---------------------------------------------------------------------------
+
+export type WorkbenchStage = 'inspect' | 'appraise' | 'thesis' | 'negotiate' | 'result';
+
+/** Aktif müşteri işleminin, bir kaleme ait çalışma durumu. */
+export interface DealLine {
+  lineId: string;
+  itemId: string;
+  knowledge: FieldKnowledge[];
+  testResults: TestResult[];
+  band: ValuationBand | null;
+  thesisOptions: ThesisOption[];
+  selectedThesis: ExitChannel | null;
+  negotiation: NegotiationSession;
+  /** Kalem şeridi status dot'u (GDD 23.13). */
+  status: 'untouched' | 'appraised' | 'offered' | 'accepted' | 'rejected';
+}
+
+/** Aktif müşteri oturumu. Sabır ve güven ortak, kalem state'leri ayrı (GDD 12.1). */
+export interface ActiveDeal {
+  dealId: string;
+  customerId: string;
+  stage: WorkbenchStage;
+  activeLineId: string;
+  lines: DealLine[];
+  startedAtSec: number;
+  /** Terminal settlement uygulandı mı — çift tap koruması (GDD 22.1). */
+  settled: boolean;
+}
