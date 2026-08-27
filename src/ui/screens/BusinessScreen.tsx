@@ -23,7 +23,20 @@ import {
   type Ledger,
 } from '@domain/settlement';
 import { CHANNEL_LABEL_TR } from '@domain/channels';
-import type { TradeChannel } from '@domain/types';
+import { isBullion } from '@data/bullion';
+import { spawnItem } from '@domain/item-spawn';
+import {
+  creditLimit,
+  creditTermDays,
+  financeRate,
+  financeTerms,
+  affordableQuantity,
+  quoteLiquidation,
+  recommendedSlices,
+  supplyOffer,
+  usedLimit,
+} from '@domain/wholesaler';
+import type { InventoryPosition, ItemInstance, TradeChannel } from '@domain/types';
 import { useGame } from '@state/gameStore';
 
 import {
@@ -37,13 +50,14 @@ import {
 } from '@ui/icons';
 import { pct, pctChange, price, tl, tlSigned } from '@ui/format';
 
-type Route = 'root' | 'market' | 'journal';
+type Route = 'root' | 'market' | 'journal' | 'wholesaler';
 
 export function BusinessScreen() {
   const [route, setRoute] = useState<Route>('root');
 
   if (route === 'market') return <MarketRoute onBack={() => setRoute('root')} />;
   if (route === 'journal') return <JournalRoute onBack={() => setRoute('root')} />;
+  if (route === 'wholesaler') return <WholesalerRoute onBack={() => setRoute('root')} />;
   return <BusinessRoot onOpen={setRoute} />;
 }
 
@@ -144,9 +158,9 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
             />
             <MenuLine
               title="Toptancı Hesabı"
-              sub={`${s.store.supplier.openInvoices.length} açık vade`}
+              sub={supplierSub(s)}
               icon={<IconWholesale size={17} />}
-              onPress={() => undefined}
+              onPress={() => onOpen('wholesaler')}
             />
             <MenuLine
               title="Kariyer / Yetenekler"
@@ -204,6 +218,277 @@ function SalesBreakdown({ ledger }: { ledger: Ledger }) {
     </div>
   );
 }
+
+/** Menü alt satırı — limit ve vade durumu bir bakışta (§7). */
+function supplierSub(s: ReturnType<typeof useGame.getState>): string {
+  const open = s.store.supplier.openInvoices.length;
+  const available = creditLimit(s.store) - usedLimit(s.store.supplier);
+  return open > 0
+    ? `${open} açık vade · ${tl(Math.max(0, available))} kullanılabilir limit`
+    : `${tl(Math.max(0, available))} kullanılabilir limit`;
+}
+
+/**
+ * TOPTANCI HESABI — Addendum §4.2 (toplu bozma) ve §7 (finansman).
+ *
+ * §7 DEĞİŞMEZ: "Finansmanın maliyeti ve koşulları İŞLEM ÖNCESİ anlaşılır
+ * biçimde hesaplanır; gizli veya geriye dönük ücret yaratılmaz." Bu yüzden
+ * her lotun yanında peşin/vadeli ayrımı, vade farkı ve ödeme günü butona
+ * basılmadan ÖNCE yazar.
+ */
+function WholesalerRoute({ onBack }: { onBack: () => void }) {
+  const s = useGame();
+  const today = s.market.day;
+  const limit = creditLimit(s.store);
+  const used = usedLimit(s.store.supplier);
+  const available = Math.max(0, limit - used);
+
+  // §4.2 — bozulabilir sarrafiye pozisyonları.
+  const liquidatable = s.inventory
+    .filter((p) => p.location !== 'workshop')
+    .map((p) => ({ position: p, item: s.items[p.itemId] }))
+    .filter((r) => !!r.item && isBullion(r.item.templateId));
+
+  // §4.1 "uygun ticari kanal üzerinden tedarik" — toptancının sattığı ürünler.
+  const probes = SUPPLY_TEMPLATES.map((id) => spawnItem(s.seed, LOT_PROBE_INDEX, id));
+
+  return (
+    <div className="page">
+      <header className="pageHead">
+        <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
+          ← İşletme
+        </button>
+        <h1 className="pageHead__title">Toptancı Hesabı</h1>
+        <p className="pageHead__sub">
+          Güven {Math.round(s.store.supplier.trust)}/100 · {creditTermDays(s.store)} gün vade ·
+          vade farkı {pct(financeRate(s.store))}
+        </p>
+      </header>
+
+      <div className="page__scroll">
+        {/* §7 — limit durumu */}
+        <div className="group">
+          <h2 className="group__title">Limit ve vade</h2>
+          <div className="group__body">
+            <StatLine label="Toplam limit" value={tl(limit)} />
+            <StatLine
+              label="Kullanılabilir"
+              value={tl(available)}
+              tone={available <= 0 ? 'negative' : undefined}
+            />
+            {s.store.supplier.openInvoices.length === 0 ? (
+              <StatLine label="Açık vade" value="Yok" />
+            ) : (
+              s.store.supplier.openInvoices.map((inv) => {
+                const late = inv.dueDay < today;
+                return (
+                  <div key={inv.id} className="statLine">
+                    <span className="statLine__label">
+                      {late ? 'GECİKMİŞ' : `${inv.dueDay}. gün`} vadesi
+                    </span>
+                    <span className="statLine__value">
+                      <span className={`num ${late ? 'statLine__value--negative' : ''}`}>
+                        {tl(inv.amount)}
+                      </span>{' '}
+                      <button
+                        type="button"
+                        className="miniBtn"
+                        onClick={() => s.repaySupplier(inv.id)}
+                        disabled={inv.amount > s.store.cash}
+                      >
+                        Öde
+                      </button>
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* §4.2 — toplu bozma */}
+        <div className="group">
+          <h2 className="group__title">Toplu bozma</h2>
+          <div className="group__body">
+            {liquidatable.length === 0 ? (
+              <p className="emptyNote">Bozulacak sarrafiye yok.</p>
+            ) : (
+              liquidatable.map(({ position, item }) => (
+                <LiquidateRow key={position.itemId} position={position} item={item!} />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* §4.1 / §7 — tedarik */}
+        <div className="group">
+          <h2 className="group__title">Tedarik</h2>
+          <div className="group__body">
+            {probes.map((probe) => (
+              <SupplyRow key={probe.templateId} probe={probe} today={today} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * §7 — bir tedarik satırı. Adet oyuncunun kararıdır ve fiyat her değişimde
+ * §6'nın hacim katmanından yeniden geçer.
+ *
+ * §7 DEĞİŞMEZ: "Finansmanın maliyeti ve koşulları İŞLEM ÖNCESİ anlaşılır
+ * biçimde hesaplanır." Peşin/vadeli ayrımı, vade farkı ve ödeme günü butona
+ * basılmadan önce, seçili adede göre yazar.
+ */
+function SupplyRow({ probe, today }: { probe: ItemInstance; today: number }) {
+  const s = useGame();
+  const suggested = affordableQuantity(probe, s.market, s.store);
+  const [quantity, setQuantity] = useState(suggested);
+
+  const lot = supplyOffer(probe, quantity, s.market, s.store);
+  if (!lot) return null;
+
+  const terms = financeTerms(s.store, lot.total, today);
+
+  return (
+    <div className="lotRow">
+      <div className="lotRow__head">
+        <span className="lotRow__name">{lot.displayName}</span>
+        <span className="lotRow__price num">{tl(lot.total)}</span>
+      </div>
+
+      <div className="lotRow__terms">
+        {tl(lot.unitPrice)} / adet · {lot.grams.toFixed(2)} gr · tek işlemde en çok{' '}
+        {lot.maxQuantity} adet
+      </div>
+
+      <div className="lotRow__terms">
+        {terms.financed > 0
+          ? `${tl(terms.fromCash)} peşin + ${tl(terms.financed)} vadeli · vade farkı ${tl(
+              terms.financeCost,
+            )} · ${terms.dueDay}. gün`
+          : 'Tamamı peşin'}
+      </div>
+
+      <div className="lotRow__controls">
+        <label className="lotRow__field">
+          <span>Adet</span>
+          <input
+            type="number"
+            min={1}
+            max={lot.maxQuantity}
+            value={quantity}
+            onChange={(e) => setQuantity(Number(e.target.value))}
+          />
+        </label>
+        {suggested !== quantity && suggested > 0 && (
+          <button type="button" className="miniBtn" onClick={() => setQuantity(suggested)}>
+            {suggested} adet sığar
+          </button>
+        )}
+        <button
+          type="button"
+          className="lotRow__buy"
+          onClick={() => s.buyFromWholesaler(lot.templateId, lot.quantity)}
+          disabled={!!terms.blockedReason}
+        >
+          {terms.blockedReason ?? 'Al'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * §4.2 — "tek işlem veya KONTROLLÜ DİLİMLER halinde". Dilim sayısı gerçek bir
+ * karardır: fiyat her dilimde kendi hacmiyle hesaplandığı için dilimlemek
+ * kapasiteyi aşan tek işlemden daha iyi birim fiyat verir.
+ */
+function LiquidateRow({ position, item }: { position: InventoryPosition; item: ItemInstance }) {
+  const s = useGame();
+  const [quantity, setQuantity] = useState(position.quantity);
+  const [slices, setSlices] = useState(1);
+
+  const qty = Math.min(position.quantity, Math.max(1, quantity));
+  const quote = quoteLiquidation(
+    { itemId: position.itemId, quantity: qty },
+    s.items,
+    s.inventory,
+    s.market,
+    s.store,
+    slices,
+  );
+  if (!quote) return null;
+
+  const suggested = recommendedSlices(qty, quote.capacityPerSlice);
+  const profit = quote.gross - quote.costBasis;
+
+  return (
+    <div className="lotRow">
+      <div className="lotRow__head">
+        <span className="lotRow__name">
+          {item.displayName}
+          {position.quantity > 1 && ` · stokta ${position.quantity}`}
+        </span>
+        <span className="lotRow__price num">{tl(quote.gross)}</span>
+      </div>
+
+      <div className="lotRow__terms">
+        {quote.grams.toFixed(2)} gr · maliyet {tl(quote.costBasis)} ·{' '}
+        <span className={profit >= 0 ? 'statLine__value--positive' : 'statLine__value--negative'}>
+          {tlSigned(profit)}
+        </span>
+      </div>
+
+      {/* §4.2 "her işlemde mutlak garanti değildir" — fark ölçülür ve söylenir. */}
+      <div className="lotRow__terms">{quote.rationale}</div>
+
+      <div className="lotRow__controls">
+        {position.quantity > 1 && (
+          <label className="lotRow__field">
+            <span>Adet</span>
+            <input
+              type="number"
+              min={1}
+              max={position.quantity}
+              value={qty}
+              onChange={(e) => setQuantity(Number(e.target.value))}
+            />
+          </label>
+        )}
+        <label className="lotRow__field">
+          <span>Dilim</span>
+          <input
+            type="number"
+            min={1}
+            max={Math.max(1, qty)}
+            value={slices}
+            onChange={(e) => setSlices(Number(e.target.value))}
+          />
+        </label>
+        {suggested > slices && (
+          <button type="button" className="miniBtn" onClick={() => setSlices(suggested)}>
+            {suggested} dilim öner
+          </button>
+        )}
+        <button
+          type="button"
+          className="lotRow__buy"
+          onClick={() => s.liquidateToWholesaler(position.itemId, qty, slices)}
+        >
+          Bozdur
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Toptancının sattığı standart lot havuzu — §4'ün ürün havuzuyla aynı küme. */
+const SUPPLY_TEMPLATES = ['gram_gold_1', 'quarter_gold', 'half_gold', 'full_gold'];
+/** Lot fiyatlaması ürünün kimliğine değil şablonuna bağlıdır; sabit sonda yeter. */
+const LOT_PROBE_INDEX = 424_242;
 
 // ---------------------------------------------------------------------------
 // Piyasa ekranı (GDD 23.16)

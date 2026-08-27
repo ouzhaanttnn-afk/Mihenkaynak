@@ -11,7 +11,16 @@
 
 import { create } from 'zustand';
 
-import { DAY, SERVICE, START, XP, PATIENCE_PER_TEST_SECOND, type SpeedStep } from '@domain/balance';
+import {
+  DAY,
+  PURCHASE,
+  SERVICE,
+  START,
+  XP,
+  PATIENCE_PER_TEST_SECOND,
+  type SpeedStep,
+} from '@domain/balance';
+import { spawnItem } from '@domain/item-spawn';
 import { createMarketForDay, stepMarketIntraday } from '@domain/market';
 import { nextCustomerDelay, spawnCustomer } from '@domain/customer-spawn';
 import {
@@ -30,6 +39,14 @@ import {
   repricePackage,
 } from '@domain/purchase';
 import { CHANNEL_LABEL_TR, gramsFor } from '@domain/channels';
+import {
+  accrueOverdue,
+  financeTerms,
+  openInvoice,
+  quoteLiquidation,
+  repayInvoice,
+  supplyLots,
+} from '@domain/wholesaler';
 import { applyMove, createSession, effectiveReservation, isTerminal } from '@domain/negotiation';
 import { applyTest, estimateBand, initialKnowledge, trueValue } from '@domain/valuation';
 import {
@@ -178,6 +195,11 @@ export interface GameState {
   submitOffer: (amount: Money) => void;
   negotiationMove: (move: NegotiationMove) => void;
   finishDeal: () => void;
+
+  // --- Toptancı (Addendum §4.2, §7) ---
+  liquidateToWholesaler: (itemId: string, quantity: number, sliceCount: number) => void;
+  buyFromWholesaler: (templateId: string, quantity: number) => void;
+  repaySupplier: (invoiceId: string) => void;
 
   advanceDay: () => void;
   notify: (text: string, tone: ToastMessage['tone']) => void;
@@ -833,6 +855,233 @@ export const useGame = create<GameState>((set, get) => {
       set({ activeDeal: null, activeCustomer: null, customerMessage: '', lastReview: null });
     },
 
+    // -----------------------------------------------------------------------
+    // Toptancı — §4.2 toplu bozma, §7 finansman
+    // -----------------------------------------------------------------------
+
+    /**
+     * §4.2 — sarrafiyeyi toptancıya bozar. Ödeme aynı gün; bu kanalın satış
+     * gerekçesi zaten hız ve kesinliktir.
+     */
+    liquidateToWholesaler: (itemId, quantity, sliceCount) => {
+      const s = get();
+      const quote = quoteLiquidation(
+        { itemId, quantity },
+        s.items,
+        s.inventory,
+        s.market,
+        s.store,
+        sliceCount,
+      );
+      if (!quote) return;
+
+      const item = s.items[itemId];
+      if (!item) return;
+
+      const tx: SettlementTransaction = {
+        // Gün + kalem + adet bazlı kimlik: aynı bozmayı çift tap ikinci kez
+        // uygulamaz (GDD 22.1).
+        txId: `wsale_${s.market.day}_${itemId}_${quote.quantity}_${s.ledger.transactions.length}`,
+        dealId: `wsale_${s.market.day}_${itemId}`,
+        day: s.market.day,
+        cashDelta: quote.gross,
+        itemsIn: [],
+        itemsOut: [{ itemId, quantity: quote.quantity }],
+        trustDelta: 0,
+        reputationDelta: 0,
+        xpDelta: 0,
+        label: `${quote.quantity} adet ${item.displayName} bozma`,
+      };
+
+      const outcome = applyTransaction(economyOf(s), tx);
+      if (!outcome.applied) return;
+
+      // GDD 34.5 — kâr SATIŞTA doğar; bozma da bir satıştır.
+      const ledger = recordDeal(
+        realizeProfit(outcome.state.ledger, quote.gross, quote.costBasis),
+        {
+          dealId: tx.dealId + `_${s.ledger.deals.length}`,
+          customerId: 'wholesaler',
+          lineIds: [],
+          itemIds: [itemId],
+          side: 'sell',
+          day: s.market.day,
+          clockMinutes: s.market.clockMinutes,
+          testsUsed: [],
+          estimateBand: { min: quote.gross, max: quote.gross },
+          confidence: 'high',
+          actualValue: quote.gross,
+          offerHistory: [],
+          finalState: 'ACCEPTED',
+          movesUsed: [],
+          thesisAtDeal: 'wholesale',
+          price: quote.gross,
+          costBasis: quote.costBasis,
+          realizedProfit: quote.gross - quote.costBasis,
+          units: quote.quantity,
+          grams: quote.grams,
+          channel: 'wholesaler',
+          isBulk: quote.quantity >= PURCHASE.bulkChannelThreshold,
+          trustDelta: 0,
+          reputationDelta: 0,
+          reviewData: {
+            missedSignals: [],
+            keyDecisionPoint: `${quote.slices.length} dilimde bozuldu.`,
+            alternativeChannelNote: quote.rationale,
+          },
+        },
+      );
+
+      const revalued = revalueInventory(
+        outcome.state.inventory,
+        outcome.state.items,
+        thesisContext(get()),
+      );
+      set(economyToState({ ...outcome.state, inventory: revalued, ledger }));
+
+      const profit = quote.gross - quote.costBasis;
+      pushToast(
+        set,
+        get,
+        `${quote.quantity} adet bozuldu · ${fmt(quote.gross)} · ${fmt(profit)} kâr`,
+        profit >= 0 ? 'positive' : 'negative',
+      );
+    },
+
+    /**
+     * §7 — toptancıdan mal alır. Nakit yetmezse kalanı VADEYE yazılır;
+     * koşullar işlem öncesi hesaplanır ve burada aynen uygulanır.
+     */
+    buyFromWholesaler: (templateId, quantity) => {
+      const s = get();
+      const probe = spawnItem(s.seed, s.spawnCounter * 100 + 7, templateId);
+      const lot = supplyLots(s.market, s.store, [probe])[0];
+      if (!lot) return;
+
+      const units = Math.max(1, Math.min(lot.quantity, Math.round(quantity)));
+      const amount = lot.unitPrice * units;
+      const terms = financeTerms(s.store, amount, s.market.day);
+
+      if (terms.blockedReason) {
+        pushToast(set, get, terms.blockedReason, 'negative');
+        return;
+      }
+
+      const invoiceId = `inv_${s.market.day}_${templateId}_${s.store.supplier.openInvoices.length}`;
+
+      // Her adet ayrı bir kalem olarak girer ve yığın kuralı onları
+      // birleştirir (GDD 22.1). Böylece "40 adet" tek pozisyon olur ama
+      // maliyet tabanı gerçek birim maliyettir.
+      const itemsIn: ItemInstance[] = Array.from({ length: units }, (_, i) => ({
+        ...spawnItem(s.seed, s.spawnCounter * 100 + 7, templateId),
+        id: `${probe.id}_${s.market.day}_${i}`,
+        // Vade farkı maliyet tabanına BİNER: finanse edilmiş malın gerçek
+        // maliyeti daha yüksektir ve kâr hesabı bunu görmek zorundadır.
+        buyCost: Math.round((amount + terms.financeCost) / units),
+        acquiredDay: s.market.day,
+        location: 'backStock' as const,
+      }));
+
+      const tx: SettlementTransaction = {
+        txId: `wbuy_${invoiceId}`,
+        dealId: `wbuy_${invoiceId}`,
+        day: s.market.day,
+        // Vadeye yazılan kısım bugün kasadan ÇIKMAZ.
+        cashDelta: -terms.fromCash,
+        itemsIn,
+        itemsOut: [],
+        trustDelta: 0,
+        reputationDelta: 0,
+        xpDelta: 0,
+        label: `${units} adet ${lot.displayName} tedariki`,
+      };
+
+      const outcome = applyTransaction(economyOf(s), tx);
+      if (!outcome.applied) {
+        pushToast(set, get, outcome.reason ?? 'Tedarik uygulanamadı.', 'negative');
+        return;
+      }
+
+      const supplier =
+        terms.totalDue > 0
+          ? openInvoice(outcome.state.store.supplier, {
+              id: invoiceId,
+              amount: terms.totalDue,
+              dueDay: terms.dueDay,
+            })
+          : outcome.state.store.supplier;
+
+      const revalued = revalueInventory(
+        outcome.state.inventory,
+        outcome.state.items,
+        thesisContext(get()),
+      );
+      set(
+        economyToState({
+          ...outcome.state,
+          store: { ...outcome.state.store, supplier },
+          inventory: revalued,
+        }),
+      );
+
+      pushToast(
+        set,
+        get,
+        terms.financed > 0
+          ? `${units} adet alındı · ${fmt(terms.fromCash)} peşin, ${fmt(terms.totalDue)} ${terms.dueDay}. güne vadeli`
+          : `${units} adet alındı · ${fmt(amount)} peşin`,
+        'info',
+      );
+    },
+
+    /** §7 "Kullanılan limit, geri ödeme ile serbestleşir." */
+    repaySupplier: (invoiceId) => {
+      const s = get();
+      const invoice = s.store.supplier.openInvoices.find((i) => i.id === invoiceId);
+      if (!invoice) return;
+      if (invoice.amount > s.store.cash) {
+        pushToast(set, get, 'Vadeyi kapatacak nakit yok.', 'negative');
+        return;
+      }
+
+      const tx: SettlementTransaction = {
+        txId: `repay_${invoiceId}`,
+        dealId: `repay_${invoiceId}`,
+        day: s.market.day,
+        cashDelta: -invoice.amount,
+        itemsIn: [],
+        itemsOut: [],
+        trustDelta: 0,
+        reputationDelta: 0,
+        xpDelta: 0,
+        label: 'Toptancı vadesi ödemesi',
+      };
+
+      const outcome = applyTransaction(economyOf(s), tx);
+      if (!outcome.applied) return;
+
+      const { supplier, onTime } = repayInvoice(
+        outcome.state.store.supplier,
+        invoiceId,
+        s.market.day,
+      );
+      set(
+        economyToState({
+          ...outcome.state,
+          store: { ...outcome.state.store, supplier },
+        }),
+      );
+
+      pushToast(
+        set,
+        get,
+        onTime
+          ? `Vade kapandı · güven ${supplier.trust}/100`
+          : `Vade GECİKMELİ kapandı · güven ${supplier.trust}/100`,
+        onTime ? 'positive' : 'negative',
+      );
+    },
+
     advanceDay: () => {
       const s = get();
       const { state: closed, report } = closeDay(economyOf(s), s.market.day);
@@ -847,8 +1096,14 @@ export const useGame = create<GameState>((set, get) => {
       // gelir yalnız teslimde doğar (GDD 17.4 pasif gelir yasağı).
       const jobs = advanceJobsOneDay(s.jobs);
 
+      // §7 "Gecikme; maliyet, limit, güven veya erişim üzerinde sonuç
+      // doğurur." Gecikme yükü borcun kendisine biner ve gün raporunda
+      // görünür — geriye dönük veya gizli bir kalem açılmaz.
+      const overdue = accrueOverdue(closed.store.supplier, nextDay);
+      const store = { ...closed.store, supplier: overdue.supplier };
+
       set({
-        ...economyToState({ ...closed, inventory }),
+        ...economyToState({ ...closed, store, inventory }),
         ledger: { ...closed.ledger, realizedProfitToday: 0 },
         jobs,
         market,
@@ -867,6 +1122,15 @@ export const useGame = create<GameState>((set, get) => {
         `Gün ${report.day} kapandı · Gerçekleşmiş kâr ${fmt(report.realizedTradeProfit)} · Gider ${fmt(report.overhead)}`,
         report.netCashChange >= 0 ? 'positive' : 'negative',
       );
+
+      if (overdue.penalty > 0) {
+        pushToast(
+          set,
+          get,
+          `${overdue.overdueIds.length} vade gecikti · ${fmt(overdue.penalty)} gecikme yükü`,
+          'negative',
+        );
+      }
 
       const ready = jobs.filter((j) => j.result === 'success' || j.result === 'failed').length;
       if (ready > 0) {

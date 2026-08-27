@@ -102,8 +102,14 @@
 
 .chip {
   flex: 0 0 auto;
+  /*
+   * GDD 23.22 — dokunma hedefi 44 px altına inmez. Görsel yükseklik 30 px
+   * kalıyor (filtre şeridi kalabalıklaşmasın) ama dokunma alanı dikey
+   * padding ile 44 px'e çıkıyor: göze küçük, parmağa doğru.
+   */
   height: 30px;
-  padding: 0 var(--sp-3);
+  box-sizing: content-box;
+  padding: 7px var(--sp-3);
   border-radius: var(--r-pill);
   border: 1px solid var(--line-light-strong);
   background: var(--stone-50);
@@ -450,4 +456,113 @@
 .row__qty {
   color: var(--brass-400);
   font-weight: var(--fw-semibold);
+}
+
+/* ===========================================================================
+   TOPTANCI HESABI — Addendum §4.2 (toplu bozma) ve §7 (finansman)
+   =========================================================================== */
+
+.emptyNote {
+  padding: var(--sp-3);
+  font-size: var(--fs-caption);
+  color: var(--text-light-3);
+}
+
+.lotRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line-light);
+}
+
+.lotRow:last-child {
+  border-bottom: none;
+}
+
+.lotRow__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.lotRow__name {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lotRow__price {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+}
+
+/* §7 — koşullar işlem ÖNCESİ okunur; bu satır gizlenemez. */
+.lotRow__terms {
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+  line-height: 1.4;
+}
+
+.lotRow__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: var(--sp-1);
+}
+
+.lotRow__field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+}
+
+.lotRow__field input {
+  width: 58px;
+  /* GDD 23.22 — dokunma hedefi 44 px altına inmez. */
+  min-height: 44px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-light);
+  border-radius: var(--r-sm);
+  background: var(--stone-50);
+  color: var(--text-light-1);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.lotRow__buy,
+.miniBtn {
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--brass-500);
+  border-radius: var(--r-sm);
+  background: rgba(201, 160, 74, 0.16);
+  color: var(--brass-700);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.lotRow__buy {
+  margin-top: var(--sp-1);
+  align-self: flex-start;
+}
+
+.lotRow__buy:disabled,
+.miniBtn:disabled {
+  border-color: var(--line-light);
+  background: none;
+  color: var(--text-light-3);
+  cursor: default;
 }

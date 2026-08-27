@@ -294,6 +294,48 @@ export const PURCHASE = {
   },
 } as const;
 
+/**
+ * Ekonomi Ara Düzeltmesi §7 — TOPTANCI FİNANSMANI.
+ *
+ * DEĞİŞMEZ: "Finansman, SINIRSIZ STOK ve RİSKSİZ ARBİTRAJ üretmemeli."
+ * Bu yüzden vade farkı hiçbir güven seviyesinde sıfırlanmaz (`minRate`) ve
+ * limit güvenle büyüse de kendi tavanını taşır.
+ */
+export const WHOLESALE = {
+  /** Vade farkı taban oranı (dönem başına). */
+  baseRate: 0.028,
+  /** Güvenin vade farkından düşürebileceği azami pay. */
+  rateTrustRelief: 0.018,
+  /** Vade farkı bunun altına ASLA inmez — bedava kredi arbitraj kapısıdır. */
+  minRate: 0.008,
+
+  /** Sıfır güvende bile limitin bu payı kullanılabilir. */
+  limitFloorShare: 0.35,
+  /** Semt itibarının limite katkı ağırlığı. */
+  reputationLimitWeight: 0.2,
+  /** Güvenin vadeye ekleyebileceği azami gün. */
+  termBonusDays: 4,
+
+  /** Zamanında ödemenin güven kazancı. */
+  onTimeTrustGain: 4,
+  /** Geciken ödemenin güven cezası. */
+  lateTrustPenalty: 9,
+  /** Zamanında ödemede limit büyüme katsayısı. */
+  onTimeLimitGrowth: 1.06,
+  /** Gecikmede limit daralma katsayısı. */
+  lateLimitCut: 0.82,
+  /** Limit bunun altına inmez. */
+  minLimit: 10_000,
+
+  /** Gecikmiş borcun günlük yükü. */
+  overduePerDayRate: 0.012,
+  /** Gecikmenin günlük güven aşınması. */
+  overdueDailyTrustPenalty: 3,
+
+  /** Bir lotun kanal kapasitesine oranı — toptancı sınırsız mal satmaz. */
+  lotShareOfCapacity: 0.18,
+} as const;
+
 export const CHANNEL = {
   /**
    * Tezgâh müşterisi: dükkânın fiyatı BELİRLEDİĞİ kanal (makerBias +1).
