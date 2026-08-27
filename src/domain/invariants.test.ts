@@ -14,7 +14,7 @@ import { createMarketForDay, stepMarketIntraday } from './market';
 import { spawnItem } from './item-spawn';
 import { spawnCustomer } from './customer-spawn';
 import { applyTest, estimateBand, initialKnowledge, trueValue } from './valuation';
-import { thesisFor, type ThesisContext } from './thesis';
+import { revalueInventory, thesisFor, type ThesisContext } from './thesis';
 import { applyMove, createSession, effectiveReservation } from './negotiation';
 import {
   applyTransaction,
@@ -573,6 +573,75 @@ describe('GDD 34.5 — Stok potansiyeli gerçekleşmiş kâra eklenmez', () => {
     // Ama gerçekleşmiş kâr hâlâ sıfır — satış olmadı.
     expect(wealth.realizedProfitToday).toBe(0);
     expect(economy.ledger.realizedProfitTotal).toBe(0);
+  });
+});
+
+// ===========================================================================
+// GDD 14.3 / 15.1 — Stok yeniden değerleme
+// ===========================================================================
+
+describe('GDD 14.3 — Stok bugünkü piyasaya göre yeniden değerlenir', () => {
+  function stocked() {
+    const item = spawnItem(SEED, 61, 'bracelet_22k_thin');
+    const economy = makeEconomy();
+    return applyTransaction(economy, {
+      txId: 'buy_reval',
+      dealId: 'd',
+      day: 1,
+      cashDelta: -20_000,
+      itemsIn: [{ ...item, buyCost: 20_000, acquiredDay: 1, location: 'backStock' }],
+      itemsOut: [],
+      trustDelta: 0,
+      reputationDelta: 0,
+      xpDelta: 0,
+      label: 'alım',
+    }).state;
+  }
+
+  it('currentValue alış maliyetinde donup kalmaz', () => {
+    const economy = stocked();
+    expect(economy.inventory[0]!.currentValue).toBe(20_000);
+
+    const revalued = revalueInventory(economy.inventory, economy.items, thesisCtx());
+    expect(revalued[0]!.currentValue).not.toBe(20_000);
+    expect(revalued[0]!.currentValue).toBeGreaterThan(0);
+  });
+
+  it('her kalem için çıkış kanalı değerleri doldurulur', () => {
+    const economy = stocked();
+    const revalued = revalueInventory(economy.inventory, economy.items, thesisCtx());
+    const exits = revalued[0]!.expectedExitValues;
+    expect(Object.keys(exits).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('yeniden değerleme gerçekleşmiş kâra DOKUNMAZ (GDD 34.5)', () => {
+    const economy = stocked();
+    const revalued = revalueInventory(economy.inventory, economy.items, thesisCtx());
+    const after: EconomyState = { ...economy, inventory: revalued };
+
+    expect(after.ledger.realizedProfitTotal).toBe(0);
+    expect(after.ledger.realizedProfitToday).toBe(0);
+    // Stok potansiyeli değişir, gerçekleşmiş kâr değişmez.
+    expect(summarizeWealth(after).stockPotential).not.toBe(0);
+    expect(summarizeWealth(after).realizedProfitToday).toBe(0);
+  });
+
+  it('spot yükselince stok değeri de yükselir', () => {
+    const economy = stocked();
+    const day1 = createMarketForDay(SEED, 1);
+    const richer = { ...day1, goldSpot: day1.goldSpot * 1.1 };
+
+    const a = revalueInventory(economy.inventory, economy.items, { ...thesisCtx(), market: day1 });
+    const b = revalueInventory(economy.inventory, economy.items, { ...thesisCtx(), market: richer });
+
+    expect(b[0]!.currentValue).toBeGreaterThan(a[0]!.currentValue);
+  });
+
+  it('yeniden değerleme deterministiktir', () => {
+    const economy = stocked();
+    const a = revalueInventory(economy.inventory, economy.items, thesisCtx());
+    const b = revalueInventory(economy.inventory, economy.items, thesisCtx());
+    expect(b).toEqual(a);
   });
 });
 

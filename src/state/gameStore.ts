@@ -16,7 +16,12 @@ import { createMarketForDay, stepMarketIntraday } from '@domain/market';
 import { nextCustomerDelay, spawnCustomer } from '@domain/customer-spawn';
 import { applyMove, createSession, effectiveReservation, isTerminal } from '@domain/negotiation';
 import { applyTest, estimateBand, initialKnowledge, trueValue } from '@domain/valuation';
-import { effectiveCeiling, thesisFor, type ThesisContext } from '@domain/thesis';
+import {
+  effectiveCeiling,
+  revalueInventory,
+  thesisFor,
+  type ThesisContext,
+} from '@domain/thesis';
 import {
   applyTransaction,
   closeDay,
@@ -112,6 +117,7 @@ export interface GameState {
   finishDeal: () => void;
 
   advanceDay: () => void;
+  notify: (text: string, tone: ToastMessage['tone']) => void;
   dismissToast: (id: string) => void;
 }
 
@@ -230,7 +236,11 @@ export const useGame = create<GameState>((set, get) => {
           clock + nextCustomerDelay(s.seed, spawnCounter, DAY.customerIntervalMinutes, rushActive);
       }
 
-      set({ market, queue, nextCustomerAtMinutes, spawnCounter });
+      // GDD 14.3 / 15.1 — stok değeri bugünkü piyasaya göre canlı kalır.
+      // Bu YALNIZ currentValue yazar; gerçekleşmiş kâra dokunmaz (GDD 34.5).
+      const inventory = revalueInventory(s.inventory, s.items, thesisContext({ ...s, market }));
+
+      set({ market, inventory, queue, nextCustomerAtMinutes, spawnCounter });
     },
 
     // -----------------------------------------------------------------------
@@ -459,8 +469,9 @@ export const useGame = create<GameState>((set, get) => {
       const nextDay = s.market.day + 1;
       const market = createMarketForDay(s.seed, nextDay, s.market);
 
-      // Stok yaşlanması (GDD 15.3).
-      const inventory = closed.inventory.map((p) => ({ ...p, age: p.age + 1 }));
+      // Stok yaşlanması (GDD 15.3) + yeni günün piyasasına göre yeniden değerleme.
+      const aged = closed.inventory.map((p) => ({ ...p, age: p.age + 1 }));
+      const inventory = revalueInventory(aged, closed.items, thesisContext({ ...s, market }));
 
       set({
         ...economyToState({ ...closed, inventory }),
@@ -480,6 +491,8 @@ export const useGame = create<GameState>((set, get) => {
         report.netCashChange >= 0 ? 'positive' : 'negative',
       );
     },
+
+    notify: (text, tone) => pushToast(set, get, text, tone),
 
     dismissToast: (id) => set({ toasts: get().toasts.filter((t) => t.id !== id) }),
   };
@@ -600,7 +613,8 @@ function settleLine(
 
   economy = { ...economy, ledger: recordDeal(economy.ledger, record) };
 
-  set({ ...economyToState(economy), lastReview: review });
+  const revalued = revalueInventory(economy.inventory, economy.items, thesisContext(get()));
+  set({ ...economyToState({ ...economy, inventory: revalued }), lastReview: review });
 }
 
 // ---------------------------------------------------------------------------
@@ -619,19 +633,28 @@ export function activeLine(deal: ActiveDeal): DealLine | undefined {
   return deal.lines.find((l) => l.lineId === deal.activeLineId);
 }
 
-/** Bir kalemin band + tez seçeneklerini güncel bilgiye göre tazeler. */
-function refreshLine(s: GameState, line: DealLine): DealLine {
-  const item = s.items[line.itemId];
-  if (!item) return line;
-
-  const band = estimateBand(item, s.market, line.knowledge);
-  const ctx: ThesisContext = {
+/**
+ * Tez bağlamı — oyuncunun kapasitesi ve likiditesi hangi kanalın rasyonel
+ * olduğunu değiştirir (GDD 6.4). Tek yerde üretilir ki değerleme ile stok
+ * yeniden değerlemesi aynı varsayımları kullansın.
+ */
+function thesisContext(s: Pick<GameState, 'store' | 'market' | 'inventory'>): ThesisContext {
+  return {
     store: s.store,
     market: s.market,
     displayUsed: s.inventory.filter((p) => p.location === 'display').length,
     workshopUsed: s.inventory.filter((p) => p.location === 'workshop').length,
     liquidityRatio: liquidityRatio(s.store.cash, s.inventory),
   };
+}
+
+/** Bir kalemin band + tez seçeneklerini güncel bilgiye göre tazeler. */
+function refreshLine(s: GameState, line: DealLine): DealLine {
+  const item = s.items[line.itemId];
+  if (!item) return line;
+
+  const band = estimateBand(item, s.market, line.knowledge);
+  const ctx = thesisContext(s);
   const options = thesisFor(item, band, ctx);
 
   return {

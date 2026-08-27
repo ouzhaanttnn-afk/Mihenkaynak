@@ -17,9 +17,11 @@
  */
 
 import { BUY_CEILING, CONDITION_DEDUCTION, CONDITION_ORDER, EXIT_CHANNEL } from './balance';
+import { trueBreakdown } from './valuation';
 import type {
   ConditionGrade,
   ExitChannel,
+  InventoryPosition,
   ItemInstance,
   LiquidityLevel,
   MarketState,
@@ -309,6 +311,67 @@ export function effectiveCeiling(options: ThesisOption[], selected: ExitChannel 
     if (found) return found.buyCeiling;
   }
   return options[0]?.buyCeiling ?? 0;
+}
+
+/**
+ * Stok kalemlerini bugünkü piyasaya göre yeniden değerler.
+ *
+ * GDD 14.3 — "Tahmini stok değeri: bugünkü bilinen koşullarda muhtemel
+ * satış/likidasyon değeri." Bu, adil değer değil GERÇEKLEŞTİRİLEBİLİR değerdir:
+ * seçili tezin beklenen net getirisi kullanılır, tez yoksa mevcut en iyi kanal.
+ * Böylece GDD 8.3'teki "stok ekranında her kalemin neden tutulduğu" bilgisi
+ * ekonomik bir sayıya bağlanır.
+ *
+ * DEĞİŞMEZ (GDD 34.5): Bu fonksiyon yalnız `currentValue` yazar. Gerçekleşmiş
+ * kâra hiçbir şey eklemez — stok potansiyeli realize değildir.
+ */
+export function revalueInventory(
+  inventory: InventoryPosition[],
+  items: Record<string, ItemInstance>,
+  ctx: ThesisContext,
+): InventoryPosition[] {
+  return inventory.map((position) => {
+    const item = items[position.itemId];
+    if (!item) return position;
+
+    // Stoktaki ürünün gerçeği artık dükkânın elindedir; oyuncu onu serbestçe
+    // inceleyebilir. Bu yüzden mark, tahmin bandı değil gerçek değer üzerinden
+    // kurulan kanal ekonomisidir.
+    const band = fullKnowledgeBand(item, ctx);
+    const options = thesisFor(item, band, ctx);
+    if (options.length === 0) return position;
+
+    const selected = position.thesis
+      ? options.find((o) => o.channel === position.thesis)
+      : undefined;
+    const mark = selected ?? options.reduce((a, b) => (b.expectedNet > a.expectedNet ? b : a));
+
+    const expectedExitValues: Partial<Record<ExitChannel, Money>> = {};
+    for (const option of options) expectedExitValues[option.channel] = option.expectedNet;
+
+    return {
+      ...position,
+      currentValue: mark.expectedNet,
+      expectedExitValues,
+    };
+  });
+}
+
+/** Sahip olunan üründe belirsizlik yoktur; band gerçek değere oturur. */
+function fullKnowledgeBand(item: ItemInstance, ctx: ThesisContext): ValuationBand {
+  const b = trueBreakdown(item, ctx.market);
+  const value = Math.max(
+    0,
+    b.metal + b.stone + b.craftsmanship + b.rarityPremium + b.riskDeduction,
+  );
+  return {
+    min: value,
+    max: value,
+    mid: value,
+    confidence: 'high',
+    relativeWidth: 0,
+    breakdown: b,
+  };
 }
 
 function demandLevel(item: ItemInstance, ctx: ThesisContext): 'cold' | 'steady' | 'hot' {

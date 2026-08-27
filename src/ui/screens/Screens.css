@@ -1,0 +1,447 @@
+/*
+ * MIHENKAYNAK — İkincil kök ekranlar (Stok / Atölye / İşletme)
+ * Kaynak: GDD 23.15 Stok, 23.18 Atölye, 23.19 İşletme.
+ *
+ * GDD 23.22: "Stok / Piyasa / Toptancı / Atölye / İşletme: dikey scroll
+ * serbest; kritik üst filtre/özet sticky olabilir."
+ * GDD 23.15: "Üst başlık: stok değeri + likiditeye bağlı kısa özet; BÜYÜK
+ * DASHBOARD KARTI YOK."
+ */
+
+.page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--stone-100);
+  overflow: hidden;
+}
+
+.page__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 var(--gutter) var(--sp-6);
+}
+
+/* Sticky üst başlık — kısa özet satırı, dev kart değil. */
+.pageHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--stone-100);
+  padding: var(--sp-4) var(--gutter) var(--sp-3);
+  border-bottom: 1px solid var(--line-light);
+}
+
+.pageHead__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+  line-height: var(--lh-tight);
+}
+
+.pageHead__sub {
+  margin-top: 2px;
+  font-size: var(--fs-caption);
+  color: var(--text-light-3);
+}
+
+/* Kompakt özet satırı — kart yığını yerine tek satırda üç metrik. */
+.summaryRow {
+  display: flex;
+  gap: var(--sp-4);
+  margin-top: var(--sp-3);
+}
+
+.summaryRow__item {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.summaryRow__label {
+  display: block;
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.summaryRow__value {
+  display: block;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
+  color: var(--text-light-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summaryRow__value--positive { color: var(--positive); }
+.summaryRow__value--negative { color: var(--negative); }
+.summaryRow__value--warning { color: var(--warning); }
+
+/* Sticky filtre rayı (GDD 23.15) */
+.filterRail {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-3) 0;
+  background: var(--stone-100);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.filterRail::-webkit-scrollbar { display: none; }
+
+.chip {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-light-strong);
+  background: var(--stone-50);
+  color: var(--text-light-2);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.chip--active {
+  background: var(--ink-800);
+  border-color: var(--ink-800);
+  color: var(--brass-300);
+}
+
+.chip__count {
+  font-size: var(--fs-micro);
+  opacity: 0.75;
+}
+
+/* Liste satırı — GDD 23.15 "dikey liste; ürün adı, ayar/gram, maliyet,
+   bugünkü değer, yaş, tez/çıkış etiketi" */
+.rowList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--stone-50);
+  border: 1px solid var(--line-light);
+  text-align: left;
+  width: 100%;
+}
+
+.row__thumb {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-sm);
+  background: var(--ink-800);
+  color: var(--brass-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.row__title {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row__meta {
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+  margin-top: 1px;
+}
+
+.row__figures {
+  display: flex;
+  gap: var(--sp-4);
+  margin-top: var(--sp-2);
+}
+
+.figure {
+  min-width: 0;
+}
+
+.figure__label {
+  display: block;
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+  white-space: nowrap;
+}
+
+.figure__value {
+  display: block;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+  white-space: nowrap;
+}
+
+.figure__value--positive { color: var(--positive); }
+.figure__value--negative { color: var(--negative); }
+
+/* Satır uyarısı — tek satır durum (GDD 23.15) */
+.rowAlert {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--warning);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* Tez / çıkış etiketi */
+.tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  background: rgba(201, 160, 74, 0.16);
+  color: var(--brass-700);
+  border: 1px solid rgba(201, 160, 74, 0.35);
+}
+
+.tag--neutral {
+  background: rgba(110, 106, 99, 0.14);
+  color: var(--text-light-3);
+  border-color: var(--line-light-strong);
+}
+
+/* Menü grubu — İşletme ekranı (GDD 23.19: "büyük kartlar yerine kısa özet
+   satırları ve menü grupları") */
+.group {
+  margin-top: var(--sp-5);
+}
+
+.group__title {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-light-3);
+  font-weight: var(--fw-semibold);
+  margin-bottom: var(--sp-2);
+}
+
+.group__body {
+  border-radius: var(--r-md);
+  background: var(--stone-50);
+  border: 1px solid var(--line-light);
+  overflow: hidden;
+}
+
+.statLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--card-pad);
+  border-bottom: 1px solid var(--line-light);
+  font-size: var(--fs-caption);
+}
+
+.statLine:last-child { border-bottom: none; }
+
+.statLine__label {
+  color: var(--text-light-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.statLine__value {
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+}
+
+.statLine__value--positive { color: var(--positive); }
+.statLine__value--negative { color: var(--negative); }
+.statLine__value--warning { color: var(--warning); }
+
+.menuLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-3) var(--card-pad);
+  border-bottom: 1px solid var(--line-light);
+  min-height: var(--touch-min);
+  text-align: left;
+}
+
+.menuLine:last-child { border-bottom: none; }
+
+.menuLine__icon {
+  flex: 0 0 auto;
+  color: var(--brass-600);
+  display: inline-flex;
+}
+
+.menuLine__body { flex: 1 1 auto; min-width: 0; }
+
+.menuLine__title {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+  color: var(--text-light-1);
+}
+
+.menuLine__sub {
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+}
+
+.menuLine__chevron {
+  flex: 0 0 auto;
+  color: var(--stone-400);
+  display: inline-flex;
+}
+
+/* Boş durum */
+.empty {
+  padding: var(--sp-7) var(--sp-4);
+  text-align: center;
+  color: var(--text-light-3);
+}
+
+.empty__icon {
+  color: var(--stone-400);
+  margin-bottom: var(--sp-3);
+}
+
+.empty__title {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-2);
+  margin-bottom: var(--sp-1);
+}
+
+.empty__text {
+  font-size: var(--fs-caption);
+  line-height: 1.4;
+  max-width: 30ch;
+  margin: 0 auto;
+}
+
+/* Likidite göstergesi */
+.liquidityBar {
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: var(--stone-300);
+  overflow: hidden;
+  margin-top: var(--sp-2);
+}
+
+.liquidityBar__fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  transition: width var(--t-normal) var(--ease-standard);
+}
+
+.liquidityBar__fill--red { background: var(--negative); }
+.liquidityBar__fill--caution { background: var(--warning); }
+.liquidityBar__fill--healthy { background: var(--positive); }
+.liquidityBar__fill--veryLiquid { background: var(--brass-500); }
+
+/* Piyasa / olay bilgi bloğu */
+.eventCard {
+  margin-top: var(--sp-3);
+  padding: var(--card-pad-dense) var(--card-pad);
+  border-radius: var(--r-md);
+  background: var(--stone-50);
+  border: 1px solid var(--line-light);
+  border-left: 3px solid var(--warning);
+}
+
+.eventCard__title {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+}
+
+.eventCard__text {
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+.eventCard__list {
+  margin-top: var(--sp-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+/* Piyasa varlık satırı */
+.assetRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--card-pad);
+  border-bottom: 1px solid var(--line-light);
+}
+
+.assetRow:last-child { border-bottom: none; }
+
+.assetRow__name {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+  color: var(--text-light-1);
+}
+
+.assetRow__unit {
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+}
+
+.assetRow__right {
+  text-align: right;
+}
+
+.assetRow__price {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+}
+
+.assetRow__change {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+}
+
+.assetRow__change--up { color: var(--positive); }
+.assetRow__change--down { color: var(--negative); }
+.assetRow__change--flat { color: var(--text-light-3); }
+
+/* Mini trend çizgisi */
+.spark {
+  flex: 0 0 auto;
+  color: var(--stone-400);
+}

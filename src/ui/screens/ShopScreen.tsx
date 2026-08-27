@@ -1,0 +1,679 @@
+/**
+ * DÜKKAN — ana aktif müşteri ekranı
+ * Kaynak: GDD 23.9.3 wireframe, 23.10 "Dükkan Ekranı – Durumlar",
+ *         23.11 Araç Rayı, 23.12 Karar Dock'u.
+ *
+ * BAĞLAYICI KURALLAR (GDD 23.24 "Claude / Uygulama Ajanı İçin"):
+ *  ✔ Tek baskın İşlem Masası — dashboard kartları yığını yok.
+ *  ✔ Aktif müşteride dikey scroll yok; CTA scroll altında kalmaz.
+ *  ✔ Test araçları tek Bağlamsal Araç Rayı'nda; sayfalara dağılmaz.
+ *  ✔ İncele/Değerle/Tez/Pazarlık ayrı tam ekran değil, aynı Workbench state'i.
+ *  ✔ Karşı teklif yeni modal/sayfa açmaz.
+ *  ✔ Rutin işlemde confirmation popup yok.
+ *  ✔ İkon tek başına anlam taşımaz; her araçta metin etiketi var.
+ */
+
+import { useEffect, useMemo, useState } from 'react';
+
+import { DAY, NEGOTIATION } from '@domain/balance';
+import { effectiveCeiling, suggestedChannel } from '@domain/thesis';
+import { isTerminal } from '@domain/negotiation';
+import { liquidityRatio } from '@domain/settlement';
+import { toolsForLevel } from '@data/tools';
+import { activeLine, canEnterStage, selectors, useGame } from '@state/gameStore';
+
+import { CustomerStrip } from '@ui/shell/CustomerStrip';
+import { DecisionDock } from '@ui/shell/DecisionDock';
+import { MarketStrip } from '@ui/shell/MarketStrip';
+import { StageStrip } from '@ui/shell/StageStrip';
+import { StatusStrip } from '@ui/shell/StatusStrip';
+import { ToolRail, type RailItem } from '@ui/shell/ToolRail';
+
+import { AppraiseStage } from '@ui/workbench/AppraiseStage';
+import { InspectStage } from '@ui/workbench/InspectStage';
+import { NegotiateStage } from '@ui/workbench/NegotiateStage';
+import { ResultStage } from '@ui/workbench/ResultStage';
+import { ThesisStage } from '@ui/workbench/ThesisStage';
+import { OfferControl, liquidityImpact, type OfferImpact } from '@ui/workbench/OfferControl';
+
+import {
+  IconClock,
+  IconCollection,
+  IconCounter,
+  IconDensity,
+  IconGesture,
+  IconLiquidity,
+  IconLoupe,
+  IconMagnet,
+  IconMelt,
+  IconPackage,
+  IconReason,
+  IconReject,
+  IconRetail,
+  IconScale,
+  IconSend,
+  IconServiceResale,
+  IconSpectrometer,
+  IconTouchstone,
+  IconVideo,
+  IconWarning,
+  IconWholesale,
+} from '@ui/icons';
+import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
+import type { ExitChannel, InfoField, Money, WorkbenchStage } from '@domain/types';
+
+const TOOL_ICON: Record<string, typeof IconScale> = {
+  scale: IconScale,
+  magnet: IconMagnet,
+  touchstone: IconTouchstone,
+  density: IconDensity,
+  loupe: IconLoupe,
+  spectrometer: IconSpectrometer,
+};
+
+export function ShopScreen() {
+  const s = useGame();
+  const deal = s.activeDeal;
+  const line = deal ? activeLine(deal) : undefined;
+  const item = line ? s.items[line.itemId] : undefined;
+
+  const liquidity = liquidityRatio(s.store.cash, s.inventory);
+
+  // Teklif tutarı — aşama değiştikçe alış tavanına göre yeniden konumlanır.
+  const ceiling = line ? effectiveCeiling(line.thesisOptions, line.selectedThesis) : 0;
+  const [offer, setOffer] = useState<Money>(0);
+
+  const offerBounds = useMemo(() => {
+    if (!line?.band) return { min: 0, max: 0, step: 100 };
+    // Slider aralığı: bandın altından tavanın üstüne. Oyuncu tavanı aşabilir —
+    // sistem "bu fiyattan al" emri vermez (GDD 6.6), yalnız etkisini gösterir.
+    const min = Math.max(0, Math.round(line.band.min * 0.55));
+    const max = Math.max(min + 1000, Math.round(Math.max(ceiling, line.band.max) * 1.15));
+    const span = max - min;
+    const step = span > 200_000 ? 500 : span > 40_000 ? 100 : 50;
+    return { min, max, step };
+  }, [line?.band, ceiling]);
+
+  // Pazarlığa girildiğinde teklifi tavana yakın makul bir yerden başlat.
+  useEffect(() => {
+    if (deal?.stage === 'negotiate' && offer === 0 && ceiling > 0) {
+      setOffer(Math.round(ceiling * 0.9));
+    }
+  }, [deal?.stage, ceiling, offer]);
+
+  // Yeni kalem / yeni müşteri → teklif sıfırlanır.
+  useEffect(() => {
+    setOffer(0);
+  }, [deal?.dealId, deal?.activeLineId]);
+
+  // Gün akışı: aktif pazarlık yokken saat ilerler (store.tick bunu denetler).
+  useEffect(() => {
+    const id = window.setInterval(() => useGame.getState().tick(0.5), 500);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const stage: WorkbenchStage = deal?.stage ?? 'inspect';
+
+  return (
+    <>
+      <StatusStrip
+        store={s.store}
+        market={s.market}
+        speed={s.speed}
+        speed4xUnlocked={s.speed4xUnlocked}
+        onSpeed={s.setSpeed}
+        onUnlock4x={s.unlock4x}
+      />
+
+      <MarketStrip market={s.market} onOpenMarket={() => s.setTab('business')} />
+
+      <CustomerStrip
+        customer={s.activeCustomer}
+        queueLength={s.queue.length}
+        lineCount={deal?.lines.length ?? 0}
+      />
+
+      {deal && (
+        <StageStrip
+          current={stage}
+          canEnter={(target) => canEnterStage(useGame.getState(), target)}
+          onSelect={s.setStage}
+        />
+      )}
+
+      <main className="workbench">
+        <div className="wb">
+          {/* Çoklu ürün kalem şeridi — dikey scroll yerine yatay pill (GDD 23.13) */}
+          {deal && deal.lines.length > 1 && (
+            <div className="lineStrip" role="tablist" aria-label="Müşterinin ürünleri">
+              {deal.lines.map((l, i) => (
+                <button
+                  key={l.lineId}
+                  type="button"
+                  role="tab"
+                  aria-selected={l.lineId === deal.activeLineId}
+                  className={`linePill ${l.lineId === deal.activeLineId ? 'linePill--active' : ''}`}
+                  onClick={() => s.setActiveLine(l.lineId)}
+                >
+                  <span className={`linePill__dot linePill__dot--${l.status}`} />
+                  Ürün {i + 1}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!deal || !line || !item ? (
+            <IdleWorkbench />
+          ) : stage === 'inspect' ? (
+            <InspectStage item={item} knowledge={line.knowledge} testResults={line.testResults} />
+          ) : stage === 'appraise' && line.band ? (
+            <AppraiseStage band={line.band} />
+          ) : stage === 'thesis' ? (
+            <ThesisStage
+              options={line.thesisOptions}
+              selected={line.selectedThesis}
+              suggested={suggestedChannel(line.thesisOptions)}
+              onSelect={s.selectThesis}
+            />
+          ) : stage === 'negotiate' ? (
+            <NegotiateStage
+              session={line.negotiation}
+              message={s.customerMessage}
+              selectedThesis={line.selectedThesis}
+              thesisOptions={line.thesisOptions}
+              band={line.band}
+              verifiedFields={line.knowledge.filter((k) => k.status === 'verified').length}
+              totalFields={line.knowledge.length}
+              liquidityAfter={liquidityPreview(s, line.negotiation.finalOffer ?? offer)}
+            />
+          ) : stage === 'result' && s.lastReview ? (
+            <ResultStage
+              review={s.lastReview}
+              accepted={line.negotiation.state === 'ACCEPTED'}
+            />
+          ) : null}
+        </div>
+      </main>
+
+      <ContextualToolRail liquidity={liquidity} />
+
+      <ShopDock offer={offer} setOffer={setOffer} bounds={offerBounds} liquidity={liquidity} />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// IDLE — müşteri yok (GDD 23.10.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * GDD 23.10.1: "İşlem Masası, günün tek kritik bağlamını gösterir: aktif event,
+ * yaklaşan servis teslimi veya düşük likidite gibi. EN FAZLA 3 kompakt uyarı
+ * satırı bulunur; ayrı büyük kartlar kullanılmaz."
+ */
+function IdleWorkbench() {
+  const s = useGame();
+  const liquidity = selectors.liquidity(s);
+  const band = selectors.liquidityBand(s);
+
+  const alerts: { key: string; title: string; detail: string; tone: string; Icon: typeof IconWarning }[] =
+    [];
+
+  if (s.market.activeEvent) {
+    alerts.push({
+      key: 'event',
+      title: s.market.activeEvent.label,
+      detail: s.market.activeEvent.description,
+      tone: 'warning',
+      Icon: IconWarning,
+    });
+  }
+
+  if (band === 'red' || band === 'caution') {
+    alerts.push({
+      key: 'liquidity',
+      title: `Likidite ${pct(liquidity)}`,
+      detail:
+        band === 'red'
+          ? 'Büyük alış öncesi hızlı likidasyon gerekebilir.'
+          : 'İşlem yapılabilir ama tedarik ve büyük müşteri riski yükseliyor.',
+      tone: band === 'red' ? 'negative' : 'warning',
+      Icon: IconLiquidity,
+    });
+  }
+
+  const nextIn = Math.max(0, Math.round(s.nextCustomerAtMinutes - s.market.clockMinutes));
+  if (alerts.length < 3) {
+    alerts.push({
+      key: 'schedule',
+      title:
+        s.queue.length > 0
+          ? `${s.queue.length} müşteri bekliyor`
+          : `Sonraki müşteri ~${nextIn} dk`,
+      detail: `Dükkan ${clock(DAY.closeMinutes)}'da kapanıyor.`,
+      tone: 'positive',
+      Icon: IconClock,
+    });
+  }
+
+  return (
+    <div className="idle">
+      <h2 className="idle__title">{s.store.name}</h2>
+      <p className="idle__sub">Gün {s.market.day} · Semt itibarı {Math.round(s.store.reputation)}</p>
+
+      <div className="alerts">
+        {alerts.slice(0, 3).map(({ key, title, detail, tone, Icon }) => (
+          <div key={key} className={`alert alert--${tone}`}>
+            <span className="alert__icon">
+              <Icon size={16} />
+            </span>
+            <span className="alert__body">
+              <span className="alert__title">{title}</span>
+              <span className="alert__detail"> · {detail}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/*
+       * GDD 23.10.1 — "Müşteri yokken Karar Dock'unda ana akışı bozmayan
+       * ikincil 'Dükkânı Canlandır' rewarded CTA'sı gösterilebilir."
+       * Ayrı banner veya büyük reklam kartı kullanılmaz.
+       */}
+      {s.queue.length === 0 && (
+        <button type="button" className="rewardedLine" onClick={s.triggerCustomerRush}>
+          <IconVideo size={13} />
+          Dükkânı Canlandır
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bağlamsal Araç Rayı — aşamaya göre içerik (GDD 23.11)
+// ---------------------------------------------------------------------------
+
+function ContextualToolRail({ liquidity }: { liquidity: number }) {
+  const s = useGame();
+  const deal = s.activeDeal;
+  const line = deal ? activeLine(deal) : undefined;
+
+  if (!deal || !line) {
+    return <ToolRail items={[]} emptyLabel="Müşteri karşılandığında araçlar burada" />;
+  }
+
+  switch (deal.stage) {
+    // İncele → test araçları. İlk 4 görünür; fazlası yatay scroll.
+    case 'inspect': {
+      const items: RailItem[] = toolsForLevel(s.store.level).map(({ tool, locked, lockReason }) => {
+        const Icon = TOOL_ICON[tool.id] ?? IconScale;
+        const used = line.testResults.some((r) => r.toolId === tool.id);
+        return {
+          id: tool.id,
+          label: tool.shortLabel,
+          icon: <Icon size={19} />,
+          onPress: () => s.runTest(tool.id),
+          used,
+          locked,
+          lockReason,
+          // GDD 23.11 — "Locked araç görünüyorsa kilit nedeni kısa metinle
+          // açıklanır." Dokunmatikte tooltip yoktur; nedeni toast ile söyle.
+          onLockedPress: () => s.notify(`${tool.name}: ${lockReason}`, 'info'),
+          disabled: tool.cost > s.store.cash,
+          badge: tool.cost > 0 ? `${tool.cost}₺` : undefined,
+        };
+      });
+      return <ToolRail items={items} />;
+    }
+
+    // Değerle → maksimum 3 eylem; ana veri zaten Workbench'te.
+    case 'appraise': {
+      const items: RailItem[] = [
+        {
+          id: 'more-test',
+          label: 'Ek Test',
+          icon: <IconTouchstone size={19} />,
+          onPress: () => s.setStage('inspect'),
+        },
+        {
+          id: 'market',
+          label: 'Piyasa',
+          icon: <IconLiquidity size={19} />,
+          onPress: () => s.setTab('business'),
+        },
+        {
+          id: 'thesis',
+          label: 'Tez',
+          icon: <IconPackage size={19} />,
+          onPress: () => s.setStage('thesis'),
+        },
+      ];
+      return <ToolRail items={items} />;
+    }
+
+    // Tez → yalnız ürün için rasyonel kanallar (domain filtreler).
+    case 'thesis': {
+      const items: RailItem[] = line.thesisOptions.map((option) => {
+        const ChannelIcon = CHANNEL_RAIL_ICON[option.channel];
+        return {
+          id: option.channel,
+          label: CHANNEL_RAIL_LABEL[option.channel],
+          icon: <ChannelIcon size={19} />,
+          onPress: () => s.selectThesis(option.channel),
+          selected: line.selectedThesis === option.channel,
+        };
+      });
+      return <ToolRail items={items} />;
+    }
+
+    // Pazarlık → maks 3 görünür; "Reddet" rayda DEĞİL, Dock'ta (GDD 23.11).
+    case 'negotiate': {
+      const session = line.negotiation;
+      const terminal = isTerminal(session.state);
+
+      // Gerekçe yalnız DOĞRULANMIŞ veriye dayanabilir (GDD 11.5).
+      const evidence = findEvidence(line.knowledge, line.testResults);
+
+      const items: RailItem[] = [
+        {
+          id: 'reason',
+          label: 'Gerekçe',
+          icon: <IconReason size={19} />,
+          disabled: !evidence,
+          used: evidence ? session.usedReasons.includes(`${evidence.field}:${evidence.toolId}`) : false,
+          lockReason: 'Önce ilgili testi yapın',
+          onPress: () =>
+            evidence &&
+            s.negotiationMove({
+              kind: 'reason',
+              reasonEvidence: evidence,
+              atRound: session.round,
+            }),
+        },
+        {
+          id: 'gesture',
+          label: 'Jest',
+          icon: <IconGesture size={19} />,
+          used: session.gesturesUsed >= NEGOTIATION.maxEffectiveGestures,
+          onPress: () => s.negotiationMove({ kind: 'gesture', atRound: session.round }),
+        },
+        {
+          id: 'counter',
+          label: 'Karşı Teklif',
+          icon: <IconCounter size={19} />,
+          onPress: () => s.negotiationMove({ kind: 'requestCounter', atRound: session.round }),
+        },
+      ];
+
+      // Paket teklif yalnız en az 2 kalem yeterince değerlenmişse (GDD 23.13).
+      const appraisedLines = deal.lines.filter((l) => l.band !== null).length;
+      if (deal.lines.length > 1 && appraisedLines >= 2) {
+        items.push({
+          id: 'package',
+          label: 'Paket',
+          icon: <IconPackage size={19} />,
+          onPress: () => s.negotiationMove({ kind: 'package', atRound: session.round }),
+        });
+      }
+
+      return <ToolRail items={items} disabled={terminal} />;
+    }
+
+    // Sonuç → ray gizli/disabled (GDD 23.10.2).
+    case 'result':
+      return <ToolRail items={[]} disabled emptyLabel="İşlem tamamlandı" />;
+  }
+
+  void liquidity;
+  return <ToolRail items={[]} />;
+}
+
+const CHANNEL_RAIL_ICON: Record<ExitChannel, typeof IconRetail> = {
+  retail: IconRetail,
+  wholesale: IconWholesale,
+  melt: IconMelt,
+  serviceResale: IconServiceResale,
+  collection: IconCollection,
+};
+
+const CHANNEL_RAIL_LABEL: Record<ExitChannel, string> = {
+  retail: 'Vitrin',
+  wholesale: 'Toptan',
+  melt: 'Erit',
+  serviceResale: 'Servis',
+  collection: 'Beklet',
+};
+
+/**
+ * Pazarlıkta kullanılabilecek gerekçe kanıtı.
+ * GDD 11.5 — yalnız gerçekten yapılmış ve yeterince kesinleşmiş test sayılır.
+ */
+function findEvidence(
+  knowledge: { field: InfoField; certainty: number; testsApplied: string[] }[],
+  results: { toolId: string; readout: string }[],
+): { field: InfoField; toolId: string; claim: string } | null {
+  for (const k of knowledge) {
+    if (k.certainty < 0.6) continue;
+    const toolId = k.testsApplied[k.testsApplied.length - 1];
+    if (!toolId) continue;
+    const result = results.find((r) => r.toolId === toolId);
+    if (!result) continue;
+    return { field: k.field, toolId, claim: result.readout };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Karar Dock'u — aşamaya göre etiket ve özet (GDD 23.12)
+// ---------------------------------------------------------------------------
+
+function ShopDock({
+  offer,
+  setOffer,
+  bounds,
+  liquidity,
+}: {
+  offer: Money;
+  setOffer: (v: Money) => void;
+  bounds: { min: Money; max: Money; step: Money };
+  liquidity: number;
+}) {
+  const s = useGame();
+  const deal = s.activeDeal;
+  const line = deal ? activeLine(deal) : undefined;
+
+  // --- IDLE ---
+  if (!deal || !line) {
+    const hasQueue = s.queue.length > 0;
+    return (
+      <DecisionDock
+        summaryLabel="Kuyruk"
+        summaryValue={hasQueue ? `${s.queue.length} müşteri bekliyor` : 'Müşteri bekleniyor'}
+        primary={{
+          label: hasQueue ? 'Müşteriyi Karşıla' : 'Müşteri bekleniyor',
+          onPress: s.greetCustomer,
+          disabled: !hasQueue,
+        }}
+        secondary={[{ label: 'Günü Bitir', onPress: s.advanceDay }]}
+      />
+    );
+  }
+
+  const ceiling = effectiveCeiling(line.thesisOptions, line.selectedThesis);
+
+  switch (deal.stage) {
+    // --- İNCELE: doğrulanan alan sayısı + risk ---
+    case 'inspect': {
+      const verified = line.knowledge.filter((k) => k.status === 'verified').length;
+      const conflicting = line.knowledge.some((k) => k.status === 'conflicting');
+
+      return (
+        <DecisionDock
+          summaryLabel="Doğrulanan alan"
+          summaryValue={
+            <>
+              {verified}/{line.knowledge.length}
+              {conflicting && (
+                <span style={{ color: 'var(--negative)' }}> · çelişkili sinyal</span>
+              )}
+            </>
+          }
+          primary={{ label: 'Değerlemeye Geç', onPress: () => s.setStage('appraise') }}
+          secondary={
+            line.testResults.length === 0
+              ? [{ label: 'Test yapmadan ilerle', onPress: () => s.setStage('appraise') }]
+              : []
+          }
+        />
+      );
+    }
+
+    // --- DEĞERLE: değer bandı + güven ---
+    case 'appraise': {
+      const band = line.band;
+      // GDD 23.10.2 — basit üründe Tez atlanabilir; riskli üründe görünür olmalı.
+      const skipThesis = line.thesisOptions.length < 2;
+
+      return (
+        <DecisionDock
+          summaryLabel="Değer bandı"
+          summaryValue={band ? `${tl(band.min)} – ${tl(band.max)}` : '—'}
+          primary={{
+            label: skipThesis ? 'Pazarlığa Geç' : 'Tez Seç',
+            onPress: () => s.setStage(skipThesis ? 'negotiate' : 'thesis'),
+          }}
+          secondary={[{ label: 'Ek test', onPress: () => s.setStage('inspect') }]}
+        />
+      );
+    }
+
+    // --- TEZ: seçili kanalın net/süre/likidite özeti ---
+    case 'thesis': {
+      const selected = line.selectedThesis
+        ? line.thesisOptions.find((o) => o.channel === line.selectedThesis)
+        : null;
+
+      return (
+        <DecisionDock
+          summaryLabel={selected ? 'Seçili tez' : 'Tez seçilmedi'}
+          summaryValue={
+            selected
+              ? `${selected.label} · net ${tl(selected.expectedNet)}`
+              : 'Öneri ile devam edilecek'
+          }
+          primary={{ label: 'Pazarlığa Geç', onPress: () => s.setStage('negotiate') }}
+        />
+      );
+    }
+
+    // --- PAZARLIK: teklif + tahmini kâr/likidite/ilişki ---
+    case 'negotiate': {
+      const session = line.negotiation;
+      const isFinal = session.state === 'FINAL_OFFER';
+      const counter = session.finalOffer ?? session.activeCounter;
+
+      const liquidityAfter = liquidityRatio(
+        Math.max(0, s.store.cash - offer),
+        [...s.inventory, { costBasis: offer } as never],
+      );
+
+      // GDD 23.12 — tahmini sonuçlar kesinlik iddiası taşımaz.
+      const estimatedMargin = ceiling - offer;
+      const impacts: OfferImpact[] = [
+        {
+          label: 'Tahmini',
+          value: `${tlSigned(estimatedMargin)} ${tonWord(estimatedMargin)}`,
+          tone: estimatedMargin >= 0 ? 'positive' : 'negative',
+        },
+        liquidityImpact(liquidity, liquidityAfter),
+        {
+          label: 'İlişki',
+          value: relationLabel(offer, ceiling),
+          tone: offer < ceiling * 0.75 ? 'warning' : 'neutral',
+        },
+      ];
+
+      const canAfford = offer <= s.store.cash;
+
+      return (
+        <DecisionDock
+          summaryLabel={isFinal ? 'Son teklif' : 'Teklifiniz'}
+          summaryValue={
+            isFinal && counter !== null
+              ? `Müşteri: ${tl(counter)} — geri dönüş yok`
+              : `Alış tavanı ${tl(ceiling)}`
+          }
+          primary={
+            isFinal && counter !== null
+              ? {
+                  label: 'Kabul Et',
+                  onPress: () => s.negotiationMove({ kind: 'acceptCounter', atRound: session.round }),
+                  disabled: counter > s.store.cash,
+                  icon: <IconSend size={18} />,
+                }
+              : {
+                  label: 'Teklifi Gönder',
+                  onPress: () => s.submitOffer(offer),
+                  disabled: !canAfford || offer <= 0,
+                  icon: <IconSend size={18} />,
+                }
+          }
+          secondary={[
+            {
+              label: 'Reddet',
+              onPress: () => s.negotiationMove({ kind: 'reject', atRound: session.round }),
+              danger: true,
+              icon: <IconReject size={16} />,
+            },
+          ]}
+        >
+          {!isFinal && (
+            <OfferControl
+              value={offer}
+              min={bounds.min}
+              max={bounds.max}
+              step={bounds.step}
+              onChange={setOffer}
+              impacts={impacts}
+              disabled={isTerminal(session.state)}
+            />
+          )}
+        </DecisionDock>
+      );
+    }
+
+    // --- SONUÇ: "Devam Et"; uzun rapor İşlem Defteri'ne gider (GDD 23.10.2) ---
+    case 'result': {
+      const accepted = line.negotiation.state === 'ACCEPTED';
+      const price = line.negotiation.settledPrice ?? 0;
+
+      return (
+        <DecisionDock
+          summaryLabel={accepted ? 'Kapanış' : 'Sonuç'}
+          summaryValue={accepted ? tl(price) : 'İşlem yapılmadı'}
+          primary={{ label: 'Devam Et', onPress: s.finishDeal }}
+        />
+      );
+    }
+  }
+}
+
+/** Kabul edilirse likidite nereye düşer — "%19 → %12" (GDD 23.12). */
+function liquidityPreview(s: ReturnType<typeof useGame.getState>, price: Money): string {
+  const before = liquidityRatio(s.store.cash, s.inventory);
+  const after = liquidityRatio(
+    Math.max(0, s.store.cash - price),
+    [...s.inventory, { costBasis: price } as never],
+  );
+  return `${pct(before)} → ${pct(after)}`;
+}
+
+/** İlişki etkisi etiketi — sayısal skor değil, okunabilir durum (GDD 23.12). */
+function relationLabel(offer: Money, ceiling: Money): string {
+  if (ceiling <= 0) return 'nötr';
+  const ratio = offer / ceiling;
+  if (ratio >= 0.95) return 'olumlu';
+  if (ratio >= 0.8) return 'nötr';
+  return 'riskli';
+}

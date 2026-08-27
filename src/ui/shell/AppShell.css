@@ -1,0 +1,786 @@
+/*
+ * MIHENKAYNAK — Global ekran kabuğu
+ * Kaynak: GDD 23.9.2 "Global ekran kabuğu" — BAĞLAYICI ÜRETİM SÖZLEŞMESİ.
+ *
+ * 390×844 referans tuvalde safe-area dışı ~763 px şu dağılımla dolar:
+ *   Durum 52 + Piyasa 44 + Müşteri 50 + Aşama 32 + Masa 337 + Ray 56
+ *   + Dock 128 + Nav 64 = 763
+ *
+ * GDD 23.22 "Aktif Dükkan: Dikey scroll YOK." Bu, `overflow: hidden` ile
+ * yapısal olarak zorlanır — ana CTA hiçbir cihazda scroll altında kalamaz.
+ */
+
+.device {
+  /* Mobil cihazda tam ekran; masaüstünde ortalanmış portrait çerçeve. */
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  min-width: 320px;
+  height: 100dvh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--stone-100);
+  overflow: hidden;
+  /* Notch / Dynamic Island ve home indicator alanı (GDD 23.5). */
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+
+/* Masaüstünde bir cihaz çerçevesi hissi ver; oyun hâlâ portrait kalır. */
+@media (min-width: 520px) and (min-height: 720px) {
+  .deviceFrame {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100dvh;
+    background:
+      radial-gradient(120% 90% at 50% 0%, #171d26 0%, #0b0f14 62%, #070a0e 100%);
+    padding: 24px 0;
+  }
+
+  .device {
+    height: min(880px, calc(100dvh - 48px));
+    border-radius: 34px;
+    box-shadow:
+      0 0 0 1px rgba(201, 160, 74, 0.18),
+      0 0 0 10px #12161d,
+      0 30px 90px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/*
+ * Ekran gövdesi. Aktif Dükkan'da scroll kapalı; ikincil ekranlarda serbest
+ * (GDD 23.22 — "Stok / Piyasa / Toptancı / Atölye / İşletme: dikey scroll
+ * serbest; kritik üst filtre/özet sticky olabilir").
+ */
+.screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen--noScroll {
+  overflow: hidden;
+}
+
+.screen--scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ------------------------------------------------------------------ */
+/* A — Durum Şeridi · 52 px (GDD 23.9.2)                              */
+/* ------------------------------------------------------------------ */
+
+.statusStrip {
+  flex: 0 0 var(--h-status-strip);
+  height: var(--h-status-strip);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--gutter);
+  background: var(--ink-800);
+  color: var(--text-dark-1);
+  border-bottom: 1px solid var(--line-dark);
+}
+
+.statusStrip__brand {
+  display: flex;
+  align-items: center;
+  color: var(--brass-500);
+  flex: 0 0 auto;
+}
+
+.statusStrip__level {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.statusStrip__levelRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+}
+
+.statusStrip__levelNum {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.01em;
+}
+
+.statusStrip__xp {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+.statusStrip__xpBar {
+  margin-top: 3px;
+  width: 54px;
+  height: 3px;
+  border-radius: var(--r-pill);
+  background: var(--ink-500);
+  overflow: hidden;
+}
+
+.statusStrip__xpFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--amethyst-500), var(--amethyst-300));
+  border-radius: var(--r-pill);
+  transition: width var(--t-normal) var(--ease-standard);
+}
+
+.statusStrip__clock {
+  flex: 1 1 auto;
+  text-align: center;
+  min-width: 0;
+}
+
+.statusStrip__day {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.statusStrip__time {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+}
+
+.statusStrip__cash {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.statusStrip__cashLabel {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.statusStrip__cashValue {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-bold);
+  color: var(--brass-300);
+}
+
+/* Kompakt 1x / 2x / 4x hız kontrolü — ayrı kart açmaz (GDD 23.9.2). */
+.speed {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  background: var(--ink-600);
+  border: 1px solid var(--line-dark);
+  border-radius: var(--r-pill);
+  padding: 2px;
+  gap: 1px;
+}
+
+.speed__step {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  transition: background var(--t-fast) var(--ease-standard);
+}
+
+.speed__step--active {
+  background: var(--amethyst-500);
+  color: #fff;
+}
+
+.speed__step--locked {
+  color: var(--text-dark-3);
+  opacity: 0.75;
+}
+
+/* ------------------------------------------------------------------ */
+/* B — Piyasa Şeridi · 44 px (GDD 23.9.2)                             */
+/* ------------------------------------------------------------------ */
+
+.marketStrip {
+  flex: 0 0 var(--h-market-strip);
+  height: var(--h-market-strip);
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: var(--ink-700);
+  border-bottom: 1px solid var(--line-dark);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+  text-align: left;
+}
+
+.marketStrip::-webkit-scrollbar {
+  display: none;
+}
+
+.marketStrip__asset {
+  flex: 1 0 auto;
+  min-width: 76px;
+  padding: 5px var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  border-right: 1px solid var(--ink-600);
+  white-space: nowrap;
+}
+
+.marketStrip__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  letter-spacing: 0.02em;
+}
+
+.marketStrip__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.marketStrip__price {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.marketStrip__change {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+}
+
+.marketStrip__change--up {
+  color: var(--positive-soft);
+}
+.marketStrip__change--down {
+  color: var(--negative-soft);
+}
+.marketStrip__change--flat {
+  color: var(--text-dark-3);
+}
+
+.marketStrip__regime {
+  flex: 0 0 auto;
+  min-width: 82px;
+  padding: 5px var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  background: var(--ink-600);
+}
+
+.marketStrip__regimeLabel {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.marketStrip__regimeValue {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--brass-400);
+}
+
+/* ------------------------------------------------------------------ */
+/* C — Müşteri / Kuyruk Şeridi · 50 px (GDD 23.9.2)                   */
+/* ------------------------------------------------------------------ */
+
+.customerStrip {
+  flex: 0 0 var(--h-customer-strip);
+  height: var(--h-customer-strip);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--gutter);
+  background: var(--stone-50);
+  border-bottom: 1px solid var(--line-light);
+}
+
+.customerStrip__avatar {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(160deg, var(--ink-600), var(--ink-800));
+  color: var(--brass-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  border: 1px solid var(--brass-700);
+}
+
+.customerStrip__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.customerStrip__name {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.customerStrip__intent {
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.customerStrip__meta {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.customerStrip__demeanor {
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Sabır göstergesi — nokta dizisi, sayısal skor gösterilmez (GDD 11.3). */
+.patience {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 3px;
+  justify-content: flex-end;
+}
+
+.patience__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--stone-300);
+}
+
+.patience__dot--on {
+  background: var(--brass-500);
+}
+
+.patience__dot--low {
+  background: var(--warning);
+}
+
+.patience__dot--critical {
+  background: var(--negative);
+}
+
+/* ------------------------------------------------------------------ */
+/* D — Aşama Şeridi · 32 px (GDD 23.9.2)                              */
+/* ------------------------------------------------------------------ */
+
+.stageStrip {
+  flex: 0 0 var(--h-stage-strip);
+  height: var(--h-stage-strip);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-2);
+  background: var(--stone-200);
+  border-bottom: 1px solid var(--line-light);
+}
+
+.stageStrip__step {
+  flex: 1 1 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  color: var(--text-light-3);
+  position: relative;
+  transition: color var(--t-fast) var(--ease-standard);
+}
+
+.stageStrip__step--active {
+  color: var(--amethyst-500);
+  font-weight: var(--fw-bold);
+}
+
+.stageStrip__step--done {
+  color: var(--brass-600);
+}
+
+.stageStrip__step--locked {
+  color: var(--stone-400);
+}
+
+.stageStrip__num {
+  width: 17px;
+  height: 17px;
+  border-radius: var(--r-pill);
+  border: 1px solid currentColor;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  flex: 0 0 auto;
+}
+
+.stageStrip__step--active .stageStrip__num {
+  background: var(--amethyst-500);
+  border-color: var(--amethyst-500);
+  color: #fff;
+}
+
+.stageStrip__step--done .stageStrip__num {
+  background: var(--brass-600);
+  border-color: var(--brass-600);
+  color: var(--stone-50);
+}
+
+/* ------------------------------------------------------------------ */
+/* E — İşlem Masası · 337 px referans, esneyen tek bölge               */
+/* ------------------------------------------------------------------ */
+
+.workbench {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  background: var(--surface-workbench);
+  color: var(--text-dark-1);
+  display: flex;
+  flex-direction: column;
+  /*
+   * GDD 23.22: "Aktif Dükkan: Dikey scroll yok. Workbench içerik taşarsa
+   * yoğunluk azaltılır veya detay sheet'e taşınır."
+   */
+  overflow: hidden;
+}
+
+/* Tezgâh dokusu — ince pirinç ışık çizgisi, dekorasyon verinin önüne geçmez. */
+.workbench::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: var(--hairline-brass);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* F — Bağlamsal Araç Rayı · 56 px (GDD 23.11)                        */
+/* ------------------------------------------------------------------ */
+
+.toolRail {
+  flex: 0 0 var(--h-tool-rail);
+  height: var(--h-tool-rail);
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--ink-600);
+  border-top: 1px solid var(--line-dark);
+  border-bottom: 1px solid var(--ink-900);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.toolRail::-webkit-scrollbar {
+  display: none;
+}
+
+.toolRail--disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.toolRail__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+/* Her araç: ikon + KISA METİN ETİKETİ (GDD 23.24 — ikon tek başına yetmez). */
+.tool {
+  flex: 0 0 auto;
+  min-width: 62px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-md);
+  background: var(--ink-700);
+  border: 1px solid var(--line-dark);
+  color: var(--text-dark-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  position: relative;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard),
+    color var(--t-fast) var(--ease-standard);
+}
+
+.tool:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.tool--used {
+  border-color: var(--brass-700);
+  color: var(--brass-400);
+}
+
+.tool--selected {
+  background: var(--amethyst-600);
+  border-color: var(--amethyst-400);
+  color: #fff;
+}
+
+.tool--locked {
+  opacity: 0.45;
+}
+
+.tool__label {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.tool__badge {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: var(--fs-micro);
+  color: var(--brass-500);
+}
+
+/* ------------------------------------------------------------------ */
+/* G — Karar Dock'u · 128 px (GDD 23.12)                              */
+/* ------------------------------------------------------------------ */
+
+.dock {
+  flex: 0 0 auto;
+  min-height: var(--h-decision-dock);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--gutter);
+  background: var(--stone-50);
+  border-top: 1px solid var(--line-light-strong);
+  box-shadow: var(--sh-dock);
+}
+
+/* Üst özet satırı — "bu karar kabul edilirse ne değişecek?" (GDD 23.12) */
+.dock__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 18px;
+}
+
+.dock__summaryLabel {
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dock__summaryValue {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+}
+
+.dock__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Ana CTA — her aşamada aynı fiziksel bölgede (GDD 23.12). */
+.cta {
+  flex: 1 1 auto;
+  height: var(--cta-h);
+  min-height: var(--cta-h);
+  border-radius: var(--r-md);
+  background: var(--surface-brass);
+  color: #241a06;
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 2px 8px rgba(168, 130, 58, 0.28);
+  transition: transform var(--t-instant) var(--ease-standard);
+}
+
+.cta:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.cta:disabled {
+  background: var(--stone-300);
+  color: var(--text-light-3);
+  box-shadow: none;
+}
+
+/* İkincil eylem — en fazla 2 (GDD 23.9.2). */
+.secondary {
+  flex: 0 0 auto;
+  height: var(--secondary-h);
+  min-width: var(--touch-min);
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-light-strong);
+  background: var(--stone-100);
+  color: var(--text-light-2);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+}
+
+.secondary--danger {
+  color: var(--negative);
+  border-color: rgba(198, 40, 40, 0.35);
+}
+
+.secondary:disabled {
+  opacity: 0.45;
+}
+
+.dock__secondaryRow {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.dock__secondaryRow .secondary {
+  flex: 1 1 0;
+}
+
+/* Kısa cihazda Dock sıkışır ama CTA yüksekliği korunur (GDD 23.22). */
+@media (max-height: 760px) {
+  .dock {
+    padding: var(--sp-2) var(--gutter-narrow);
+    gap: var(--sp-1);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* H — Alt Navigasyon · 64 px, tam 4 kök (GDD 23.9.1)                 */
+/* ------------------------------------------------------------------ */
+
+.bottomNav {
+  flex: 0 0 var(--h-bottom-nav);
+  height: var(--h-bottom-nav);
+  display: flex;
+  align-items: stretch;
+  background: var(--ink-800);
+  border-top: 1px solid var(--brass-700);
+}
+
+.bottomNav__item {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--text-dark-3);
+  position: relative;
+  transition: color var(--t-fast) var(--ease-standard);
+}
+
+.bottomNav__item--active {
+  color: var(--brass-400);
+}
+
+.bottomNav__item--active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 2px;
+  border-radius: var(--r-pill);
+  background: var(--brass-500);
+}
+
+.bottomNav__label {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.01em;
+}
+
+/* ------------------------------------------------------------------ */
+/* Toast — kısa geri bildirim (GDD 3.x "1–5 saniyede okunur")          */
+/* ------------------------------------------------------------------ */
+
+.toastLayer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--h-bottom-nav) + var(--h-decision-dock) + var(--sp-3) + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  pointer-events: none;
+  z-index: 40;
+  padding: 0 var(--gutter);
+}
+
+.toast {
+  pointer-events: auto;
+  max-width: 100%;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-pill);
+  background: var(--ink-800);
+  color: var(--text-dark-1);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  border: 1px solid var(--line-dark-strong);
+  box-shadow: 0 6px 20px rgba(8, 11, 15, 0.4);
+  text-align: center;
+}
+
+.toast--positive {
+  border-color: rgba(78, 158, 82, 0.5);
+}
+.toast--negative {
+  border-color: rgba(217, 86, 79, 0.5);
+}

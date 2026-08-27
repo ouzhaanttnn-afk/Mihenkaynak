@@ -1,0 +1,1155 @@
+/*
+ * MIHENKAYNAK — İşlem Masası (Workbench)
+ * Kaynak: GDD 23.6 "İşlem Masası kompozisyonu", 23.7 "Aşama davranışları".
+ *
+ * GDD 23.6: "Ana ekran üst üste büyük kartlardan oluşan dashboard olmamalıdır.
+ * Tek baskın 'İşlem Masası' yüzeyi aşama bazlı değişir."
+ *
+ * GDD 23.22: Bu yüzey dikey scroll KULLANMAZ. İçerik taşarsa yoğunluk azalır
+ * veya detay bottom-sheet'e taşınır.
+ */
+
+.wb {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-3) var(--gutter);
+  gap: var(--sp-3);
+  overflow: hidden;
+}
+
+/*
+ * GDD 23.22 — "Workbench içerik taşarsa YOĞUNLUK AZALTILIR veya detay sheet'e
+ * taşınır." Kırpmak yoğunluk azaltmak değildir; bu yüzden her çocuk
+ * küçülebilir olmalı ve dar cihazlarda ikincil bloklar aşağıdaki
+ * media query'lerle bilinçli olarak kaldırılır.
+ */
+.wb > * {
+  min-height: 0;
+}
+
+/* Çoklu ürün kalem şeridi — yatay pill (GDD 23.13) */
+.lineStrip {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.lineStrip::-webkit-scrollbar {
+  display: none;
+}
+
+.linePill {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-dark-strong);
+  background: var(--ink-700);
+  color: var(--text-dark-2);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.linePill--active {
+  border-color: var(--brass-500);
+  background: var(--ink-600);
+  color: var(--text-dark-1);
+}
+
+.linePill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--text-dark-3);
+}
+
+.linePill__dot--appraised { background: var(--brass-500); }
+.linePill__dot--offered { background: var(--amethyst-400); }
+.linePill__dot--accepted { background: var(--positive-soft); }
+.linePill__dot--rejected { background: var(--negative-soft); }
+
+/* ------------------------------------------------------------------ */
+/* İNCELE (GDD 23.7)                                                   */
+/* ------------------------------------------------------------------ */
+
+.inspect {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--sp-4);
+  align-items: stretch;
+}
+
+/* Ürün görseli merkezde NÖTR ZEMİNDE (GDD 23.7 "İncele"). */
+.inspect__stage {
+  flex: 0 0 40%;
+  padding: var(--sp-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-card);
+  background:
+    radial-gradient(70% 60% at 50% 40%, rgba(201, 160, 74, 0.12) 0%, transparent 70%),
+    var(--ink-900);
+  border: 1px solid var(--line-dark);
+  color: var(--brass-400);
+  position: relative;
+  overflow: hidden;
+}
+
+.inspect__stage svg {
+  width: 92%;
+  height: auto;
+  max-height: 100%;
+}
+
+/*
+ * GDD 23.7: "Şüpheli durumda tüm ekran kırmızıya dönmez; ürün sınırı/uyarı
+ * satırı değişir." Şüphe yalnız bu kenarlıkta ve uyarı satırında görünür.
+ */
+.inspect__stage--suspect {
+  border-color: rgba(201, 130, 46, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(201, 130, 46, 0.18);
+}
+
+.inspect__stage--risky {
+  border-color: rgba(198, 40, 40, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(198, 40, 40, 0.2);
+}
+
+.inspect__fields {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  justify-content: center;
+}
+
+.inspect__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+  line-height: var(--lh-tight);
+  margin-bottom: 2px;
+}
+
+/* Doğrulama statüsü ürünün yakınında (GDD 23.7). */
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(58, 68, 80, 0.5);
+}
+
+.field:last-child {
+  border-bottom: none;
+}
+
+.field__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  letter-spacing: 0.02em;
+  flex: 0 0 auto;
+}
+
+.field__value {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+  text-align: right;
+  min-width: 0;
+}
+
+/*
+ * GDD 23.3 — "Bilinmeyen veri '?' yerine 'doğrulanmadı / düşük güven' gibi
+ * anlamlı durumla gösterilir."
+ */
+.status {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.status--unverified {
+  background: rgba(124, 117, 104, 0.22);
+  color: var(--text-dark-2);
+}
+.status--partial {
+  background: rgba(201, 160, 74, 0.18);
+  color: var(--brass-300);
+}
+.status--verified {
+  background: rgba(78, 158, 82, 0.2);
+  color: var(--positive-soft);
+}
+.status--conflicting {
+  background: rgba(198, 40, 40, 0.2);
+  color: var(--negative-soft);
+}
+
+/* Şüphe sinyali satırı — ekranın tamamı değil, tek satır değişir. */
+.signals {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: rgba(201, 130, 46, 0.1);
+  border-left: 2px solid var(--warning);
+}
+
+.signals--strong {
+  background: rgba(198, 40, 40, 0.1);
+  border-left-color: var(--negative);
+}
+
+.signal {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+  line-height: 1.25;
+}
+
+.signal__mark {
+  flex: 0 0 auto;
+  color: var(--warning);
+  display: inline-flex;
+}
+
+.signals--strong .signal__mark {
+  color: var(--negative-soft);
+}
+
+/* Test sonucu — aynı masada güncellenir, yeni ekran açmaz (GDD 23.11). */
+.readout {
+  flex: 0 0 auto;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: rgba(201, 160, 74, 0.1);
+  border-left: 2px solid var(--brass-500);
+  font-size: var(--fs-micro);
+  color: var(--brass-300);
+  line-height: 1.3;
+}
+
+.readout__tool {
+  color: var(--text-dark-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: var(--fs-micro);
+  display: block;
+}
+
+/* ------------------------------------------------------------------ */
+/* DEĞERLE (GDD 23.7)                                                  */
+/* ------------------------------------------------------------------ */
+
+.appraise {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* Ana sonuç tek fiyat DEĞİL, değer aralığı + güven seviyesi (GDD 23.7). */
+.bandCard {
+  flex: 0 0 auto;
+  text-align: center;
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border-radius: var(--r-card);
+  background: var(--ink-900);
+  border: 1px solid var(--line-dark);
+}
+
+.bandCard__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.bandCard__range {
+  margin-top: 3px;
+  font-family: var(--font-display);
+  font-size: var(--fs-figure);
+  font-weight: var(--fw-bold);
+  color: var(--brass-300);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
+}
+
+.bandCard__sep {
+  color: var(--text-dark-3);
+  font-weight: var(--fw-regular);
+  margin: 0 2px;
+}
+
+.confidence {
+  margin-top: var(--sp-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+.confidence__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.confidence__bar {
+  display: flex;
+  gap: 2px;
+}
+
+.confidence__seg {
+  width: 15px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--ink-500);
+}
+
+.confidence__seg--on-low { background: var(--confidence-low); }
+.confidence__seg--on-medium { background: var(--confidence-medium); }
+.confidence__seg--on-high { background: var(--confidence-high); }
+
+.confidence__value {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+}
+
+.confidence__value--low { color: var(--confidence-low); }
+.confidence__value--medium { color: var(--confidence-medium); }
+.confidence__value--high { color: var(--confidence-high); }
+
+/* Kırılım — metal / taş / işçilik / risk / piyasa kısa satırlara bölünür. */
+.breakdown {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.breakdown__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 6px var(--sp-3);
+  border-radius: var(--r-sm);
+  background: rgba(8, 11, 15, 0.4);
+  font-size: var(--fs-caption);
+}
+
+.breakdown__name {
+  color: var(--text-dark-2);
+}
+
+.breakdown__share {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  min-width: 34px;
+  text-align: right;
+}
+
+.breakdown__value {
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+  min-width: 72px;
+  text-align: right;
+}
+
+.breakdown__value--negative {
+  color: var(--negative-soft);
+}
+
+/* ------------------------------------------------------------------ */
+/* TEZ (GDD 23.7)                                                      */
+/* ------------------------------------------------------------------ */
+
+.thesis {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  overflow: hidden;
+}
+
+.thesisCard {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--stone-50);
+  border: 1px solid transparent;
+  color: var(--text-light-1);
+  text-align: left;
+  transition:
+    border-color var(--t-fast) var(--ease-standard),
+    box-shadow var(--t-fast) var(--ease-standard);
+}
+
+.thesisCard--selected {
+  border-color: var(--amethyst-500);
+  box-shadow: 0 0 0 1px var(--amethyst-500);
+}
+
+.thesisCard--suggested {
+  border-color: var(--brass-500);
+}
+
+.thesisCard__icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  background: var(--ink-800);
+  color: var(--brass-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thesisCard--selected .thesisCard__icon {
+  background: var(--amethyst-500);
+  color: #fff;
+}
+
+.thesisCard__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.thesisCard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.thesisCard__name {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thesisCard__figures {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
+.thesisCard__net {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-bold);
+  color: var(--brass-700);
+}
+
+/* Alış tavanı — kararı değiştiren ikinci sayı (GDD 6.4). */
+.thesisCard__ceiling {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-3);
+  white-space: nowrap;
+}
+
+/* Her kanalda net değer, süre, risk ve likidite (GDD 23.7 "Tez"). */
+.thesisCard__metrics {
+  display: flex;
+  gap: var(--sp-3);
+  margin-top: 2px;
+}
+
+.metric {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+}
+
+.metric__label {
+  color: var(--text-light-3);
+}
+
+.metric__value {
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-2);
+}
+
+.metric__value--low { color: var(--positive); }
+.metric__value--medium { color: var(--warning); }
+.metric__value--high { color: var(--negative); }
+
+.thesisCard__badge {
+  position: absolute;
+  font-size: var(--fs-micro);
+}
+
+.thesisTag {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brass-700);
+  border: 1px solid var(--brass-500);
+  border-radius: var(--r-pill);
+  padding: 1px 5px;
+}
+
+/* ------------------------------------------------------------------ */
+/* PAZARLIK (GDD 23.7)                                                 */
+/* ------------------------------------------------------------------ */
+
+.negotiate {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.negotiate__top {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--sp-3);
+  align-items: stretch;
+}
+
+/* Müşteri mesajı ve state AYNI YÜZEYDE değişir (GDD 23.24). */
+.speech {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  border-top-left-radius: var(--sp-1);
+  background: var(--stone-50);
+  color: var(--text-light-1);
+  font-size: var(--fs-caption);
+  line-height: 1.35;
+  display: flex;
+  align-items: center;
+  font-style: italic;
+}
+
+.stateBadge {
+  flex: 0 0 auto;
+  width: 96px;
+  padding: var(--sp-2);
+  border-radius: var(--r-md);
+  background: var(--ink-900);
+  border: 1px solid var(--line-dark);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.stateBadge__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.stateBadge__value {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.03em;
+}
+
+.stateBadge__value--OPEN { color: var(--positive-soft); }
+.stateBadge__value--HARDENING { color: var(--warning); }
+.stateBadge__value--FINAL_OFFER { color: var(--negative-soft); }
+.stateBadge__value--ACCEPTED { color: var(--positive-soft); }
+.stateBadge__value--REJECTED { color: var(--negative-soft); }
+
+.stateBadge__dots {
+  display: flex;
+  gap: 3px;
+}
+
+.stateBadge__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: var(--ink-500);
+}
+
+.stateBadge__dot--on {
+  background: currentColor;
+}
+
+/* Karşı teklif — YENİ EKRAN AÇMAZ, bu satır güncellenir (GDD 23.24). */
+.counterRow {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: rgba(139, 92, 199, 0.14);
+  border: 1px solid var(--amethyst-600);
+}
+
+.counterRow--final {
+  background: rgba(198, 40, 40, 0.12);
+  border-color: rgba(198, 40, 40, 0.45);
+}
+
+.counterRow__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.counterRow__value {
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-bold);
+  color: var(--amethyst-300);
+}
+
+.counterRow--final .counterRow__value {
+  color: var(--negative-soft);
+}
+
+/* Seçili tez özeti — pazarlık sırasında bağlam kaybolmaz. */
+.contextRow {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: rgba(8, 11, 15, 0.45);
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+}
+
+.contextRow__key {
+  color: var(--text-dark-3);
+}
+
+.contextRow__val {
+  font-weight: var(--fw-semibold);
+  color: var(--brass-300);
+}
+
+.negotiate__spacer {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/*
+ * SCREEN NORTH STAR (GDD 23.24): "Oyuncu tek bakışta üç şeyi bulabilmeli:
+ * 'Ne biliyorum?', 'Şimdi hangi kararı veriyorum?', 'Bu karar kabul edilirse
+ * ne değişecek?'" Pazarlık aşamasında birinci soru bu panelle cevaplanır —
+ * oyuncu değer bandını görmek için Değerle aşamasına dönmek zorunda kalmaz.
+ */
+.knownPanel {
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: rgba(8, 11, 15, 0.5);
+  border: 1px solid var(--line-dark);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.knownPanel__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.knownPanel__band {
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+  color: var(--brass-300);
+  line-height: var(--lh-tight);
+}
+
+.knownPanel__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+}
+
+/* FINAL OFFER sonuç önizlemesi (GDD 23.12 "Final Offer" satırı). */
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: rgba(8, 11, 15, 0.5);
+  border: 1px solid var(--line-dark);
+}
+
+.preview__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: var(--fs-caption);
+}
+
+.preview__key { color: var(--text-dark-3); }
+
+.preview__val {
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.preview__val--positive { color: var(--positive-soft); }
+.preview__val--negative { color: var(--negative-soft); }
+.preview__val--warning { color: var(--warning); }
+
+/* Teklif geçmişi — anti-spam'in görünür kanıtı. */
+.history {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.history::-webkit-scrollbar { display: none; }
+
+.history__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex: 0 0 auto;
+}
+
+.history__chip {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  background: var(--ink-700);
+  border: 1px solid var(--line-dark);
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+}
+
+.history__chip--repeat {
+  border-color: rgba(198, 40, 40, 0.45);
+  color: var(--negative-soft);
+}
+
+/* ------------------------------------------------------------------ */
+/* SONUÇ (GDD 23.10.2)                                                 */
+/* ------------------------------------------------------------------ */
+
+.result {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-3);
+}
+
+.result__headline {
+  font-family: var(--font-display);
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  color: var(--text-dark-1);
+}
+
+.result__badge {
+  align-self: flex-start;
+  padding: 3px var(--sp-3);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.result__badge--good {
+  background: rgba(78, 158, 82, 0.18);
+  color: var(--positive-soft);
+}
+.result__badge--bad {
+  background: rgba(198, 40, 40, 0.18);
+  color: var(--negative-soft);
+}
+.result__badge--neutral {
+  background: rgba(124, 117, 104, 0.2);
+  color: var(--text-dark-2);
+}
+
+.result__note {
+  font-size: var(--fs-caption);
+  color: var(--text-dark-2);
+  line-height: 1.4;
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--line-dark-strong);
+}
+
+.result__missed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: rgba(198, 40, 40, 0.1);
+  border-left: 2px solid var(--negative);
+}
+
+.result__missedTitle {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--negative-soft);
+  font-weight: var(--fw-bold);
+}
+
+.result__missedItem {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+  line-height: 1.35;
+}
+
+/* ------------------------------------------------------------------ */
+/* IDLE (GDD 23.10.1)                                                  */
+/* ------------------------------------------------------------------ */
+
+.idle {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-3);
+}
+
+.idle__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  color: var(--text-dark-1);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+
+.idle__sub {
+  font-size: var(--fs-caption);
+  color: var(--text-dark-3);
+  margin-top: -6px;
+}
+
+/* En fazla 3 kompakt uyarı satırı; ayrı büyük kartlar kullanılmaz. */
+.alerts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.alert {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: rgba(8, 11, 15, 0.45);
+  border-left: 2px solid var(--line-dark-strong);
+  font-size: var(--fs-caption);
+  color: var(--text-dark-2);
+}
+
+.alert--warning {
+  border-left-color: var(--warning);
+}
+.alert--negative {
+  border-left-color: var(--negative);
+}
+.alert--positive {
+  border-left-color: var(--positive-soft);
+}
+
+.alert__icon {
+  flex: 0 0 auto;
+  color: var(--text-dark-3);
+  display: inline-flex;
+}
+
+.alert--warning .alert__icon { color: var(--warning); }
+.alert--negative .alert__icon { color: var(--negative-soft); }
+.alert--positive .alert__icon { color: var(--positive-soft); }
+
+.alert__body { flex: 1 1 auto; min-width: 0; }
+
+.alert__title {
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.alert__detail {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+/* Rewarded ikincil CTA — ana akışı bozmaz (GDD 23.10.1). */
+.rewardedLine {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  align-self: flex-start;
+  font-size: var(--fs-micro);
+  color: var(--brass-400);
+  border: 1px solid var(--brass-700);
+  border-radius: var(--r-pill);
+  padding: 5px var(--sp-3);
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Teklif kontrolü — Dock içinde (GDD 23.12)                          */
+/* ------------------------------------------------------------------ */
+
+.offer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.offer__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Teklif tutarı Dock'un EN BÜYÜK sayısal değeridir (GDD 23.12). */
+.offer__amount {
+  flex: 1 1 auto;
+  font-family: var(--font-display);
+  font-size: var(--fs-hero);
+  font-weight: var(--fw-bold);
+  color: var(--text-light-1);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-align: left;
+  background: none;
+  padding: 0;
+}
+
+.offer__currency {
+  font-size: var(--fs-title);
+  color: var(--text-light-3);
+  font-weight: var(--fw-medium);
+  margin-left: 2px;
+}
+
+/* +/− ince ayar (GDD 23.12). */
+.offer__nudge {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-light-strong);
+  background: var(--stone-100);
+  color: var(--text-light-2);
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-bold);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.offer__nudge:disabled { opacity: 0.4; }
+
+/* Slider kaba ayar sağlar (GDD 23.12). */
+.offer__slider {
+  width: 100%;
+  height: 20px;
+  appearance: none;
+  background: transparent;
+  margin: 0;
+}
+
+.offer__slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--stone-300);
+}
+
+.offer__slider::-moz-range-track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--stone-300);
+}
+
+.offer__slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
+  border-radius: var(--r-pill);
+  background: var(--amethyst-500);
+  border: 2px solid var(--stone-50);
+  box-shadow: 0 1px 4px rgba(8, 11, 15, 0.35);
+}
+
+.offer__slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-pill);
+  background: var(--amethyst-500);
+  border: 2px solid var(--stone-50);
+}
+
+.offer__bounds {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-micro);
+  color: var(--text-light-3);
+}
+
+/* Tahmini etki etiketleri — kesinlik iddiası taşımaz (GDD 23.12). */
+.impacts {
+  display: flex;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.impact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-size: var(--fs-micro);
+}
+
+.impact__label {
+  color: var(--text-light-3);
+}
+
+.impact__value {
+  font-weight: var(--fw-semibold);
+}
+
+.impact__value--positive { color: var(--positive); }
+.impact__value--negative { color: var(--negative); }
+.impact__value--neutral { color: var(--text-light-2); }
+.impact__value--warning { color: var(--warning); }
+
+/*
+ * Dar cihaz — GDD 23.22: "İşlem Masası yüksekliği küçülür; CTA, teklif,
+ * müşteri ve aşama şeridi küçülmez/kaybolmaz."
+ *
+ * Kademeli yoğunluk azaltma. Kaldırılan her blok, bilgisi başka bir yerde
+ * zaten görünen ikincil bloktur — karar için gereken hiçbir şey kaybolmaz:
+ *   contextRow  → "Alış tavanı" Karar Dock'u özet satırında da var.
+ *   knownPanel  → değer bandı Değerle aşamasında tek dokunuş uzakta.
+ *   history     → anti-spam geri bildirimi müşteri mesajında zaten veriliyor.
+ */
+@media (max-height: 760px) {
+  .wb {
+    padding: var(--sp-2) var(--gutter-narrow);
+    gap: var(--sp-2);
+  }
+  .bandCard__range {
+    font-size: var(--fs-title);
+  }
+  .offer__amount {
+    font-size: var(--fs-figure);
+  }
+  .contextRow {
+    display: none;
+  }
+  .knownPanel {
+    padding: var(--sp-2) var(--sp-3);
+    gap: var(--sp-1);
+  }
+  .knownPanel__band {
+    font-size: var(--fs-subtitle);
+  }
+  .stateBadge {
+    width: 84px;
+  }
+  .breakdown__row {
+    padding: 4px var(--sp-3);
+  }
+}
+
+@media (max-height: 680px) {
+  /* Geçmiş şeridi gider; anti-spam geri bildirimi müşteri mesajında zaten var. */
+  .history {
+    display: none;
+  }
+
+  /*
+   * "Ne biliyorum?" paneli KALIR — SCREEN NORTH STAR'ın birinci sorusudur ve
+   * yerini alacak başka bir yüzey yoktur. Yalnız tek satıra sıkışır.
+   */
+  .knownPanel {
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--sp-2) var(--sp-3);
+  }
+  .knownPanel__band {
+    font-size: var(--fs-body);
+  }
+  .knownPanel__foot {
+    flex: 1 1 100%;
+  }
+  .speech {
+    padding: var(--sp-2) var(--sp-3);
+  }
+  .inspect__title {
+    font-size: var(--fs-body);
+  }
+  .result__note:nth-of-type(2) {
+    display: none;
+  }
+}

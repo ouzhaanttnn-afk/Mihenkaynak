@@ -1,0 +1,89 @@
+/**
+ * MIHENKAYNAK — Biçimlendirme yardımcıları
+ *
+ * GDD EK F: "UI kritik sayıları kendi ticari birimlerinde gösteriyor."
+ * GDD 23.3: "Finansal sonuçlar yalnız yeşil/kırmızıyla anlatılmaz; metin +
+ * ikon/etiket birlikte kullanılır." → tonWord() bu kuralın uygulama noktasıdır.
+ */
+
+const TL = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 });
+const TL_SIGNED = new Intl.NumberFormat('tr-TR', {
+  maximumFractionDigits: 0,
+  signDisplay: 'always',
+});
+const DEC1 = new Intl.NumberFormat('tr-TR', {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+const DEC2 = new Intl.NumberFormat('tr-TR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** 145.000 ₺ */
+export function tl(n: number): string {
+  return `${TL.format(Math.round(n))} ₺`;
+}
+
+/** 145.000 — sembolsüz, büyük rakam gösterimleri için. */
+export function tlBare(n: number): string {
+  return TL.format(Math.round(n));
+}
+
+/** +8.200 ₺ / −1.350 ₺ */
+export function tlSigned(n: number): string {
+  return `${TL_SIGNED.format(Math.round(n)).replace('-', '−')} ₺`;
+}
+
+/** Piyasa fiyatı — kuruşlu. */
+export function price(n: number): string {
+  return DEC2.format(n);
+}
+
+/** 18,4 g */
+export function grams(n: number): string {
+  return `${DEC1.format(n)} g`;
+}
+
+/** %19 */
+export function pct(ratio: number, digits = 0): string {
+  return `%${(ratio * 100).toFixed(digits).replace('.', ',')}`;
+}
+
+/** ▲ %0,38 — yön işareti dahil. */
+export function pctChange(value: number): string {
+  const sign = value > 0 ? '▲' : value < 0 ? '▼' : '—';
+  return `${sign} %${Math.abs(value).toFixed(2).replace('.', ',')}`;
+}
+
+/** 10:45 */
+export function clock(minutes: number): string {
+  const h = Math.floor(minutes / 60) % 24;
+  const m = Math.floor(minutes % 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** 3–7 gün */
+export function dayRange([lo, hi]: [number, number]): string {
+  if (lo === hi) return `${lo} gün`;
+  if (lo === 0) return `<1 gün`;
+  return `${lo}–${hi} gün`;
+}
+
+/**
+ * GDD 23.3 — finansal sonuç yalnız renkle anlatılmaz.
+ * Renk tonuna eşlik eden metin etiketi.
+ */
+export function tonWord(delta: number): string {
+  if (delta > 0) return 'kâr';
+  if (delta < 0) return 'zarar';
+  return 'başabaş';
+}
+
+export type Tone = 'positive' | 'negative' | 'neutral' | 'warning';
+
+export function toneFor(delta: number): Tone {
+  if (delta > 0) return 'positive';
+  if (delta < 0) return 'negative';
+  return 'neutral';
+}
