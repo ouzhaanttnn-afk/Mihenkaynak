@@ -40,6 +40,12 @@ import {
 } from '@domain/purchase';
 import { CHANNEL_LABEL_TR, gramsFor } from '@domain/channels';
 import {
+  measurePosition,
+  resolveOvernight,
+  type OvernightOutcome,
+  type OvernightPosition,
+} from '@domain/overnight';
+import {
   accrueNetworkOverdue,
   applyLiquidation,
   networkLiquidationOffer,
@@ -169,6 +175,14 @@ export interface GameState {
    */
   network: TradeNetworkMember[];
 
+  /**
+   * Addendum §5 — gün kapanışında alınan pozisyon (nakit / altın dağılımı).
+   * Ertesi sabah sonucu hesaplanır; ikisi de §5'in iki yarısını taşır.
+   */
+  overnight: OvernightPosition | null;
+  /** Dün gecenin sonucu — sabah gösterilir, sonra bir sonraki geceye devreder. */
+  lastOvernight: OvernightOutcome | null;
+
   /** Atölyedeki tüm servis işleri (GDD 28.2 ServiceJob). */
   jobs: ServiceJob[];
   /** Deterministik iş kimliği için artan sayaç. */
@@ -286,6 +300,8 @@ export const useGame = create<GameState>((set, get) => {
     dayCharacter: dayCharacter(seed, 1, market),
     intentTelemetry: emptyTelemetry(),
     network: spawnNetwork(seed, START.reputation),
+    overnight: null,
+    lastOvernight: null,
 
     queue: [],
     nextCustomerAtMinutes: DAY.openMinutes + 3,
@@ -1312,6 +1328,18 @@ export const useGame = create<GameState>((set, get) => {
       const networkOverdue = accrueNetworkOverdue(s.network, nextDay);
       const network = replenishNetwork(networkOverdue.members);
 
+      // §5 — kapanış pozisyonu ÖNCE ölçülür (gün kapanışı fiyatıyla), sonra
+      // ertesi günün fiyatıyla sonucu çözülür. Sıra önemli: pozisyonu yeni
+      // fiyatla ölçmek, geceyi hiç yaşamamış gibi göstermek olurdu.
+      const position = measurePosition(
+        s.market.day,
+        closed.store.cash,
+        inventory,
+        closed.items,
+        s.market,
+      );
+      const overnightOutcome = resolveOvernight(position, market);
+
       set({
         ...economyToState({ ...closed, store, inventory }),
         ledger: { ...closed.ledger, realizedProfitToday: 0 },
@@ -1320,6 +1348,8 @@ export const useGame = create<GameState>((set, get) => {
         // §3: her günün kendi karakteri var; havuz gün başında yeniden çekilir.
         dayCharacter: dayCharacter(s.seed, market.day, market),
         network,
+        overnight: position,
+        lastOvernight: overnightOutcome,
         queue: [],
         activeCustomer: null,
         activeDeal: null,
@@ -1333,6 +1363,12 @@ export const useGame = create<GameState>((set, get) => {
         `Gün ${report.day} kapandı · Gerçekleşmiş kâr ${fmt(report.realizedTradeProfit)} · Gider ${fmt(report.overhead)}`,
         report.netCashChange >= 0 ? 'positive' : 'negative',
       );
+
+      // §5 — gecelik pozisyonun sonucu. GDD 34.5: bu sayı gerçekleşmiş kâra
+      // YAZILMAZ; mal hâlâ stokta, fırsat maliyeti ise hiç var olmamış bir para.
+      if (Math.abs(overnightOutcome.spotChange) >= 0.0005) {
+        pushToast(set, get, overnightOutcome.summary, 'info');
+      }
 
       if (networkOverdue.penalty > 0) {
         pushToast(
@@ -1858,6 +1894,10 @@ function fmt(n: Money): string {
 
 // UI'nin ihtiyaç duyduğu türetilmiş seçiciler.
 export const selectors = {
+  /** §5 — bugünkü pozisyon (gün içinde canlı; kapanışta sabitlenir). */
+  position: (s: GameState) =>
+    measurePosition(s.market.day, s.store.cash, s.inventory, s.items, s.market),
+
   liquidity: (s: GameState) => liquidityRatio(s.store.cash, s.inventory),
   liquidityBand: (s: GameState) => liquidityBand(liquidityRatio(s.store.cash, s.inventory)),
   wealth: (s: GameState) => summarizeWealth(economyOf(s)),

@@ -23,6 +23,7 @@ import {
   type Ledger,
 } from '@domain/settlement';
 import { CHANNEL_LABEL_TR } from '@domain/channels';
+import { marketSignals } from '@domain/overnight';
 import { isBullion } from '@data/bullion';
 import { spawnItem } from '@domain/item-spawn';
 import {
@@ -50,7 +51,7 @@ import type {
   TradeChannel,
   TradeNetworkMember,
 } from '@domain/types';
-import { useGame } from '@state/gameStore';
+import { selectors, useGame } from '@state/gameStore';
 
 import {
   IconBusiness,
@@ -124,6 +125,9 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
             <StatLine label="Net servet" value={tl(wealth.netWorth)} />
           </div>
         </div>
+
+        {/* Addendum §5 — gecelik pozisyon ve sonucu */}
+        <OvernightPanel />
 
         {/*
           Addendum §4.1 — "Toplu işlemler tekil müşteri metriğini
@@ -721,6 +725,59 @@ function NetworkMemberCard({
   );
 }
 
+/**
+ * Addendum §5 — GECELİK POZİSYON.
+ *
+ * DEĞİŞMEZ: "Sistem, her iki seçeneği de KOŞULSUZ GÜVENLİ veya SÜREKLİ
+ * ÜSTÜN hale getirmemelidir." Bu yüzden panel iki tarafı da aynı ağırlıkta
+ * gösterir: altının gecelik değişimi ve nakdin fırsat maliyeti yan yana.
+ * Yalnız birini göstermek, diğerini örtük olarak "doğru seçim" ilan ederdi.
+ *
+ * GDD 34.5 — buradaki hiçbir sayı gerçekleşmiş kâr değildir ve etiketi bunu
+ * söyler.
+ */
+function OvernightPanel() {
+  const s = useGame();
+  const position = selectors.position(s);
+  const last = s.lastOvernight;
+  const share = Math.round(position.metalShare * 100);
+
+  return (
+    <div className="group">
+      <h2 className="group__title">Gecelik pozisyon</h2>
+      <div className="group__body">
+        <StatLine
+          label="Dağılım"
+          value={`Altın %${share} · Nakit %${100 - share}`}
+          icon={<IconLiquidity size={15} />}
+        />
+        <StatLine label="Metale bağlı değer" value={tl(position.metalValue)} />
+
+        {last && (
+          <>
+            <StatLine
+              label={`${last.position.day}. gece · spot`}
+              value={pctChange(last.spotChange * 100)}
+              tone={last.spotChange >= 0 ? 'positive' : 'negative'}
+            />
+            {/* §5'in iki yarısı — ikisi de görünür, biri diğerini gizlemez. */}
+            <StatLine
+              label="Altında kalmanın etkisi (realize değil)"
+              value={tlSigned(last.metalDelta)}
+              tone={last.metalDelta >= 0 ? 'positive' : 'negative'}
+            />
+            <StatLine
+              label="Nakitte kalmanın fırsat maliyeti"
+              value={last.cashOpportunityCost > 0 ? `−${tl(last.cashOpportunityCost)}` : '—'}
+              tone={last.cashOpportunityCost > 0 ? 'warning' : undefined}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Piyasa ekranı (GDD 23.16)
 // ---------------------------------------------------------------------------
@@ -731,8 +788,11 @@ function NetworkMemberCard({
  * kullanılmaz — yalnız hangi grubu etkilediği söylenir.
  */
 function MarketRoute({ onBack }: { onBack: () => void }) {
-  const market = useGame((s) => s.market);
+  const s = useGame();
+  const market = s.market;
   const regime = MARKET_REGIME[market.regime];
+  // §5.2 — sinyaller karar desteğidir; yön garanti etmez.
+  const signals = marketSignals(market, selectors.position(s));
 
   return (
     <div className="page">
@@ -761,6 +821,36 @@ function MarketRoute({ onBack }: { onBack: () => void }) {
       </header>
 
       <div className="page__scroll">
+        {/*
+          §5.2 — "Oyuncuya rejim, volatilite, talep baskısı, olay riski ve
+          kanal koşulları hakkında OKUNABİLİR sinyaller verilir. Sinyaller
+          karar desteğidir; ertesi gün yönünü veya büyüklüğünü GARANTİ ETMEZ."
+          Bu yüzden hiçbir satır yön söylemez; koşul söyler.
+        */}
+        <div className="group">
+          <h2 className="group__title">Sinyaller</h2>
+          <div className="group__body">
+            {signals.map((signal) => (
+              <StatLine
+                key={signal.label}
+                label={signal.label}
+                value={signal.detail}
+                tone={
+                  signal.level === 'high'
+                    ? 'negative'
+                    : signal.level === 'medium'
+                      ? 'warning'
+                      : undefined
+                }
+              />
+            ))}
+            <p className="emptyNote">
+              Sinyaller karar desteğidir; ertesi günün yönünü ya da büyüklüğünü
+              garanti etmez.
+            </p>
+          </div>
+        </div>
+
         <div className="group">
           <h2 className="group__title">Gün Rejimi</h2>
           <div className="group__body">

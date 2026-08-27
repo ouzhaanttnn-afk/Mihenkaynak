@@ -455,6 +455,78 @@ export const CHANNEL = {
   },
 } as const;
 
+/**
+ * Ekonomi Ara Düzeltmesi §5.1 — ERTESİ GÜN FİYAT OLUŞUMU.
+ *
+ * DEĞİŞMEZ: "Ertesi gün fiyatı basit ve BAĞIMSIZ bir 50/50 yükseliş-düşüş
+ * çekilişiyle belirlenmez. Fiyat üretimi ... bileşenlerin AĞIRLIKLI
+ * sonucudur."
+ *
+ * Ağırlıklar bu cümlenin sayısal karşılığı: gürültü en küçük paydır ve tek
+ * başına yönü belirleyemez. Rejim + trend + olay birlikte gürültüden ağır
+ * basar.
+ */
+export const MARKET_COMPOSITION = {
+  regime: 0.9,
+  trend: 1.1,
+  event: 1,
+  /** Kontrollü RNG payı — "keyfi veya tamamen bağımsız" olmaması için sınırlı. */
+  noise: 0.55,
+} as const;
+
+/** Rejimin kendi fiyat eğilimi. Stres aşağı, sakin nötre yakın. */
+export const REGIME_DRIFT: Record<MarketRegime, number> = {
+  calm: 0.05,
+  normal: 0,
+  volatile: -0.15,
+  shock: -0.4,
+};
+
+/**
+ * §5.1 — rejim bir DURUM, günlük çekiliş değil. Geçiş matrisi rejimin
+ * kendisiyle kalma eğilimini taşır; sakin gün genelde sakin günü izler.
+ */
+export const REGIME_TRANSITIONS: Record<
+  MarketRegime,
+  { to: MarketRegime; weight: number }[]
+> = {
+  calm: [
+    { to: 'calm', weight: 55 },
+    { to: 'normal', weight: 38 },
+    { to: 'volatile', weight: 6 },
+    { to: 'shock', weight: 1 },
+  ],
+  normal: [
+    { to: 'calm', weight: 22 },
+    { to: 'normal', weight: 52 },
+    { to: 'volatile', weight: 22 },
+    { to: 'shock', weight: 4 },
+  ],
+  volatile: [
+    { to: 'calm', weight: 8 },
+    { to: 'normal', weight: 34 },
+    { to: 'volatile', weight: 44 },
+    { to: 'shock', weight: 14 },
+  ],
+  shock: [
+    { to: 'calm', weight: 4 },
+    { to: 'normal', weight: 26 },
+    { to: 'volatile', weight: 46 },
+    { to: 'shock', weight: 24 },
+  ],
+};
+
+/**
+ * Olayın fiyat yönü. Olay bir haberdir; yönü kendi içeriğinden gelir,
+ * yazı-tura ile değil.
+ */
+export const EVENT_DIRECTION: Record<string, number> = {
+  wedding_season: 0.35,
+  market_rally: 1,
+  fx_calm: -0.4,
+  fake_wave: -0.25,
+};
+
 /** Rejim seçimi ağırlıkları — gün başında belirlenir (GDD 13.3). */
 export const REGIME_WEIGHTS: { value: MarketRegime; weight: number }[] = [
   { value: 'calm', weight: 30 },
