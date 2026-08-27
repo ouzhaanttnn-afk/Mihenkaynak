@@ -24,6 +24,7 @@ import {
 } from '@domain/settlement';
 import { CHANNEL_LABEL_TR } from '@domain/channels';
 import { marketSignals } from '@domain/overnight';
+import { intentAlarm } from '@domain/intent';
 import { isBullion } from '@data/bullion';
 import { spawnItem } from '@domain/item-spawn';
 import {
@@ -185,6 +186,12 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               sub={networkSub(s)}
               icon={<IconTrust size={17} />}
               onPress={() => onOpen('network')}
+            />
+            <MenuLine
+              title="Kayıt"
+              sub="Gün sonunda otomatik · elle kaydet veya geri yükle"
+              icon={<IconReason size={17} />}
+              onPress={() => s.saveGame()}
             />
             <MenuLine
               title="Kariyer / Yetenekler"
@@ -793,6 +800,7 @@ function MarketRoute({ onBack }: { onBack: () => void }) {
   const regime = MARKET_REGIME[market.regime];
   // §5.2 — sinyaller karar desteğidir; yön garanti etmez.
   const signals = marketSignals(market, selectors.position(s));
+  const alarm = intentAlarm(s.intentTelemetry);
 
   return (
     <div className="page">
@@ -844,6 +852,10 @@ function MarketRoute({ onBack }: { onBack: () => void }) {
                 }
               />
             ))}
+            {/* §11 "Dinamik havuz sapması: TELEMETRİ ALARMI ... devreye girer." */}
+            {alarm.warning && (
+              <StatLine label="Telemetri" value={alarm.warning} tone="warning" />
+            )}
             <p className="emptyNote">
               Sinyaller karar desteğidir; ertesi günün yönünü ya da büyüklüğünü
               garanti etmez.

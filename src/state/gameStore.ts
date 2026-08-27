@@ -99,6 +99,7 @@ import {
 } from '@domain/service';
 import { getTool } from '@data/tools';
 import { makeId } from '@domain/rng';
+import { clearSave, readSave, writeSave } from './save';
 import type {
   ActiveDeal,
   Customer,
@@ -238,6 +239,11 @@ export interface GameState {
   repayNetworkLoan: (memberId: string) => void;
 
   advanceDay: () => void;
+
+  // --- Kayıt (GDD 28.1 · Addendum §11) ---
+  saveGame: () => boolean;
+  loadGame: () => boolean;
+  resetGame: () => void;
   notify: (text: string, tone: ToastMessage['tone']) => void;
   dismissToast: (id: string) => void;
 }
@@ -280,8 +286,11 @@ function freshSeed(): number {
 }
 
 export const useGame = create<GameState>((set, get) => {
-  const seed = freshSeed();
-  const market = createMarketForDay(seed, 1);
+  // GDD 28.1 — açılışta kayıt varsa oradan devam edilir. Kayıt bozuksa
+  // readSave() null döner ve yeni oyun başlar; çökme yok (§11).
+  const restored = readSave();
+  const seed = restored?.seed ?? freshSeed();
+  const market = restored?.market ?? createMarketForDay(seed, 1);
 
   return {
     seed,
@@ -314,6 +323,10 @@ export const useGame = create<GameState>((set, get) => {
     customerMessage: '',
     lastReview: null,
     toasts: [],
+
+    // Kayıt varsa VARSAYILANLARIN ÜSTÜNE yazar. Sıra kritik: varsayılanları
+    // sonra koymak, yüklenen oyunu sessizce yeni oyuna çevirirdi.
+    ...(restored ?? {}),
 
     // -----------------------------------------------------------------------
     setTab: (tab) => set({ tab }),
@@ -1388,10 +1401,33 @@ export const useGame = create<GameState>((set, get) => {
         );
       }
 
+      // GDD 28.1 — gün sonu checkpoint. Kaydın §11'e göre taşıdığı şeyler:
+      // rejim (seed'den yeniden türetilir), açık borçlar, vadeler, limitler
+      // ve pozisyonlar.
+      writeSave(get());
+
       const ready = jobs.filter((j) => j.result === 'success' || j.result === 'failed').length;
       if (ready > 0) {
         pushToast(set, get, `${ready} servis işi teslime hazır — Atölye'ye bak.`, 'info');
       }
+    },
+
+    // -----------------------------------------------------------------------
+    // Kayıt (GDD 28.1 · Addendum §11)
+    // -----------------------------------------------------------------------
+    saveGame: () => writeSave(get()),
+
+    loadGame: () => {
+      const loaded = readSave();
+      if (!loaded) return false;
+      set(loaded);
+      pushToast(set, get, `Kayıt yüklendi · Gün ${loaded.market.day}`, 'info');
+      return true;
+    },
+
+    resetGame: () => {
+      clearSave();
+      pushToast(set, get, 'Kayıt silindi. Yeni oyun bir sonraki açılışta başlar.', 'info');
     },
 
     notify: (text, tone) => pushToast(set, get, text, tone),

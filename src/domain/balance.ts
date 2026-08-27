@@ -237,6 +237,16 @@ export const INTENT_MIX = {
   dynamicServiceShare: 0.55,
   /** Havuzun yön eğiminin mutlak tavanı. */
   maxDynamicTilt: 0.5,
+
+  /**
+   * §11 telemetri alarmı eşikleri. §3 "tek tek kısa seanslarda birebir yüzde
+   * garantisi aranmaz" dediği için alarm ancak örneklem birikince konuşur.
+   */
+  alarmMinSample: 200,
+  /** Sabit tabanın örneklem hatası payı. */
+  baseTolerance: 0.03,
+  /** Fiili alış-satış dengesinin izin verilen sapması. */
+  balanceTolerance: 0.25,
 } as const;
 
 /**

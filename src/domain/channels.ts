@@ -151,12 +151,19 @@ export function priceForChannel(input: PricingInput): PricingResult {
   //      mutlak tavan, dar makaslı kanalların ödününü doyurup profilleri
   //      birbirine EŞİTLERDİ. Oransal tavan kanal kimliğini korur.
   const grossHalfSpread = channelBase + productWidth + regimeWidth + volatilityWidth;
+  const rawConcession = relationshipShift + discount;
   const concession = clamp(
-    relationshipShift + discount,
+    rawConcession,
     -grossHalfSpread * profile.maxConcessionShare,
     grossHalfSpread * profile.maxConcessionShare,
   );
   const makerHalfSpread = Math.max(0, grossHalfSpread - concession);
+
+  // Kelepçe devreye girdiyse ödünlerin RAPORLANAN payları da aynı oranda
+  // kısılır. Ham değerleri raporlamak, dökümün açıkladığı sayıya toplanmaması
+  // demekti — §12.2 "sonuçlar AÇIKLANABİLİR girdilere dayanır" bunu kaldırmaz:
+  // toplamı tutmayan bir döküm açıklama değil, süstür.
+  const concessionScale = rawConcession === 0 ? 1 : concession / rawConcession;
 
   // Yarım makası KİM tahsil eder? §6'nın "kanal" belirleyicisi budur.
   // Tezgâhta dükkân (bias +1), toptancıda toptancı (bias negatif).
@@ -185,13 +192,16 @@ export function priceForChannel(input: PricingInput): PricingResult {
     totalPrice: unitPrice * quantity,
     spreadRatio: round4(shopMargin),
     priceImpact: round4(priceImpact),
+    // Döküm marja TOPLANIR: product + volume + channel + regime + volatility
+    // + relationship === spreadRatio. Fiyat etkisi ayrı raporlanır çünkü o
+    // bir marj değil, referans fiyatın kayması.
     breakdown: {
       product: round4(bias * productWidth),
-      volume: round4(-bias * discount + priceImpact),
+      volume: round4(-bias * discount * concessionScale),
       channel: round4(bias * channelBase),
       regime: round4(bias * regimeWidth),
       volatility: round4(bias * volatilityWidth),
-      relationship: round4(-bias * relationshipShift),
+      relationship: round4(-bias * relationshipShift * concessionScale),
     },
     capacityLimit,
     exceedsCapacity: quantity > capacityLimit,

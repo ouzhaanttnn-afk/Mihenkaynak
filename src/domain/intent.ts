@@ -186,6 +186,54 @@ export function tradeBalance(t: IntentTelemetry): number {
   return t.counts.buy / Math.max(1, t.counts.sell);
 }
 
+/**
+ * §11 "Dinamik havuz sapması: TELEMETRİ ALARMI ve SINIRLANDIRMA devreye
+ * girer; %38/%38 sabit taban dinamik havuza AKTARILMAZ."
+ *
+ * Alarm iki şeyi ayrı ayrı denetler:
+ *   1. Sabit tabanların altına inilmiş mi (aktarım olmuş mu),
+ *   2. Fiili alış-satış dengesi izin verilen bandın dışına çıkmış mı.
+ *
+ * Kısa seansta yüzde garantisi aranmaz (§3), bu yüzden alarm ancak yeterli
+ * örneklem birikince konuşur. Erken alarm, gürültüyü sapma sanmak olurdu.
+ */
+export interface IntentAlarm {
+  /** Örneklem alarm için yeterli mi. */
+  sampled: boolean;
+  /** Sabit taban korunuyor mu. */
+  baseIntact: boolean;
+  /** Alış-satış dengesi bandın içinde mi. */
+  balanced: boolean;
+  /** Ölçülen denge oranı (alış / satış). */
+  balance: number;
+  /** İnsan okunur uyarı; sorun yoksa null. */
+  warning: string | null;
+}
+
+export function intentAlarm(t: IntentTelemetry): IntentAlarm {
+  const shares = intentShares(t);
+  const balance = tradeBalance(t);
+  const sampled = t.total >= INTENT_MIX.alarmMinSample;
+
+  // Örneklem hatası payı: küçük pencerede taban biraz altına inebilir.
+  const tolerance = INTENT_MIX.baseTolerance;
+  const baseIntact =
+    shares.buy >= INTENT_MIX.customerBuys - tolerance &&
+    shares.sell >= INTENT_MIX.customerSells - tolerance;
+
+  const balanced =
+    balance >= 1 - INTENT_MIX.balanceTolerance && balance <= 1 + INTENT_MIX.balanceTolerance;
+
+  let warning: string | null = null;
+  if (sampled && !baseIntact) {
+    warning = 'Sabit intent tabanı aşınmış görünüyor; dinamik havuz sınırlandırılmalı.';
+  } else if (sampled && !balanced) {
+    warning = `Alış-satış dengesi bandın dışında (${balance.toFixed(2)}).`;
+  }
+
+  return { sampled, baseIntact, balanced, balance, warning };
+}
+
 function characterLabel(bulk: number, bullion: number, tempo: number, tilt: number): string {
   if (bulk >= 0.22) return 'Toplu sipariş günü';
   if (tempo <= 0.85) return 'Yoğun gün';
