@@ -74,12 +74,10 @@ export function spawnCustomer(
   // %24 kontrollü dinamik havuz.
   //
   // GDD 23.23'ün beş akışından uygulananlar:
-  //   sell    → İncele → Değerle → Tez → Pazarlık          ✔
-  //   service → Tanıla → Süre/Risk/Fiyat → Söz → Kuyruk    ✔
-  //   buy     → Stok seçimi → Değer/Paket → Pazarlık       ✔
-  //   appraisal → İncele → Test → Rapor/Ücret → Sonuç      (henüz yok)
-  // Havuz `appraisal` üretmez; üretilmiş olsaydı müşteri şeridinde doğru
-  // niyeti yazıp yanlış akışı çalıştırırdı.
+  //   sell      → İncele → Değerle → Tez → Pazarlık        ✔
+  //   service   → Tanıla → Süre/Risk/Fiyat → Söz → Kuyruk  ✔
+  //   buy       → Stok seçimi → Değer/Paket → Pazarlık     ✔
+  //   appraisal → İncele → Test → Rapor/Ücret → Sonuç      ✔
   const { intent, fromDynamicPool } = rollIntent(rootSeed, spawnIndex, character);
 
   // --- Talep: yalnız alış intentinde. Ürünü müşteri getirmez, oyuncu
@@ -106,8 +104,19 @@ export function spawnCustomer(
   // Ata, külçe) servis listesi boştur; havuzda bırakılsaydı müşteri
   // "Tanıla" ekranına gelir ve uygulanabilir tek bir iş bulunmazdı.
   const serviceablePool = basePool.filter((t) => rulesFor(t).services.length > 0);
+
+  // Ekspertizde de aynı mantık: standart sarrafiyenin ekspertizi yoktur.
+  // Gram altının ağırlığı ve ayarı tanımında sabittir — band sıfır genişlikte
+  // çıkar, rapor her koşulda tutar ve ücret bedava para olurdu. GDD 23.23'ün
+  // ekspertizi BELİRSİZ ürün içindir; belirsizliği olmayan üründe iş yoktur.
+  const appraisablePool = basePool.filter((t) => t.family !== 'bullion');
+
   const usablePool =
-    intent === 'service' && serviceablePool.length > 0 ? serviceablePool : basePool;
+    intent === 'service' && serviceablePool.length > 0
+      ? serviceablePool
+      : intent === 'appraisal' && appraisablePool.length > 0
+        ? appraisablePool
+        : basePool;
 
   // Alış intentinde müşteri elinde ürünle gelmez.
   if (intent !== 'buy') {

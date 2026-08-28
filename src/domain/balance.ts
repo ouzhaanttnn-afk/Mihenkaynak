@@ -238,8 +238,14 @@ export const INTENT_MIX = {
   customerSells: 0.38,
   /** Kontrollü dinamik/RNG havuzu. */
   dynamic: 0.24,
-  /** Dinamik havuzun ticaret dışı niyetlere (servis) ayrılan payı. */
-  dynamicServiceShare: 0.55,
+  /** Dinamik havuzun servise ayrılan payı. */
+  dynamicServiceShare: 0.4,
+  /**
+   * Dinamik havuzun ekspertiz/danışmaya ayrılan payı (GDD 23.23 beşinci akış).
+   * Servisten küçüktür: ekspertiz dükkânın her gün yaptığı bir iş değil,
+   * ara sıra gelen bir danışma talebidir.
+   */
+  dynamicAppraisalShare: 0.15,
   /** Havuzun yön eğiminin mutlak tavanı. */
   maxDynamicTilt: 0.5,
 
@@ -668,6 +674,76 @@ export const PATIENCE_PER_TEST_SECOND = 1.6;
  * DEĞİŞMEZ (GDD 17.4): burada pasif gelir üreten hiçbir parametre yoktur.
  * Her değer ya bir maliyeti, ya bir riski, ya da bir ilişki sonucunu ölçekler.
  */
+/**
+ * Ekspertiz / danışma akışı (GDD 23.23 beşinci akış, GDD 17.1 "Ekspertiz
+ * Raporu — uzmanlığa bağlı risk, güven + ücret").
+ *
+ * Ücret tabanı, servis türleri tablosundaki `appraisalReport` işçilik oranıyla
+ * (0.045) aynı büyüklüktedir — aynı iş, iki farklı kapıdan girer: biri stoktaki
+ * ürüne atölye işi olarak, diğeri müşterinin ürününe danışmanlık olarak.
+ */
+export const APPRAISAL = {
+  /** Ürün değerine oranla ekspertiz ücretinin tabanı. */
+  baseFeeRatio: 0.045,
+  /** Ücretin altına inemeyeceği taban — küçük üründe iş yine emek ister. */
+  minFee: 60,
+  /**
+   * Oyuncunun önerilen ücretin kaç katına kadar çıkabileceği.
+   * `ceilingSlack` ile birlikte okunmalı: tavanın ÜSTÜNE çıkabilmeli ki
+   * açgözlülük gerçek bir risk olsun, ama tavanın tamamen dışında kalmamalı
+   * ki üst yarı ölü bir bölge olmasın. Cömert müşteride üst sınır ödenir.
+   */
+  maxFeeOverAsk: 1.8,
+
+  /** Duruşların band genişliği çarpanları. */
+  cautiousBandScale: 1.6,
+  assertiveBandScale: 0.45,
+
+  /**
+   * Raporlanan aralığın en dar hâli.
+   *
+   * NEDEN VAR: her alanı ölçmüş bir oyuncunun bandı sıfır genişliğe çöker ve
+   * değerleme ile gerçek değer arasındaki 1 ₺'lik YUVARLAMA farkı bile raporu
+   * "yanlış" yapardı — ölçmek oyuncuyu cezalandırırdı. Gerçek bir eksper de
+   * kuruşu kuruşuna konuşmaz, "yaklaşık şu kadar" der.
+   *
+   * Bu bir değerleme düzeltmesi DEĞİLDİR: band olduğu gibi kalır, yalnız
+   * müşteriye SÖYLENEN aralığın bir alt genişliği olur.
+   */
+  minReportHalfWidth: 25,
+  minReportHalfWidthRatio: 0.005,
+
+  /**
+   * Müşterinin tavanındaki bolluk payı: önerilen ücret her zaman kabul
+   * edilebilir olsun, oyuncu ancak açgözlülük ederse reddedilsin.
+   */
+  ceilingSlack: 1.45,
+  /** Bilgili müşteri ücreti kısar. */
+  knowledgeSqueeze: 0.22,
+  /** Fiyata duyarlı müşteri ücreti kısar. */
+  sensitivitySqueeze: 0.3,
+  /** Statülü müşteri uzmanlığa daha çok öder. */
+  statusStretch: 0.25,
+
+  /** Doğru raporun taban itibar kazancı. */
+  accurateTrust: 8,
+  /** Yanlış raporun taban itibar kaybı. */
+  inaccurateTrust: 12,
+  /** Ücret reddedilirse ek itibar etkisi (zaman harcandı). */
+  refusedTrustPenalty: -2,
+  /** Tek ekspertizin itibarı en fazla ne kadar oynatabileceği (GDD 10.4). */
+  maxTrustSwing: 16,
+  /** Güven değişiminin semt itibarına yansıyan payı. */
+  reputationShare: 0.5,
+
+  /** Emek tam sayılsın diye beklenen test sayısı. */
+  effortTests: 3,
+  /** Hiç test yapmadan tutturmanın kazanç tabanı. */
+  effortFloor: 0.35,
+  /** Iskanın ceza tavanına ulaştığı oran (gerçek değerin %35'i). */
+  missCap: 0.35,
+} as const;
+
 export const SERVICE = {
   /** GDD 14.1 — "Servis brüt marj %35–60". Ücret bu banttan türetilir. */
   grossMarginBand: [0.35, 0.6] as [number, number],

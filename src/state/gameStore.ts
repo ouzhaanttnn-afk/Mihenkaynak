@@ -106,10 +106,18 @@ import {
   type CustomerRegistry,
 } from '@domain/customer-memory';
 import { flowPolicy, stageUnlocked } from '@domain/transaction-class';
+import {
+  appraisalTransaction,
+  feeBounds,
+  resolveAppraisal,
+  suggestedFee,
+} from '@domain/appraisal';
 import { applyTierGrants, evaluateUpgrade, growthSnapshot } from '@domain/store-growth';
 import { clearSave, readSave, writeSave } from './save';
 import type {
   ActiveDeal,
+  AppraisalSession,
+  AppraisalStance,
   Customer,
   DealLine,
   DealRecord,
@@ -230,6 +238,12 @@ export interface GameState {
   setPromiseBuffer: (days: number) => void;
   acceptServiceJob: () => void;
   declineServiceJob: () => void;
+
+  // --- Ekspertiz / danışma akışı (GDD 23.23 beşinci akış) ---
+  selectStance: (stance: AppraisalStance) => void;
+  setAppraisalFee: (fee: Money) => void;
+  issueReport: () => void;
+  declineAppraisal: () => void;
   deliverJob: (jobId: string) => void;
 
   // --- Müşteri alış akışı (GDD 23.23 · Addendum §3, §4.1) ---
@@ -469,6 +483,9 @@ export const useGame = create<GameState>((set, get) => {
       const intent = head.customer.intent;
       const isService = intent === 'service';
       const isPurchase = intent === 'buy' && !!head.customer.demand;
+      // GDD 23.23 beşinci akış — ekspertiz. Müşteri ürününü satmaya değil,
+      // ne ettiğini öğrenmeye gelir; ürün hiçbir an dükkânın olmaz.
+      const isAppraisal = intent === 'appraisal';
       const firstItem = head.items[0];
 
       // Servis akışı tanılamayla açılır; ticaret akışı incelemeyle;
@@ -485,6 +502,11 @@ export const useGame = create<GameState>((set, get) => {
 
       const purchase =
         isPurchase && head.customer.demand ? createPurchaseSession(head.customer.demand) : null;
+
+      const appraisal: AppraisalSession | null =
+        isAppraisal && firstItem
+          ? { stance: null, fee: 0, verdict: null, outcome: 'pending' }
+          : null;
 
       // Alış akışında pazarlık tek bir "paket satırı" üzerinden yürür;
       // kalem henüz seçilmediği için itemId boştur ve paket kuruldukça dolar.
@@ -513,12 +535,20 @@ export const useGame = create<GameState>((set, get) => {
         activeDeal: {
           dealId,
           customerId: head.customer.id,
-          flow: isService ? 'service' : isPurchase ? 'purchase' : 'trade',
+          flow: isService
+            ? 'service'
+            : isPurchase
+              ? 'purchase'
+              : isAppraisal
+                ? 'appraisal'
+                : 'trade',
+          // Ekspertiz de incelemeyle açılır — akışın ilk adımı "İncele".
           stage: isService ? 'diagnose' : isPurchase ? 'stockPick' : 'inspect',
           activeLineId: purchaseLines[0]?.lineId ?? '',
           lines: purchaseLines,
           service,
           purchase,
+          appraisal,
           startedAtSec: s.market.clockMinutes * 60,
           settled: false,
         },
@@ -704,6 +734,139 @@ export const useGame = create<GameState>((set, get) => {
       });
 
       pushToast(set, get, delivery.message, delivery.succeeded ? 'positive' : 'negative');
+    },
+
+    // -----------------------------------------------------------------------
+    // Ekspertiz / danışma akışı (GDD 23.23 · İncele → Test → Rapor/Ücret → Sonuç)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Rapor duruşunu seçer ve ücreti o duruşun önerisine çeker.
+     *
+     * Ücret duruşa BAĞLI olduğu için duruş değişince öneri de değişmelidir;
+     * aksi hâlde oyuncu "Temkinli"nin ücretiyle "Kesin"in itibar kazancını
+     * alırdı. Oyuncu isterse öneriyi sonra elle değiştirir.
+     */
+    selectStance: (stance) => {
+      const s = get();
+      const deal = s.activeDeal;
+      if (!deal?.appraisal || deal.appraisal.outcome !== 'pending') return;
+
+      const line = activeLine(deal);
+      const band = line?.band;
+      if (!band) return;
+
+      set({
+        activeDeal: {
+          ...deal,
+          appraisal: { ...deal.appraisal, stance, fee: suggestedFee(band, stance) },
+        },
+      });
+    },
+
+    setAppraisalFee: (fee) => {
+      const s = get();
+      const deal = s.activeDeal;
+      if (!deal?.appraisal || deal.appraisal.outcome !== 'pending') return;
+      const { stance } = deal.appraisal;
+      if (!stance) return;
+
+      const line = activeLine(deal);
+      const band = line?.band;
+      if (!band) return;
+
+      const bounds = feeBounds(band, stance);
+      const clamped = Math.round(clamp(fee, bounds.min, bounds.max));
+      set({ activeDeal: { ...deal, appraisal: { ...deal.appraisal, fee: clamped } } });
+    },
+
+    /**
+     * Raporu verir ve sonucu bağlar (GDD 23.23 "Sonuç").
+     *
+     * GDD 22.1 — ücret tek settlement kapısından geçer. GDD 34.3 — sonuç
+     * belirlenimlidir: aynı rapor ve aynı ücret her zaman aynı cevabı alır,
+     * bu yüzden reddedilen bir ücreti tekrar denemek diye bir şey yoktur.
+     * `outcome !== 'pending'` kapısı çift dokunuşu da baştan keser.
+     */
+    issueReport: () => {
+      const s = get();
+      const deal = s.activeDeal;
+      const customer = s.activeCustomer;
+      if (!deal?.appraisal || !customer) return;
+      if (deal.appraisal.outcome !== 'pending') return;
+
+      const { stance, fee } = deal.appraisal;
+      if (!stance) return;
+
+      const line = activeLine(deal);
+      const item = line ? s.items[line.itemId] : undefined;
+      if (!line || !item || !line.band) return;
+
+      const verdict = resolveAppraisal({
+        item,
+        market: s.market,
+        customer,
+        band: line.band,
+        stance,
+        fee,
+        testsUsed: line.testResults.length,
+      });
+
+      const tx = appraisalTransaction({
+        dealId: deal.dealId,
+        day: s.market.day,
+        verdict,
+        // Ekspertizde XP emeğin ve doğruluğun karşılığıdır; marj yoktur çünkü
+        // alınıp satılan bir mal yoktur.
+        xpDelta: xpForDeal({
+          testsUsed: line.testResults.length,
+          confidence: line.band.confidence,
+          margin: verdict.accurate ? 0.1 : 0,
+        }),
+      });
+
+      const outcome = applyTransaction(economyOf(s), tx);
+      if (!outcome.applied) return;
+
+      // Ücret gerçekleşmiş katkıdır: iş bitti, rapor teslim edildi.
+      const ledger = verdict.paid
+        ? realizeProfit(outcome.state.ledger, verdict.fee, 0)
+        : outcome.state.ledger;
+
+      // GDD 6.6 — ürün müşteriyle gider. Stoğa hiçbir an girmez.
+      set({
+        ...economyToState({ ...outcome.state, ledger }),
+        activeCustomer: { ...customer, trust: clamp(customer.trust + verdict.trustDelta, 0, 100) },
+        activeDeal: {
+          ...deal,
+          stage: 'result',
+          settled: true,
+          appraisal: { ...deal.appraisal, verdict, outcome: 'reported' },
+        },
+        customerMessage: verdict.summary,
+      });
+
+      pushToast(
+        set,
+        get,
+        verdict.paid ? `Ekspertiz ücreti ${fmt(verdict.fee)} alındı.` : 'Müşteri ücreti ödemedi.',
+        verdict.paid && verdict.accurate ? 'positive' : verdict.accurate ? 'info' : 'negative',
+      );
+    },
+
+    /** Oyuncu işi almaz — rapor verilmez, ücret alınmaz, itibar oynamaz. */
+    declineAppraisal: () => {
+      const s = get();
+      const deal = s.activeDeal;
+      if (!deal?.appraisal || deal.appraisal.outcome !== 'pending') return;
+      set({
+        activeDeal: {
+          ...deal,
+          stage: 'result',
+          appraisal: { ...deal.appraisal, outcome: 'declined' },
+        },
+        customerMessage: 'Anlıyorum, başka bir yere sorayım.',
+      });
     },
 
     setStage: (stage) => {
@@ -1888,6 +2051,11 @@ function visitOutcome(deal: ActiveDeal, customer: Customer): VisitRecord['outcom
   if (deal.flow === 'service') {
     return deal.service?.outcome === 'accepted' ? 'serviceBooked' : 'rejected';
   }
+  // Ekspertizde "kapandı" demek para değil, RAPOR demektir: ücret
+  // reddedilse bile iş yapılmıştır ve ziyaret boşa geçmemiştir.
+  if (deal.flow === 'appraisal') {
+    return deal.appraisal?.outcome === 'reported' ? 'accepted' : 'rejected';
+  }
   // Sabrı bitip çıkan müşteri, fiyatı beğenmeyip redden ayrı tutulur:
   // GDD 10.4 ciddi olayları daha ağır sayar.
   if (customer.patience <= 0) return 'walkedOut';
@@ -1991,6 +2159,28 @@ export function canEnterStage(s: GameState, stage: WorkbenchStage): boolean {
         return service.outcome !== 'pending';
       default:
         // Ticaret aşamaları servis akışında kilitlidir.
+        return false;
+    }
+  }
+
+  // --- Ekspertiz akışı (GDD 23.23 beşinci akış) ---
+  // İncele ve Test her zaman açık — GDD 7'nin "bilgi satın alma" kararı
+  // oyuncunundur, sistem onu teste zorlamaz ama teste ENGEL de olmaz.
+  // Rapor bir değerleme bandı ister: ölçmediğin şey için rapor yazılmaz.
+  if (deal.flow === 'appraisal') {
+    const appraisal = deal.appraisal;
+    if (!appraisal) return false;
+
+    switch (stage) {
+      case 'inspect':
+      case 'test':
+        return true;
+      case 'report':
+        return line.band !== null;
+      case 'result':
+        return appraisal.outcome !== 'pending';
+      default:
+        // Ticaret ve servis aşamaları ekspertiz akışında kilitlidir.
         return false;
     }
   }

@@ -50,7 +50,20 @@ const PURCHASE_STEPS: { stage: WorkbenchStage; label: string }[] = [
   { stage: 'negotiate', label: 'Pazarlık' },
 ];
 
+/**
+ * GDD 23.23 beşinci akış — "appraisal → İncele → Test → Rapor/Ücret → Sonuç".
+ * Dört adımdır ve ticaret akışıyla KARIŞTIRILMAZ: burada pazarlık yoktur,
+ * çünkü pazarlık edilecek bir mal yoktur; satılan şey bilgidir.
+ */
+const APPRAISAL_STEPS: { stage: WorkbenchStage; label: string }[] = [
+  { stage: 'inspect', label: 'İncele' },
+  { stage: 'test', label: 'Test' },
+  { stage: 'report', label: 'Rapor' },
+  { stage: 'result', label: 'Sonuç' },
+];
+
 const TRADE_ORDER: WorkbenchStage[] = ['inspect', 'appraise', 'thesis', 'negotiate', 'result'];
+const APPRAISAL_ORDER: WorkbenchStage[] = ['inspect', 'test', 'report', 'result'];
 const PURCHASE_ORDER: WorkbenchStage[] = ['stockPick', 'package', 'negotiate', 'result'];
 const SERVICE_ORDER: WorkbenchStage[] = ['diagnose', 'quote', 'promise', 'jobQueue'];
 
@@ -63,9 +76,21 @@ interface Props {
 
 export function StageStrip({ flow, current, canEnter, onSelect }: Props) {
   const STEPS =
-    flow === 'service' ? SERVICE_STEPS : flow === 'purchase' ? PURCHASE_STEPS : TRADE_STEPS;
+    flow === 'service'
+      ? SERVICE_STEPS
+      : flow === 'purchase'
+        ? PURCHASE_STEPS
+        : flow === 'appraisal'
+          ? APPRAISAL_STEPS
+          : TRADE_STEPS;
   const ORDER =
-    flow === 'service' ? SERVICE_ORDER : flow === 'purchase' ? PURCHASE_ORDER : TRADE_ORDER;
+    flow === 'service'
+      ? SERVICE_ORDER
+      : flow === 'purchase'
+        ? PURCHASE_ORDER
+        : flow === 'appraisal'
+          ? APPRAISAL_ORDER
+          : TRADE_ORDER;
   const currentIndex = ORDER.indexOf(current);
 
   return (

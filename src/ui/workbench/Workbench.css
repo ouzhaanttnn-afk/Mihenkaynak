@@ -1804,3 +1804,310 @@
 
 .refPanel__val--positive { color: var(--positive-soft); }
 .refPanel__val--negative { color: var(--negative-soft); }
+
+/* ------------------------------------------------------------------ */
+/* EKSPERTİZ / DANIŞMA AKIŞI (GDD 23.23 beşinci akış)                  */
+/*                                                                     */
+/* Servis akışıyla aynı yüzey ve aynı ritim: dikey akış, 44 px          */
+/* dokunma hedefi (GDD 23.22), 11 px altına düşen metin yok.            */
+/* ------------------------------------------------------------------ */
+
+.apr {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* Akışın ne olduğunu söyleyen tek satırlık bant — İncele adımının üstünde. */
+.apr__intro {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: rgba(201, 160, 74, 0.09);
+  border-left: 2px solid var(--brass-400);
+  margin-bottom: var(--sp-3);
+}
+
+.apr__introIcon {
+  flex: 0 0 auto;
+  color: var(--brass-400);
+  display: inline-flex;
+}
+
+.apr__introText {
+  font-size: var(--fs-caption);
+  color: var(--text-dark-2);
+  line-height: 1.35;
+}
+
+/* --- Rapor duruşu --- */
+
+.apr__stances {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.stance {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* GDD 23.22 — 44 px dokunma hedefi; içerik üç satır olduğu için doğal
+     yükseklik zaten üstünde, min-height güvence olarak durur. */
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  border: 1px solid var(--line-dark);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.stance--selected {
+  border-color: var(--brass-400);
+  background: rgba(201, 160, 74, 0.08);
+}
+
+.stance__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.stance__name {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.stance__fee {
+  font-size: var(--fs-caption);
+  color: var(--brass-400);
+  font-weight: var(--fw-semibold);
+}
+
+.stance__range {
+  font-size: var(--fs-caption);
+  color: var(--text-dark-2);
+}
+
+.stance__desc {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  line-height: 1.35;
+}
+
+/* --- Ücret --- */
+
+.apr__fee {
+  flex: 0 0 auto;
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  border: 1px solid var(--line-dark);
+}
+
+.apr__feeHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.apr__feeLabel {
+  font-size: var(--fs-caption);
+  color: var(--text-dark-2);
+}
+
+.apr__feeValue {
+  font-size: var(--fs-subtitle);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.apr__feeRow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.apr__feeBtn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-sm);
+  background: var(--ink-800);
+  border: 1px solid var(--line-dark);
+  color: var(--text-dark-1);
+  font-size: var(--fs-subtitle);
+  cursor: pointer;
+}
+
+.apr__feeBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.apr__feeReset {
+  flex: 1 1 auto;
+  min-height: 44px;
+  border-radius: var(--r-sm);
+  background: transparent;
+  border: 1px dashed var(--line-dark);
+  color: var(--text-dark-2);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+
+.apr__feeReset:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.apr__note {
+  flex: 0 0 auto;
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  line-height: 1.45;
+  margin-top: var(--sp-2);
+}
+
+.apr__note--center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin-top: 0;
+}
+
+.apr__warn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: rgba(201, 130, 46, 0.1);
+  border-left: 2px solid var(--warning);
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+  line-height: 1.4;
+}
+
+.apr__warnIcon {
+  flex: 0 0 auto;
+  color: var(--warning);
+  display: inline-flex;
+  margin-top: 1px;
+}
+
+/* --- Sonuç --- */
+
+.apr__verdict {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-caption);
+  line-height: 1.35;
+}
+
+.apr__verdict--ok {
+  background: rgba(74, 141, 106, 0.12);
+  border-left: 2px solid var(--positive);
+  color: var(--text-dark-1);
+}
+
+.apr__verdict--miss {
+  background: rgba(178, 74, 62, 0.12);
+  border-left: 2px solid var(--negative);
+  color: var(--text-dark-1);
+}
+
+.apr__verdictIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+
+.apr__verdict--ok .apr__verdictIcon {
+  color: var(--positive-soft);
+}
+
+.apr__verdict--miss .apr__verdictIcon {
+  color: var(--negative-soft);
+}
+
+/* Söylenen ile gerçek yan yana — GDD 20 öğretici karşılaştırma. */
+.apr__compare {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.apr__compareCol {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--ink-900);
+  border: 1px solid var(--line-dark);
+}
+
+.apr__compareLabel {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+.apr__compareValue {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.apr__rows {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.apr__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line-dark);
+}
+
+.apr__rowLabel {
+  font-size: var(--fs-caption);
+  color: var(--text-dark-2);
+}
+
+.apr__rowValue {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+}
+
+.apr__ok {
+  color: var(--positive-soft);
+}
+
+.apr__miss {
+  color: var(--negative-soft);
+}

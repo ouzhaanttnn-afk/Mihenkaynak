@@ -37,6 +37,13 @@ import { StatusStrip } from '@ui/shell/StatusStrip';
 import { ToolRail, type RailItem } from '@ui/shell/ToolRail';
 
 import { AppraiseStage } from '@ui/workbench/AppraiseStage';
+import {
+  AppraisalIntro,
+  AppraisalResultStage,
+  ReportStage,
+} from '@ui/workbench/AppraisalStages';
+import { getStance } from '@domain/appraisal';
+import { CONFIDENCE_LABEL } from '@domain/valuation';
 import { InspectStage } from '@ui/workbench/InspectStage';
 import { NegotiateStage } from '@ui/workbench/NegotiateStage';
 import { ResultStage } from '@ui/workbench/ResultStage';
@@ -220,6 +227,40 @@ export function ShopScreen() {
             )
           ) : !item ? (
             <IdleWorkbench />
+          ) : /* --- Ekspertiz / danışma akışı (GDD 23.23 beşinci akış) --- */
+          deal.flow === 'appraisal' && deal.appraisal ? (
+            stage === 'inspect' ? (
+              <>
+                <AppraisalIntro item={item} />
+                <InspectStage
+                  item={item}
+                  knowledge={line.knowledge}
+                  testResults={line.testResults}
+                  market={s.market}
+                />
+              </>
+            ) : stage === 'test' && line.band ? (
+              // Test adımı ticaretin değerleme ekranını AYNEN kullanır:
+              // ölçüm ölçümdür, akış değişince fizik değişmez.
+              <AppraiseStage band={line.band} />
+            ) : stage === 'report' && line.band ? (
+              <ReportStage
+                band={line.band}
+                appraisal={deal.appraisal}
+                testsUsed={line.testResults.length}
+                onSelectStance={s.selectStance}
+                onSetFee={s.setAppraisalFee}
+              />
+            ) : stage === 'result' ? (
+              <AppraisalResultStage appraisal={deal.appraisal} />
+            ) : (
+              <InspectStage
+                item={item}
+                knowledge={line.knowledge}
+                testResults={line.testResults}
+                market={s.market}
+              />
+            )
           ) : /* --- Servis Kabul akışı (GDD 23.14) --- */
           deal.flow === 'service' && deal.service ? (
             stage === 'diagnose' ? (
@@ -454,6 +495,21 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
     );
   }
 
+  // --- Ekspertiz akışı (GDD 23.23 beşinci akış) ---
+  // İncele ve Test adımlarında ray ticaret akışının test rayıdır — ölçüm
+  // aracı akışa göre değişmez. Rapor ve Sonuç adımlarında ölçecek bir şey
+  // kalmamıştır; ray boşalır ama yerinde durur (GDD 23.11).
+  if (deal.flow === 'appraisal') {
+    if (deal.stage === 'report') {
+      return <ToolRail items={[]} disabled emptyLabel="Raporu Karar Dock'unda verin" />;
+    }
+    if (deal.stage === 'result') {
+      return <ToolRail items={[]} disabled emptyLabel="Ekspertiz tamamlandı" />;
+    }
+    // inspect / test → aşağıdaki ortak test rayına düşer; ölçüm asıl olarak
+    // "Test" adımında yapılır ama İncele'de de yasak değildir.
+  }
+
   // --- Servis Kabul akışı (GDD 23.14) ---
   // Ray aynı fiziksel konumda kalır; içeriği adıma göre değişir (GDD 23.11).
   if (deal.flow === 'service' && deal.service) {
@@ -517,6 +573,11 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
 
   switch (deal.stage) {
     // İncele → test araçları. İlk 4 görünür; fazlası yatay scroll.
+    //
+    // Ekspertiz akışının "Test" adımı da BURAYA düşer (GDD 23.23): ölçüm
+    // aracı akışa göre değişmez, yalnız adımın adı değişir. Kendi case'ini
+    // açsaydık aynı rayı iki yerde tutmuş olurduk.
+    case 'test':
     case 'inspect': {
       // İşlem Akışı Ara Düzeltmesi §3 — "Bir test ürün hakkında ANLAMLI YENİ
       // BİLGİ ÜRETMİYORSA varsayılan akışta gösterilmemeli." Gram altına taş
@@ -720,6 +781,11 @@ function ShopDock({
   // --- Servis Kabul akışı Dock'u (GDD 23.14) ---
   if (deal.flow === 'service' && deal.service) {
     return <ServiceDock deal={deal} />;
+  }
+
+  // --- Ekspertiz akışı Dock'u (GDD 23.23 beşinci akış) ---
+  if (deal.flow === 'appraisal' && deal.appraisal) {
+    return <AppraisalDock deal={deal} line={line} />;
   }
 
   // --- Müşteri alış akışı Dock'u (GDD 23.23) ---
@@ -1197,6 +1263,106 @@ function ServiceDock({ deal }: { deal: NonNullable<GameStateDeal> }) {
                 ]
               : []
           }
+        />
+      );
+    }
+  }
+}
+
+/**
+ * Ekspertiz Dock'u (GDD 23.23 · İncele → Test → Rapor/Ücret → Sonuç).
+ *
+ * Ticaret Dock'undan farkı: burada TEKLİF SLIDER'I YOKTUR. Pazarlık edilecek
+ * bir mal yok; oyuncunun verdiği tek rakam kendi ücretidir ve o da Rapor
+ * ekranında belirlenir. Dock yalnız adımlar arasında ilerletir ve raporu
+ * verir.
+ */
+function AppraisalDock({
+  deal,
+  line,
+}: {
+  deal: NonNullable<GameStateDeal>;
+  line: DealLine;
+}) {
+  const s = useGame();
+  const appraisal = deal.appraisal;
+  if (!appraisal) return null;
+
+  const tests = line.testResults.length;
+
+  switch (deal.stage) {
+    // --- İNCELE: ölçüme geç ---
+    case 'inspect':
+      return (
+        <DecisionDock
+          summaryLabel="Ekspertiz"
+          summaryValue={
+            tests > 0 ? `${tests} test yapıldı` : 'Henüz ölçüm yok — raydan araç seçin'
+          }
+          primary={{ label: 'Ölçüme Geç', onPress: () => s.setStage('test') }}
+          secondary={[{ label: 'İşi Reddet', onPress: s.declineAppraisal, danger: true }]}
+        />
+      );
+
+    // --- TEST: band ne kadar daraldı ---
+    case 'test': {
+      const band = line.band;
+      return (
+        <DecisionDock
+          summaryLabel="Ölçülen aralık"
+          summaryValue={
+            band
+              ? `${tl(band.min)} – ${tl(band.max)} · ${CONFIDENCE_LABEL[band.confidence]}`
+              : 'Değerleme bandı yok'
+          }
+          primary={{
+            label: 'Rapor Yaz',
+            onPress: () => s.setStage('report'),
+            disabled: !band,
+          }}
+          secondary={[{ label: 'İşi Reddet', onPress: s.declineAppraisal, danger: true }]}
+        />
+      );
+    }
+
+    // --- RAPOR/ÜCRET: raporu ver ---
+    case 'report': {
+      const ready = appraisal.stance !== null;
+      return (
+        <DecisionDock
+          summaryLabel={ready ? 'Rapor' : 'Duruş seçilmedi'}
+          summaryValue={
+            ready
+              ? `${getStance(appraisal.stance!).label} · ${tl(appraisal.fee)} ücret`
+              : 'Yukarıdan bir rapor duruşu seçin'
+          }
+          primary={{
+            label: 'Raporu Ver',
+            onPress: s.issueReport,
+            disabled: !ready,
+            icon: <IconLoupe size={18} />,
+          }}
+          secondary={[{ label: 'İşi Reddet', onPress: s.declineAppraisal, danger: true }]}
+        />
+      );
+    }
+
+    // --- SONUÇ ---
+    default: {
+      const v = appraisal.verdict;
+      return (
+        <DecisionDock
+          summaryLabel="Sonuç"
+          summaryValue={
+            appraisal.outcome === 'declined'
+              ? 'Ekspertiz yapılmadı'
+              : v
+                ? v.paid
+                  ? `${tl(v.fee)} ücret alındı`
+                  : 'Ücret ödenmedi'
+                : '—'
+          }
+          primary={{ label: 'Devam Et', onPress: s.finishDeal }}
         />
       );
     }

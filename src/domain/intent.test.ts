@@ -109,8 +109,20 @@ describe('§3 — Intent dağılımı %38 / %38 / %24', () => {
     expect(a.buy).not.toBeCloseTo(b.buy, 2);
   });
 
-  it('havuz uygulanmamış akış (ekspertiz) üretmez', () => {
-    expect(intentShares(sample(4000)).appraisal).toBe(0);
+  it('ekspertiz üretilir ve yalnız dinamik havuzun içinden çıkar', () => {
+    // GDD 23.23'ün beşinci akışı artık uygulanmıştır (İncele → Test →
+    // Rapor/Ücret → Sonuç), bu yüzden havuz onu üretir.
+    const shares = intentShares(sample(6000));
+    expect(shares.appraisal).toBeGreaterThan(0);
+
+    // §3 DEĞİŞMEZİ: ticaret dışı niyetlerin TOPLAMI dinamik havuzu aşamaz.
+    // Aşsaydı %38/%38 sabit tabandan çalınmış olurdu.
+    expect(shares.appraisal + shares.service).toBeLessThanOrEqual(
+      INTENT_MIX.dynamic + INTENT_MIX.baseTolerance,
+    );
+
+    // Ekspertiz servisten seyrek gelir — dükkânın her gün yaptığı iş değil.
+    expect(shares.appraisal).toBeLessThan(shares.service);
   });
 
   it('aynı seed ve index her zaman aynı niyeti verir (GDD 11.4)', () => {

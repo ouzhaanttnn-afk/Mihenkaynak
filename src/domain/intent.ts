@@ -123,11 +123,18 @@ export function rollIntent(
   }
 
   // --- Dinamik havuz (%24) ---
-  // Havuzun bir kısmı servis gibi ticaret dışı niyetlere gider; kalanı
-  // kelepçeli eğimle alış/satış arasında paylaşılır.
+  // Havuzun bir kısmı ticaret dışı niyetlere gider (servis ve ekspertiz);
+  // kalanı kelepçeli eğimle alış/satış arasında paylaşılır.
+  //
+  // §3 DEĞİŞMEZİ KORUNUR: ticaret dışı niyetler yalnız bu %24'ün içinden
+  // çıkar. %38/%38 sabit taban dokunulmaz kalır — ekspertizin eklenmesi
+  // alış-satış dengesini değiştirmez, yalnız dinamik havuzun içini böler.
   const inner = rng.next();
   if (inner < INTENT_MIX.dynamicServiceShare) {
     return { intent: 'service', fromDynamicPool: true };
+  }
+  if (inner < INTENT_MIX.dynamicServiceShare + INTENT_MIX.dynamicAppraisalShare) {
+    return { intent: 'appraisal', fromDynamicPool: true };
   }
 
   // tilt +1 → tamamı alışa, -1 → tamamı satışa. Kelepçe zaten uygulandı.

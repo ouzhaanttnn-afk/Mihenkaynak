@@ -671,6 +671,43 @@ export interface ServiceSession {
   outcome: 'pending' | 'accepted' | 'declined';
 }
 
+// ---------------------------------------------------------------------------
+// Ekspertiz / danışma akışı (GDD 23.23 · beşinci akış)
+// ---------------------------------------------------------------------------
+
+/**
+ * Oyuncunun raporda ne kadar kesin konuştuğu. Ölçümü değil, ölçümün
+ * SUNUMUNU seçer — bkz. appraisal.ts.
+ */
+export type AppraisalStance = 'cautious' | 'measured' | 'assertive';
+
+/** GDD 23.23 "İncele → Test → Rapor/Ücret → Sonuç" oturum durumu. */
+export interface AppraisalSession {
+  /** Rapor duruşu; seçilmeden rapor verilemez. */
+  stance: AppraisalStance | null;
+  /** Oyuncunun istediği ücret. */
+  fee: Money;
+  /** Rapor verildiyse sonucu; verilmediyse null. */
+  verdict: AppraisalOutcome | null;
+  outcome: 'pending' | 'reported' | 'declined';
+}
+
+/**
+ * `AppraisalVerdict`in types katmanındaki karşılığı. Domain tarafı bu şekli
+ * üretir; save ve UI bu şekli okur.
+ */
+export interface AppraisalOutcome {
+  paid: boolean;
+  fee: Money;
+  reported: { min: Money; max: Money };
+  actualValue: Money;
+  accurate: boolean;
+  missRatio: number;
+  trustDelta: number;
+  reputationDelta: number;
+  summary: string;
+}
+
 /** GDD 28.2 · StoreState. */
 export interface StoreState {
   name: string;
@@ -799,10 +836,13 @@ export type WorkbenchStage =
   | 'jobQueue' // Atölye Kuyruğu
   // --- Müşteri alış akışı (GDD 23.23 · Addendum §3) ---
   | 'stockPick' // Stok seçimi
-  | 'package'; // Değer / Paket
+  | 'package' // Değer / Paket
+  // --- Ekspertiz / danışma akışı (GDD 23.23 · beşinci akış) ---
+  | 'test' // Test
+  | 'report'; // Rapor / Ücret
 
 /** Bir akışın hangi aşama dizisini kullandığı. */
-export type DealFlow = 'trade' | 'service' | 'purchase';
+export type DealFlow = 'trade' | 'service' | 'purchase' | 'appraisal';
 
 /**
  * Müşteri alış akışının oturum durumu (GDD 23.23:
@@ -864,6 +904,8 @@ export interface ActiveDeal {
   service: ServiceSession | null;
   /** Müşteri alış akışında dolu; diğer akışlarda null. */
   purchase: PurchaseSession | null;
+  /** Ekspertiz akışında dolu; diğer akışlarda null. */
+  appraisal: AppraisalSession | null;
   startedAtSec: number;
   /** Terminal settlement uygulandı mı — çift tap koruması (GDD 22.1). */
   settled: boolean;
