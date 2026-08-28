@@ -19,6 +19,7 @@ import {
   type CustomerRegistry,
 } from './customer-memory';
 import { bullionMeta } from '@data/bullion';
+import { rulesFor } from '@data/product-classes';
 import { templatesForTier } from './item-spawn';
 import { spawnItem } from './item-spawn';
 import { trueValue } from './valuation';
@@ -98,7 +99,15 @@ export function spawnCustomer(
       // Arketip tercihi dışında da ürün gelebilir; havuz tek renk olmasın.
       rng.chance(0.25),
   );
-  const usablePool = pool.length > 0 ? pool : templatesForTier(store.storeTier);
+  const basePool = pool.length > 0 ? pool : templatesForTier(store.storeTier);
+
+  // §3 ürün sınıfı filtresi — servis niyetli müşteri, atölye işi ALMAYAN
+  // ürünle gelemez. Standart sarrafiyenin (gram altın, çeyrek, yarım, tam,
+  // Ata, külçe) servis listesi boştur; havuzda bırakılsaydı müşteri
+  // "Tanıla" ekranına gelir ve uygulanabilir tek bir iş bulunmazdı.
+  const serviceablePool = basePool.filter((t) => rulesFor(t).services.length > 0);
+  const usablePool =
+    intent === 'service' && serviceablePool.length > 0 ? serviceablePool : basePool;
 
   // Alış intentinde müşteri elinde ürünle gelmez.
   if (intent !== 'buy') {

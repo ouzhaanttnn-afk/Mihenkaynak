@@ -27,6 +27,7 @@
 
 import { isBullion } from '@data/bullion';
 import { getTemplate } from '@data/item-templates';
+import { rulesFor } from '@data/product-classes';
 import { TEST_TOOLS } from '@data/tools';
 import type { InfoField, ItemInstance, TestTool, WorkbenchStage } from './types';
 
@@ -117,6 +118,13 @@ const CONTROLLED_CRAFT_CEILING = 0.18;
 export function isFieldRelevant(item: ItemInstance, field: InfoField): boolean {
   const template = getTemplate(item.templateId);
 
+  // 1. KATMAN — ürün sınıfının whitelist'i (product-classes.ts).
+  // Sınıf bu alanı saymıyorsa alan yoktur: hiçbir anlamlılık gerekçesi
+  // onu geri açamaz. Gram altında 'stone', bilezikte 'stone' burada biter.
+  if (!rulesFor(template).attributes.includes(field)) return false;
+
+  // 2. KATMAN — alan bu ÜRÜNDE şu an anlamlı mı. Whitelist "gösterilebilir"
+  // der; burası "belirsiz mi, yani ölçülecek bir şey var mı" diye sorar.
   switch (field) {
     case 'stone':
       // Taşsız üründe taş kontrolü anlamsızdır — §3'ün birebir örneği.
@@ -159,6 +167,12 @@ const ALL_INFO_FIELDS: InfoField[] = [
  * Aracın okuduğu alanlardan EN AZ BİRİ üründe anlamlıysa araç anlamlıdır.
  */
 export function isToolRelevant(item: ItemInstance, tool: TestTool): boolean {
+  // 1. KATMAN — araç bu ürün sınıfında kullanılabilir mi.
+  // Lup ("Lup / Taş Kontrol") sarrafiye sınıflarının test listesinde yoktur;
+  // §3 "gram altına taş kontrolü" yasağı aracın adının kendisini kapsar.
+  if (!rulesFor(getTemplate(item.templateId)).tests.includes(tool.id)) return false;
+
+  // 2. KATMAN — araç bu üründe anlamlı yeni bilgi üretiyor mu.
   return tool.infoFields.some((field) => isFieldRelevant(item, field));
 }
 

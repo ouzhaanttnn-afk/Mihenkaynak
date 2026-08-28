@@ -21,6 +21,8 @@
  */
 
 import { CONDITION_DEDUCTION, CONDITION_ORDER, SERVICE } from './balance';
+import { getTemplate } from '@data/item-templates';
+import { rulesFor } from '@data/product-classes';
 import { getServiceType, SERVICE_TYPES, type ServiceTypeDef } from '@data/service-types';
 import { deriveSeed, makeId, Rng } from './rng';
 import { trueValue } from './valuation';
@@ -43,6 +45,22 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
+ * Ürün sınıfının izin verdiği servis türü kimlikleri (product-classes.ts).
+ * Merkezi whitelist; servis tarafının tek giriş kapısı burasıdır.
+ */
+export function servicesForItem(item: ItemInstance): string[] {
+  return rulesFor(getTemplate(item.templateId)).services;
+}
+
+/**
+ * Bu ürün hiç atölye işi alır mı. Sarrafiyede cevap hayırdır; servis
+ * niyetli müşteri havuzu bu yüzden sarrafiye getirmez (customer-spawn.ts).
+ */
+export function isServiceable(item: ItemInstance): boolean {
+  return servicesForItem(item).length > 0;
+}
+
+/**
  * "Ürün sorunu, kondisyon, gerekirse kısa inceleme."
  *
  * Servis müşterisinde ürünün gerçeği çoğunlukla görünürdür — müşteri zaten
@@ -54,18 +72,29 @@ export function diagnose(item: ItemInstance, storeLevel: number): ServiceDiagnos
   const condition = item.truth.condition;
   const hasStone = item.truth.stoneData.kind !== 'none';
 
+  // §3 — ÜRÜN SINIFI FİLTRESİ, her şeyden önce.
+  // Buradaki eksiklik "kusursuz Gram Altın'a Yüzük Ölçüsü" hatasının
+  // kaynağıydı: eski filtre yalnız kondisyona ve requiresStone bayrağına
+  // bakıyordu, ürünün ne olduğuna bakmıyordu. Ölçü servisi `appliesTo`
+  // listesinde 'pristine' taşıdığı için kusursuz sarrafiyeye de uyuyordu.
+  const allowedServices = servicesForItem(item);
+
   const available = SERVICE_TYPES.filter((type) => {
+    if (!allowedServices.includes(type.id)) return false;
     if (type.unlockLevel > storeLevel) return false;
     if (type.requiresStone && !hasStone) return false;
     return type.appliesTo.includes(condition);
   });
 
-  // Her ürün için en az bir iş kabul edilebilmeli; hiçbiri uymuyorsa
-  // ekspertiz raporu evrensel geri düşüştür (kondisyondan bağımsızdır).
+  // Kondisyon hiçbir türe uymuyorsa temizlik geri düşüştür — ama yalnız
+  // ürün sınıfı temizliğe izin veriyorsa. Sarrafiyede geri düşüş YOKTUR:
+  // standart külçe/ziynet atölye işi almaz, boş liste doğru cevaptır.
   const usable =
     available.length > 0
       ? available
-      : SERVICE_TYPES.filter((t) => t.id === 'clean' && t.unlockLevel <= storeLevel);
+      : SERVICE_TYPES.filter(
+          (t) => t.id === 'clean' && allowedServices.includes(t.id) && t.unlockLevel <= storeLevel,
+        );
 
   const best = usable.reduce<ServiceTypeDef | null>(
     (acc, t) => (acc === null || t.conditionSteps > acc.conditionSteps ? t : acc),

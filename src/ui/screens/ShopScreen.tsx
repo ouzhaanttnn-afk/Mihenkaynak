@@ -464,7 +464,11 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
       // Servis müşterisinde ürünün sorunu beyandan bellidir; ray tanılamayı
       // derinleştiren lup ile sınırlıdır — ticaret testleri burada anlamsızdır.
       case 'diagnose': {
-        const loupe = toolsForLevel(s.store.level).find((t) => t.tool.id === 'loupe');
+        // §3 — lup da bir testtir ve ürün sınıfı whitelist'ine tabidir.
+        // Ölçü/taş aracı almayan bir üründe rayda görünmemeli.
+        const loupe = toolsForLevel(s.store.level).find(
+          (t) => t.tool.id === 'loupe' && (!railItem || isToolRelevant(railItem, t.tool)),
+        );
         if (!loupe) return <ToolRail items={[]} emptyLabel="İnceleme aracı yok" />;
         return (
           <ToolRail
