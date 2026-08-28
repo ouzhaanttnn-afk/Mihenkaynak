@@ -213,7 +213,7 @@ describe('GDD 23.23 — Müşteri alış akışı', () => {
     const gram = spawnItem(SEED, 2, 'gram_gold_10');
 
     expect(matchDemand(demand, quarter)).toBe('exact');
-    expect(matchDemand(demand, gram)).toBe('family');
+    expect(matchDemand(demand, gram)).toBe('off');
   });
 
   it('§4.1 — kısmi karşılama kuralı: eksik paket ancak müşteri razıysa geçerli', () => {
@@ -247,7 +247,8 @@ describe('GDD 23.23 — Müşteri alış akışı', () => {
 
   it('paket değiştikçe fiyat ve karşılama durumu yeniden TÜREtilir', () => {
     const customer = buyer();
-    const { inventory, items } = stock(['quarter_gold', 'half_gold', 'full_gold']);
+    const wanted = customer.demand!.templateId!;
+    const { inventory, items } = stock([wanted, wanted, wanted]);
     const ids = Object.keys(items);
 
     const empty = createPurchaseSession(customer.demand!);
@@ -265,7 +266,8 @@ describe('GDD 23.23 — Müşteri alış akışı', () => {
 
   it('sunulabilir stok yalnız vitrin ve arka stoktan gelir', () => {
     const customer = buyer();
-    const { inventory, items } = stock(['quarter_gold', 'half_gold']);
+    const wanted = customer.demand!.templateId!;
+    const { inventory, items } = stock([wanted, wanted]);
     inventory[1]!.location = 'workshop';
 
     const rows = offerableStock(customer.demand!, inventory, items);

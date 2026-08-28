@@ -32,6 +32,7 @@ import {
 } from '@domain/intent';
 import {
   createPurchaseSession,
+  matchDemand,
   maxPackageLines,
   packageFitPenalty,
   packageGrams,
@@ -154,7 +155,7 @@ import type {
 // Durum şekli
 // ---------------------------------------------------------------------------
 
-export type RootTab = 'shop' | 'stock' | 'workshop' | 'business';
+export type RootTab = 'shop' | 'stock' | 'workshop' | 'market' | 'business';
 
 export interface ToastMessage {
   id: string;
@@ -465,6 +466,9 @@ export const useGame = create<GameState>((set, get) => {
     // -----------------------------------------------------------------------
     tick: (deltaRealSeconds) => {
       const s = get();
+      // Profil penceresi açıkken oyun dünyası donar; oyuncu seçim yaparken
+      // günün ve müşteri kuyruğunun ilerlemesi cezaya dönüşmemeli.
+      if (s.profileOpen) return;
       // Aktif pazarlık sırasında saat ilerlemez: oyuncu düşünürken müşteri
       // sabrı gerçek zamanla erimez (GDD 11 — refleks oyunu değildir).
       if (s.activeDeal && !isDealFinished(s.activeDeal)) return;
@@ -1068,6 +1072,11 @@ export const useGame = create<GameState>((set, get) => {
       const deal = s.activeDeal;
       const customer = s.activeCustomer;
       if (!deal || !customer || !deal.purchase) return;
+      const candidate = s.items[itemId];
+      if (!candidate || matchDemand(deal.purchase.demand, candidate) === 'off') {
+        pushToast(set, get, 'Bu ürün müşterinin talebiyle eşleşmiyor.', 'negative');
+        return;
+      }
       if (packageLocked(deal)) {
         pushToast(set, get, 'Pazarlık başladı; paket artık değiştirilemez.', 'negative');
         return;
@@ -1097,6 +1106,9 @@ export const useGame = create<GameState>((set, get) => {
       const deal = s.activeDeal;
       if (!deal?.purchase) return;
       if (packageLocked(deal)) return;
+
+      const candidate = s.items[itemId];
+      if (!candidate || matchDemand(deal.purchase.demand, candidate) === 'off') return;
 
       const position = s.inventory.find((p) => p.itemId === itemId);
       if (!position) return;
@@ -2031,6 +2043,12 @@ function settlePurchase(
   if (!deal || !customer || !deal.purchase) return;
 
   const purchase = deal.purchase;
+  // Son güvenlik kapısı: bozuk/eski bir arayüz durumu yanlış ürünü
+  // transaction katmanına taşısa bile stok ve para değişmez.
+  if (purchase.lines.some((line) => {
+    const item = s.items[line.itemId];
+    return !item || matchDemand(purchase.demand, item) === 'off';
+  })) return;
   const accepted = state === 'ACCEPTED' && price > 0;
 
   let economy = economyOf(s);

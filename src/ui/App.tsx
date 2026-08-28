@@ -17,6 +17,7 @@ import { BusinessScreen } from '@ui/screens/BusinessScreen';
 import { ShopScreen } from '@ui/screens/ShopScreen';
 import { StockScreen } from '@ui/screens/StockScreen';
 import { WorkshopScreen } from '@ui/screens/WorkshopScreen';
+import { MarketPlaceholderScreen } from '@ui/screens/MarketPlaceholderScreen';
 import { ProfileDialog } from '@ui/shell/ProfileDialog';
 
 import '@ui/tokens.css';
@@ -51,6 +52,7 @@ export function App() {
           {tab === 'shop' && <ShopScreen />}
           {tab === 'stock' && <StockScreen />}
           {tab === 'workshop' && <WorkshopScreen />}
+          {tab === 'market' && <MarketPlaceholderScreen />}
           {tab === 'business' && <BusinessScreen />}
         </div>
 

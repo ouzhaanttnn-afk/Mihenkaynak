@@ -613,7 +613,7 @@ export const ITEM_TEMPLATES: ItemTemplate[] = [
   },
   {
     id: 'plated_bangle',
-    displayName: 'Sarı Metal Bilezik',
+    displayName: '22 Ayar Kaplama Şüpheli Bilezik',
     family: 'classic',
     metal: 'gold',
     nominalKarat: '22K',

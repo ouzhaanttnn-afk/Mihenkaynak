@@ -50,6 +50,7 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const nameCheck = checkJewelerName(name);
 
   useEffect(() => {
     nameRef.current?.focus();
@@ -226,7 +227,12 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
           <button type="button" className="profileDialog__cancel" onClick={onCancel}>
             İptal
           </button>
-          <button type="button" className="profileDialog__save" onClick={submit}>
+          <button
+            type="button"
+            className="profileDialog__save"
+            onClick={submit}
+            disabled={!nameCheck.ok}
+          >
             Değişiklikleri Kaydet
           </button>
         </div>

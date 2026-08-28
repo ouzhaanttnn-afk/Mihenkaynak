@@ -70,7 +70,7 @@ import { Art } from '@ui/Art';
 import { NAV_ART, merchantArt } from '@ui/assets';
 import { pct, pctChange, price, tl, tlSigned } from '@ui/format';
 
-type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network' | 'store';
+type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network' | 'store' | 'career';
 
 export function BusinessScreen() {
   const [route, setRoute] = useState<Route>('root');
@@ -80,6 +80,7 @@ export function BusinessScreen() {
   if (route === 'wholesaler') return <WholesalerRoute onBack={() => setRoute('root')} />;
   if (route === 'network') return <NetworkRoute onBack={() => setRoute('root')} />;
   if (route === 'store') return <StoreRoute onBack={() => setRoute('root')} />;
+  if (route === 'career') return <ComingSoonRoute title="Kariyer / Yetenekler" onBack={() => setRoute('root')} />;
   return <BusinessRoot onOpen={setRoute} />;
 }
 
@@ -236,10 +237,29 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               title="Kariyer / Yetenekler"
               sub={`Seviye ${s.store.level} · ${s.store.xp}/${s.store.xpToNext} XP`}
               icon={<IconBusiness size={17} />}
-              onPress={() => undefined}
+              onPress={() => onOpen('career')}
             />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ComingSoonRoute({ title, onBack }: { title: string; onBack: () => void }) {
+  return (
+    <div className="page">
+      <header className="pageHead">
+        <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
+          ← İşletme
+        </button>
+        <h1 className="pageHead__title">{title}</h1>
+        <p className="pageHead__sub">Yakında</p>
+      </header>
+      <div className="empty">
+        <span className="empty__icon"><IconBusiness size={30} /></span>
+        <h2 className="empty__title">Bu bölüm hazırlanıyor</h2>
+        <p className="empty__text">İlerleme ve yetenek ayrıntıları burada yer alacak.</p>
       </div>
     </div>
   );

@@ -13,13 +13,14 @@
  * uygulanmıştır; Yetenekler ve Profil İşletme'nin ikincil rotalarıdır.
  */
 
-import { IconBusiness, IconShop, IconStock, IconWorkshop } from '@ui/icons';
+import { IconBusiness, IconMarket, IconShop, IconStock, IconWorkshop } from '@ui/icons';
 import type { RootTab } from '@state/gameStore';
 
 const ROOTS: { id: RootTab; label: string; Icon: typeof IconShop }[] = [
   { id: 'shop', label: 'Dükkan', Icon: IconShop },
   { id: 'stock', label: 'Stok', Icon: IconStock },
   { id: 'workshop', label: 'Atölye', Icon: IconWorkshop },
+  { id: 'market', label: 'Market', Icon: IconMarket },
   { id: 'business', label: 'İşletme', Icon: IconBusiness },
 ];
 

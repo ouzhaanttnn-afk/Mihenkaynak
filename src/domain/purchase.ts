@@ -194,6 +194,10 @@ export type DemandMatch = 'exact' | 'family' | 'off';
 
 export function matchDemand(demand: CustomerDemand, item: ItemInstance): DemandMatch {
   if (demand.templateId && item.templateId === demand.templateId) return 'exact';
+  // UPDATEv1: Somut bir ürün isteyen müşteriye yalnız o SKU sunulur.
+  // "Bilezik" talebine gram altın ya da başka bir bilezik önermek hem
+  // metni hem de stok kararını anlamsızlaştırıyordu.
+  if (demand.templateId) return 'off';
   if (demand.wantsBullion) return isBullion(item.templateId) ? 'family' : 'off';
 
   const template = getTemplate(item.templateId);
@@ -214,7 +218,9 @@ export function offerableStock(
     if (position.location !== 'display' && position.location !== 'backStock') continue;
     const item = items[position.itemId];
     if (!item) continue;
-    rows.push({ position, item, match: matchDemand(demand, item) });
+    const match = matchDemand(demand, item);
+    if (match === 'off') continue;
+    rows.push({ position, item, match });
   }
   return rows.sort(
     (a, b) => rank[a.match] - rank[b.match] || b.position.currentValue - a.position.currentValue,
@@ -383,7 +389,10 @@ export function repricePackage(
   customer: Customer,
   market: MarketState,
 ): PurchaseSession {
-  const clean = lines.filter((l) => l.quantity > 0 && !!items[l.itemId]);
+  const clean = lines.filter((l) => {
+    const item = items[l.itemId];
+    return l.quantity > 0 && !!item && matchDemand(session.demand, item) !== 'off';
+  });
   const units = packageUnits(clean);
   const quote = quotePackage(clean, session.demand, customer, market, items);
 

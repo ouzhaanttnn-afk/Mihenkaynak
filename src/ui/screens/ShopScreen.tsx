@@ -490,7 +490,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
           <span className="position__value num">{tl(s.store.cash)}</span>
         </span>
         <span className="position__cell">
-          <span className="position__label">Malda</span>
+          <span className="position__label">Stok Değeri</span>
           <span className="position__value num">{tl(position.metalValue)}</span>
         </span>
         <span className="position__cell">

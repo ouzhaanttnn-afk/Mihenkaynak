@@ -92,8 +92,8 @@ describe('Talep somut bir ürün adı taşır', () => {
   });
 });
 
-describe('Somut ad talebi DARALTMAZ', () => {
-  it('istenen ürünün ailesinden başka bir ürün de talebi karşılar', () => {
+describe('Somut ad talebi kesin ürüne daralır', () => {
+  it('istenen ürünün ailesinden başka bir ürün önerilmez', () => {
     const crafted = demands().filter((d) => !d.wantsBullion && d.families.length > 0);
     expect(crafted.length).toBeGreaterThan(5);
 
@@ -105,8 +105,7 @@ describe('Somut ad talebi DARALTMAZ', () => {
       );
       if (!sibling) continue;
       const item = spawnItem(SEED, 1, sibling.id);
-      // 'off' olsaydı oyuncu yakın ürünü sunamazdı.
-      expect(matchDemand(d, item), `${d.summary} ← ${sibling.displayName}`).toBe('family');
+      expect(matchDemand(d, item), `${d.summary} ← ${sibling.displayName}`).toBe('off');
       checked++;
     }
     expect(checked).toBeGreaterThan(3);
@@ -119,12 +118,13 @@ describe('Somut ad talebi DARALTMAZ', () => {
     }
   });
 
-  it('sarrafiye talebinde her sarrafiye kabul edilir', () => {
+  it('sarrafiye talebinde farklı gramaj ve tür kabul edilmez', () => {
     const bullion = demands().filter((d) => d.wantsBullion);
     expect(bullion.length).toBeGreaterThan(5);
     const other = spawnItem(SEED, 3, 'gram_gold_5');
     for (const d of bullion) {
-      expect(['exact', 'family']).toContain(matchDemand(d, other));
+      const expected = d.templateId === 'gram_gold_5' ? 'exact' : 'off';
+      expect(matchDemand(d, other)).toBe(expected);
     }
   });
 });

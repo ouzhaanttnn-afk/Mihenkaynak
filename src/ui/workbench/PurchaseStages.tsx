@@ -19,7 +19,7 @@ import { demandOutcome, matchDemand, type DemandMatch, type DemandOutcome } from
 import { CHANNEL_LABEL_TR } from '@domain/channels';
 import { getTemplate } from '@data/item-templates';
 import { IconPackage, IconWarning, ProductSilhouette } from '@ui/icons';
-import { daDe, tl } from '@ui/format';
+import { tl } from '@ui/format';
 import type {
   CustomerDemand,
   InventoryPosition,
@@ -69,18 +69,6 @@ export function StockPickStage({
               <> · en az {demand.minQuantity} adede razı</>
             )}
             {demand.isBulk && <> · toplu müşteri</>}
-            {/*
-              Başlık artık somut bir ürün adı ("14 Ayar Bilezik"). Talep ise
-              hâlâ aile düzeyinde karşılanabilir (matchDemand). Esnekliği
-              söylemezsek oyuncu tam o ürünü bulamayınca müşteriyi boşuna
-              geri çevirir.
-            */}
-            {demand.alternativesLabel && (
-              <>
-                {' · '}
-                {demand.alternativesLabel} {daDe(demand.alternativesLabel)} olur
-              </>
-            )}
           </p>
         </div>
       </div>
