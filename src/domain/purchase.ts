@@ -26,6 +26,7 @@ import { PURCHASE } from './balance';
 import { costBasisForUnits } from './settlement';
 import { bullionMeta, isBullion } from '@data/bullion';
 import { getArchetype } from '@data/archetypes';
+import { templatesForTier } from './item-spawn';
 import { FAMILY_LABEL, getTemplate } from '@data/item-templates';
 import { bullionUnitValue, gramsFor, priceForChannel, CHANNEL_LABEL_TR } from './channels';
 import { trueValue } from './valuation';
@@ -61,6 +62,11 @@ export function spawnDemand(
   spawnIndex: number,
   archetypeId: Customer['archetype'],
   character: DayCharacter,
+  /**
+   * Mağaza kademesi — işçilikli talep havuzunu sınırlar. Kademe 1
+   * dükkânının müşterisi flagship ürünü sormaz (GDD 19).
+   */
+  storeTier = 1,
 ): CustomerDemand {
   const rng = new Rng(deriveSeed(rootSeed, 'customer/demand', spawnIndex));
   const archetype = getArchetype(archetypeId);
@@ -88,7 +94,39 @@ export function spawnDemand(
     ? Math.max(1, Math.ceil(quantity * PURCHASE.partialFloorShare))
     : quantity;
 
-  const families = wantsBullion ? [] : archetype.preferredFamilies.slice(0, 2);
+  /*
+   * İŞÇİLİKLİ TALEP DE SOMUT BİR ÜRÜN ADI TAŞIR.
+   *
+   * Eskiden yalnız sarrafiyede ürün seçiliyordu; işçilikli üründe aile
+   * listesi kalıyor ve müşteri ekranda "klasik takı / gümüş arıyor" diyordu.
+   * Gerçek müşteri aile adı söylemez, "bilezik bakıyorum" der.
+   *
+   * `families` YERİNE GEÇMEZ, üstüne biner: eşleşme hâlâ aile düzeyinde
+   * çalışır (matchDemand), yani oyuncu tam o ürünü değil YAKININI da
+   * sunabilir. Somut ad yalnız müşterinin ağzındaki cümleyi belirler ve
+   * `exact` eşleşmeyi mümkün kılar.
+   */
+  let families = wantsBullion ? [] : archetype.preferredFamilies.slice(0, 2);
+
+  if (!wantsBullion) {
+    const available = templatesForTier(storeTier).filter((t) => t.family !== 'bullion');
+    let pool = available.filter((t) => families.includes(t.family));
+
+    if (pool.length === 0) {
+      /*
+       * Bu kademede arketipin tercih ettiği aile HİÇ YOK (kademe 1'de taşlı
+       * ürün gibi). Talebi soyut bırakmak yerine dükkânın gerçekten
+       * taşıyabileceği bir şeye düşürüyoruz ve `families`i de ona göre
+       * daraltıyoruz. İkisini ayrı bırakmak, müşterinin adıyla istediği
+       * ürünün eşleşmede 'off' çıkması demekti — kendi istediğini reddeden
+       * bir talep.
+       */
+      pool = available;
+      families = [...new Set(available.map((t) => t.family))];
+    }
+
+    if (pool.length > 0) templateId = rng.pick(pool).id;
+  }
 
   return {
     families,
@@ -99,6 +137,9 @@ export function spawnDemand(
     acceptsPartial,
     minQuantity,
     summary: demandSummary(templateId, families, quantity, isBulk),
+    alternativesLabel: wantsBullion
+      ? ''
+      : families.map((f) => FAMILY_LABEL[f as ItemFamily] ?? f).join(' / '),
   };
 }
 
@@ -113,6 +154,9 @@ function demandSummary(
     const adet = quantity > 1 ? `${quantity} adet ` : '';
     return isBulk ? `Toplu: ${adet}${name}` : `${adet}${name}`;
   }
+  // Buraya yalnız hiçbir şablonun eşleşmediği hâlde düşülür; aile listesi
+  // son çare olarak kalır ama artık oyuncunun dilinde yazılır.
+
   if (families.length > 0) {
     // Aileler ekrana İÇ ADIYLA değil, oyuncunun dilinde çıkar (v1.1 §7):
     // "bullion / classic arıyor" değil, "sarrafiye / klasik takı arıyor".

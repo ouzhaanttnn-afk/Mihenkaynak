@@ -87,3 +87,21 @@ export function toneFor(delta: number): Tone {
   if (delta < 0) return 'negative';
   return 'neutral';
 }
+
+/**
+ * Türkçe ünlü uyumuna göre ayrı yazılan "da / de" bağlacı.
+ *
+ * NEDEN VAR: talep satırı "klasik takı da olur" / "sarrafiye de olur"
+ * diyor ve son kelime çalışma anında değişiyor. Sabit "da" yazmak
+ * "sarrafiye da olur" gibi kulak tırmalayan bir cümle üretiyordu — Türkçe
+ * bir oyunda dil hatası, hizalama hatası kadar görünür.
+ *
+ * Kural: kelimenin SON ünlüsü kalınsa (a, ı, o, u) "da", inceyse
+ * (e, i, ö, ü) "de". Ünlü bulunamazsa "de" varsayılır.
+ */
+export function daDe(word: string): string {
+  const vowels = 'aâıouAÂIOUeiöüEİÖÜ';
+  let last = '';
+  for (const ch of word) if (vowels.includes(ch)) last = ch;
+  return 'aâıouAÂIOU'.includes(last) ? 'da' : 'de';
+}

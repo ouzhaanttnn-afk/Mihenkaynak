@@ -83,7 +83,9 @@ export function spawnCustomer(
   // --- Talep: yalnız alış intentinde. Ürünü müşteri getirmez, oyuncu
   //     stoktan seçer (GDD 23.23). ---
   const demand: CustomerDemand | null =
-    intent === 'buy' ? spawnDemand(rootSeed, spawnIndex, archetypeId, character) : null;
+    intent === 'buy'
+      ? spawnDemand(rootSeed, spawnIndex, archetypeId, character, store.storeTier)
+      : null;
 
   // --- Kalem sayısı: çoklu ürün orta oyunda açılır (GDD 12) ---
   const multiChance = store.level >= 3 ? 0.26 : store.level >= 2 ? 0.12 : 0;

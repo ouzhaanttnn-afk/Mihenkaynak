@@ -535,12 +535,78 @@
 /* PAZARLIK (GDD 23.7)                                                 */
 /* ------------------------------------------------------------------ */
 
+/*
+ * PAZARLIK EKRANI KENDİ İÇİNDE KAYAR.
+ *
+ * Ölçüm (390×664): içerik 222 px, kutu 179 px → 43 px taşma. 360×640'ta
+ * taşma 93 px. Taşan çocuklar hiçbir yere sığmadıkları için birbirinin ve
+ * araç rayının ÜSTÜNE çiziliyordu — "KARŞI TEKLİFİ", "TAHMİNİ DEĞER
+ * ARALIĞI" ve "Piyasa Referans Alış" üst üste biniyordu.
+ *
+ * Kutu neden bu kadar küçük: Karar Dock'u bu aşamada teklif satırı,
+ * kaydırıcı ve önizlemeyle birlikte token'daki 104 px'in çok üstüne çıkıyor
+ * ve İşlem Masası'ndan yiyor.
+ *
+ * NEDEN KAYDIRMA, NEDEN KÜÇÜLTME DEĞİL: buradaki dört bilgi de karar
+ * bilgisidir — karşı teklif, ölçülen band, piyasa referansı ve müşterinin
+ * sözü. Sığdırmak için birini atmak ya da yazıyı 11 px'in altına indirmek
+ * GDD 23.22'yi çiğnerdi. Kaydırma hiçbirini feda etmez.
+ *
+ * Ekran scroll'u KAPALI kalır (GDD 23.22 "Aktif Dükkan'da scroll kapalı");
+ * kayan şey ekran değil, sınırları belli tek bir içerik bölgesidir.
+ */
 .negotiate {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.negotiate::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * Alt kenarda solma: içeriğin DEVAM ETTİĞİNİ söyler. Bu işaret olmadan
+ * araç rayının hizasında yarım kalan bir satır ("TAHMİNİ DEĞER ARALIĞI"
+ * ortasından kesiliyordu) bozuk bir ekran gibi okunuyor.
+ */
+.negotiate {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 16px), transparent 100%);
+}
+
+/*
+ * Kısa ekranda üst blok daralır. Konuşma balonu ve durum rozeti karar
+ * bilgisi taşımaz — biri müşterinin sözü, öteki tek kelimelik bir durum.
+ * Sayılar (karşı teklif, band, referans) buradan yer kazanır.
+ */
+@media (max-height: 720px) {
+  .negotiate {
+    gap: var(--sp-2);
+  }
+
+  .speech {
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .stateBadge {
+    width: 78px;
+    padding: 4px var(--sp-2);
+  }
+}
+
+/*
+ * Kaydırılan bir kutuda çocuklar KÜÇÜLMEZ. Varsayılan `flex-shrink: 1`
+ * panelleri ezip içeriklerini taşırıyordu — asıl çakışmayı üreten buydu.
+ */
+.negotiate > * {
+  flex-shrink: 0;
 }
 
 .negotiate__top {
@@ -683,6 +749,15 @@
 /* İçi boşsa yer kaplamaz — bkz. NegotiateStage'deki gerekçe. */
 .negotiate__spacer--empty {
   flex: 0 0 auto;
+}
+
+/*
+ * Ara bölge de ezilmez. `min-height: 0` + `flex: 1` ikilisi dar ekranda
+ * kutuyu sıfıra indiriyor, içindeki band paneli ise küçülmediği için
+ * dışarı taşıp komşularının üstüne biniyordu.
+ */
+.negotiate__spacer {
+  min-height: auto;
 }
 
 /*

@@ -92,6 +92,7 @@ function demand(over: Partial<CustomerDemand> = {}): CustomerDemand {
     acceptsPartial: true,
     minQuantity: 10,
     summary: 'Toplu: 20 adet Çeyrek',
+    alternativesLabel: '',
     ...over,
   };
 }

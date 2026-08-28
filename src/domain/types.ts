@@ -312,6 +312,13 @@ export interface CustomerDemand {
   minQuantity: number;
   /** Talebin okunabilir özeti — müşteri şeridinde gösterilir. */
   summary: string;
+  /**
+   * Somut ürün adı dışında NELERİN kabul edildiği, oyuncunun dilinde
+   * ("klasik takı / gümüş"). Talep tam o ürünle sınırlı değildir; bunu
+   * söylemezsek oyuncu yakın bir ürünü sunabileceğini bilemez.
+   * Sarrafiyede boştur — orada zaten her sarrafiye kabul edilir.
+   */
+  alternativesLabel: string;
 }
 
 export type ArchetypeId =
