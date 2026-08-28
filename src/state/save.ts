@@ -29,6 +29,7 @@ import { createMarketForDay } from '@domain/market';
 import { dayCharacter, emptyTelemetry } from '@domain/intent';
 import { createLedger, type Ledger } from '@domain/settlement';
 import type { GameState } from './gameStore';
+import { normalizeProfile, type PlayerProfile } from '@domain/profile';
 import type { CustomerRegistry } from '@domain/customer-memory';
 import type {
   InventoryPosition,
@@ -74,6 +75,17 @@ export interface SaveFile {
    * bildiği şey yeniden anlatılırdı.
    */
   seenLessons?: string[];
+
+  /**
+   * Oyuncu profili — ad ve avatar (GÖRÜNÜM, mekanik değil).
+   *
+   * İSTEĞE BAĞLI, BİLEREK: alan eklenmeden önce yazılmış kayıtlarda yoktur.
+   * `deserialize` orada varsayılana düşer, yani eski kayıt bozulmaz ve
+   * SAVE_VERSION artırmak gerekmez — bu, `seenLessons` ile aynı desendir.
+   * Sürüm artırmak eski kayıtları `migrate`'ten geçmeye zorlardı; eklenen
+   * şey yalnız bir varsayılanı olan yeni alansa buna gerek yok.
+   */
+  profile?: PlayerProfile;
 }
 
 /**
@@ -99,6 +111,7 @@ export function serialize(state: GameState): SaveFile {
     customers: state.customers,
     speed4xUnlocked: state.speed4xUnlocked,
     seenLessons: state.seenLessons,
+    profile: state.profile,
   };
 }
 
@@ -120,6 +133,7 @@ export type LoadedState = Pick<
   | 'intentTelemetry'
   | 'speed4xUnlocked'
   | 'seenLessons'
+  | 'profile'
   | 'queue'
   | 'activeCustomer'
   | 'activeDeal'
@@ -164,6 +178,9 @@ export function deserialize(file: SaveFile): LoadedState {
     // Eski kayıtlarda alan yok; boş liste öğretimi baştan başlatır ki
     // sürüm atlayan oyuncu sessizce derssiz kalmasın.
     seenLessons: save.seenLessons ?? [],
+    // Profil alanı olmayan (bu özellikten önceki) kayıtlar varsayılana
+    // düşer; bozuk bir ad veya bilinmeyen avatar da normalize edilir.
+    profile: normalizeProfile(save.profile),
     // Yarım işlem taşınmaz.
     queue: [],
     activeCustomer: null,
@@ -213,6 +230,37 @@ export function readSave(): LoadedState | null {
     return deserialize(JSON.parse(raw) as SaveFile);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Profili TEK BAŞINA kalıcı hâle getirir.
+ *
+ * NEDEN `writeSave` DEĞİL: oyunun kayıt modeli GÜN SONU CHECKPOINT'idir
+ * (GDD 28.1) — kayıt, günü kapatma kararıyla birlikte yazılır. Profil ise
+ * kozmetik bir tercih ve oyuncu onu günün ortasında değiştirebilmeli.
+ * Her profil değişikliğinde tam kayıt yazmak, oyunun checkpoint anlamını
+ * sessizce "her an kaydediliyor"a çevirirdi.
+ *
+ * Bu yüzden burada mevcut kaydın YALNIZ `profile` alanı yamalanır; günün
+ * geri kalanı (nakit, stok, defter) checkpoint'e kadar dokunulmadan kalır.
+ *
+ * Henüz hiç kayıt yoksa (ilk gün, ilk checkpoint'ten önce) yamalanacak bir
+ * dosya da yoktur; o durumda tam kayıt yazılır — durum zaten yeni oyunun
+ * başlangıcıdır, checkpoint'lemenin bir maliyeti yoktur.
+ *
+ * @returns yazılabildiyse true.
+ */
+export function persistProfile(state: GameState): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return writeSave(state);
+    const file = JSON.parse(raw) as SaveFile;
+    file.profile = state.profile;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(file));
+    return true;
+  } catch {
+    return false;
   }
 }
 

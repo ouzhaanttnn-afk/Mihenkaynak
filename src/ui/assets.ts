@@ -213,6 +213,25 @@ export function merchantArt(memberId: string, name: string): Art {
 }
 
 // ---------------------------------------------------------------------------
+// Oyuncu avatarları — Asetv2 paketi (characters/manifest.json)
+// ---------------------------------------------------------------------------
+
+/**
+ * Kuyumcu portresi. GÖRÜNÜM SEÇİMİDİR: hiçbir avatarın oyun içi etkisi yoktur.
+ *
+ * Kaynak 11 adet 1254×1254 şeffaf PNG (toplam 15,8 MB); her biri kareliği ve
+ * saydamlığı korunarak 256 px WebP'ye alındı (toplam 141 KB). Kırpma
+ * YAPILMADI — 11 portre bir seçim ızgarasında yan yana duracak ve her birini
+ * kendi içeriğine kırpmak kartlara farklı en-boy oranları verirdi.
+ */
+export function avatarArt(avatarId: string): Art {
+  return {
+    src: `./assets/characters/${avatarId}.webp`,
+    alt: 'Kuyumcu portresi',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Navigasyon — manifest.realistic.navigation
 // ---------------------------------------------------------------------------
 

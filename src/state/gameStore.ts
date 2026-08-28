@@ -107,6 +107,12 @@ import {
 } from '@domain/customer-memory';
 import { flowPolicy, stageUnlocked, transactionClass } from '@domain/transaction-class';
 import { nextLesson, skipAll, type CoachContext } from '@domain/onboarding';
+import {
+  checkJewelerName,
+  defaultProfile,
+  normalizeAvatarId,
+  type PlayerProfile,
+} from '@domain/profile';
 import { getTemplate } from '@data/item-templates';
 import { rulesFor } from '@data/product-classes';
 import {
@@ -116,7 +122,7 @@ import {
   suggestedFee,
 } from '@domain/appraisal';
 import { applyTierGrants, evaluateUpgrade, growthSnapshot } from '@domain/store-growth';
-import { clearSave, readSave, writeSave } from './save';
+import { clearSave, persistProfile, readSave, writeSave } from './save';
 import type {
   ActiveDeal,
   AppraisalSession,
@@ -180,6 +186,14 @@ export interface GameState {
    * yüklemede oyuncuya bildiği şey yeniden anlatılırdı.
    */
   seenLessons: string[];
+
+  /**
+   * Oyuncu profili — yalnız görünüm (bkz. @domain/profile).
+   * Hiçbir ilerleme, ekonomi veya karar değeri taşımaz.
+   */
+  profile: PlayerProfile;
+  /** Profil düzenleme penceresi açık mı (yalnız arayüz durumu). */
+  profileOpen: boolean;
   customerRushUntilMinutes: number | null;
 
   /**
@@ -239,6 +253,14 @@ export interface GameState {
   dismissLesson: (id: string) => void;
   /** GDD 25 — öğretimin tamamını atla. */
   skipOnboarding: () => void;
+
+  /**
+   * Kuyumcu adını ve avatarı birlikte kaydeder.
+   * @returns ad geçerliyse true; geçersizse hiçbir şey yazılmaz ve false.
+   */
+  updateProfile: (next: { jewelerName: string; avatarId: string }) => boolean;
+  openProfile: () => void;
+  closeProfile: () => void;
   triggerCustomerRush: () => void;
 
   tick: (deltaRealSeconds: number) => void;
@@ -353,6 +375,8 @@ export const useGame = create<GameState>((set, get) => {
     speed4xUnlocked: false,
     customerRushUntilMinutes: null,
     seenLessons: [],
+    profile: defaultProfile(),
+    profileOpen: false,
 
     dayCharacter: dayCharacter(seed, 1, market),
     intentTelemetry: emptyTelemetry(),
@@ -402,6 +426,33 @@ export const useGame = create<GameState>((set, get) => {
     },
 
     skipOnboarding: () => set({ seenLessons: skipAll(get().seenLessons) }),
+
+    /**
+     * Profili günceller — ad ve avatar BİRLİKTE.
+     *
+     * Bilerek yapmadığı şey: başka hiçbir alana dokunmaz. Nakit, seviye,
+     * XP, güven, stok ve defter aynı kalır; profil değiştirmek yeni oyun
+     * başlatmaz. Bu yüzden burada `set` yalnız `profile` yazar.
+     *
+     * Geçersiz ad sessizce yutulmaz: çağıran taraf zaten doğrulamış olmalı,
+     * yine de burada son bir kez süzülür ki bozuk bir ad kayda giremesin.
+     */
+    openProfile: () => set({ profileOpen: true }),
+    closeProfile: () => set({ profileOpen: false }),
+
+    updateProfile: (next) => {
+      const check = checkJewelerName(next.jewelerName);
+      if (!check.ok) return false;
+      set({
+        profile: { jewelerName: check.value, avatarId: normalizeAvatarId(next.avatarId) },
+        profileOpen: false,
+      });
+      // Tercih ANINDA kalıcı olur; oyunun gün sonu checkpoint'ini beklemez.
+      // Yalnız `profile` alanı yamalanır (bkz. persistProfile).
+      persistProfile(get());
+      pushToast(set, get, 'Profil güncellendi.', 'positive');
+      return true;
+    },
 
     triggerCustomerRush: () => {
       const { market } = get();

@@ -75,28 +75,127 @@
 /* A — Durum Şeridi · 52 px (GDD 23.9.2)                              */
 /* ------------------------------------------------------------------ */
 
+/*
+ * BOŞLUK 12 → 8 px: ÖLÇÜLEREK değiştirildi.
+ * 360 px genişlikte şerit tam doluydu (içerik 280 + boşluk 48 + padding 32
+ * = 360, artan 0). Profil bloğu marka işaretinin 24 px'i yerine 34 px avatar
+ * + 6 px aralık istiyor, yani +16 px. Dört aralığın her birinden 4 px almak
+ * tam olarak o 16 px'i verir ve tek esneyen blok olan SAAT 37 px'te kalır —
+ * "Gün 1"in iki satıra kırılma sınırı orası.
+ */
 .statusStrip {
   flex: 0 0 var(--h-status-strip);
   height: var(--h-status-strip);
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
   padding: 0 var(--gutter);
   background: var(--ink-800);
   color: var(--text-dark-1);
   border-bottom: 1px solid var(--line-dark);
 }
 
-.statusStrip__brand {
+/*
+ * PROFİL ÇİPİ — avatar + kuyumcu adı + seviye, tek dokunma hedefi.
+ * Şeridin 52 px'i içinde: 34 px avatar, yanında üç satır (ad / seviye / XP
+ * çubuğu) toplam ~34 px. Yükseklik büyümez.
+ */
+/*
+ * `flex: 0 1 auto` + `min-width: 0` — ÖLÇÜLEREK düzeltildi.
+ * Önce `0 0 auto` idi: 24 karakterlik bir adda çip 99 px'ten 132 px'e
+ * büyüyor, tek esneyen blok olan saat 45 px'ten 12 px'e çöküyor ve
+ * "Gün 1" iki satıra kırılıyordu. Çip artık BASKI ALTINDA KÜÇÜLEBİLİR;
+ * kırpılacak şey uzun bir addır, ekranın saati değil.
+ */
+.profileChip {
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
-  color: var(--brass-500);
-  flex: 0 0 auto;
+  gap: 6px;
+  min-width: 0;
+  /* Dokunma hedefi şeridin tamamı kadar yüksek (GDD 23.22 · 44 px). */
+  height: 44px;
+  border-radius: var(--r-sm);
+  text-align: left;
 }
 
-.statusStrip__level {
+.profileChip:active {
+  background: var(--ink-700);
+}
+
+.profileChip__avatar {
+  position: relative;
   flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-pill);
+  background: linear-gradient(160deg, var(--ink-600), var(--ink-900));
+  border: 1px solid var(--brass-700);
+  color: var(--brass-500);
+  overflow: hidden;
+}
+
+/* Brief: avatar bileşenlerinde object-fit: contain. */
+.profileChip__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/*
+ * Düzenleme kalemi avatarın köşesinde. Kendi dokunma hedefi YOK — bilerek:
+ * 12 px'lik ayrı bir düğme 44 px kuralını çiğnerdi. Çipin tamamı zaten
+ * aynı işi yapan tek ve büyük bir hedef; kalem yalnız "burası
+ * düzenlenebilir" diyen işaret.
+ */
+.profileChip__pencil {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 13px;
+  height: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-pill);
+  background: var(--surface-brass);
+  color: var(--ink-900);
+  border: 1px solid var(--ink-800);
+}
+
+.profileChip__text {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  /* Kırpma zincirinin çalışması için her ara katmanın küçülebilmesi şart. */
+  overflow: hidden;
+}
+
+/*
+ * Ad, seviye satırıyla AYNI genişliği paylaşır ve taşarsa üç noktaya iner.
+ * 24 karakterlik bir ad bile şeridi itemez: itmesi gereken yer yok.
+ */
+/*
+ * TAVAN 110 px, TABAN yok — genişlik artık çipin küçülmesiyle ayarlanır.
+ *
+ * Sabit 62 px denendi ve geniş ekranda da gereksiz kırpıyordu. Doğru
+ * davranış: dar ekranda saatin 46 px tabanı çipe baskı yapar ve ad üç
+ * noktaya iner; geniş ekranda baskı yoktur ve ad 110 px'e kadar açılır.
+ * Yani kırpma bir SABİT değil, gerçekten yer olmadığında olan bir şey.
+ */
+.profileChip__name {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  color: var(--brass-300);
+  line-height: 1.1;
 }
 
 .statusStrip__levelRow {
@@ -117,7 +216,8 @@
 }
 
 .statusStrip__xpBar {
-  margin-top: 3px;
+  display: block;
+  margin-top: 2px;
   width: 54px;
   height: 3px;
   border-radius: var(--r-pill);
@@ -132,10 +232,17 @@
   transition: width var(--t-normal) var(--ease-standard);
 }
 
+/*
+ * min-width 46 px — SAATİN ÇÖKME TABANI.
+ * "Gün 1" 11 px yazıyla 43-45 px'te tek satıra sığıyor; 46 px o ölçümün
+ * hemen üstünde güvenli bir taban. Bu taban olmadan flexbox, komşu blok
+ * büyüdüğünde bütün kaybı buradan alıyor ve satırı kırıyordu.
+ */
 .statusStrip__clock {
   flex: 1 1 auto;
+  /* Not: burada bir `min-width: 0` vardı ve bu tabanı eziyordu — kaldırıldı. */
+  min-width: 46px;
   text-align: center;
-  min-width: 0;
 }
 
 .statusStrip__day {
@@ -979,4 +1086,219 @@
 
 .idle__headText {
   min-width: 0;
+}
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════
+ * PROFİLİ DÜZENLE PENCERESİ
+ *
+ * Palet paketin tokenlarından: fildişi gövde (stone-50), antrasit bölümler
+ * (ink-800), seçili durumda derin mor (amethyst), altın çerçeve ve CTA.
+ *
+ * Pencere CİHAZ ÇERÇEVESİNİ kaplar, sayfayı değil: oyunun ana ekranı
+ * arkada yerinde kalır ve pencere kapanınca hiçbir şey kaymaz.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+.profileScrim {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gutter);
+  background: rgba(8, 11, 15, 0.66);
+  backdrop-filter: blur(2px);
+}
+
+.profileDialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 340px;
+  /*
+    Pencerenin kendisi ekranı AŞAMAZ. Yükseklik sınırı burada; taşan tek
+    bölge avatar ızgarasıdır ve o kendi içinde kayar (aşağıda). Böylece
+    başlık, ad alanı ve butonlar her zaman görünür kalır.
+  */
+  max-height: 100%;
+  padding: var(--sp-4);
+  border-radius: var(--r-sheet);
+  background: var(--stone-50);
+  color: var(--text-light-1);
+  border: 1px solid var(--brass-500);
+  box-shadow:
+    0 18px 48px rgba(8, 11, 15, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.profileDialog__title {
+  margin: 0 0 var(--sp-3);
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+  color: var(--text-light-1);
+}
+
+.profileDialog__label {
+  display: block;
+  margin-bottom: var(--sp-1);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-light-2);
+}
+
+.profileDialog__input {
+  width: 100%;
+  height: var(--touch-min);
+  padding: 0 var(--sp-3);
+  margin-bottom: var(--sp-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-light-strong);
+  background: #fff;
+  color: var(--text-light-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+}
+
+.profileDialog__input:focus {
+  outline: none;
+  border-color: var(--brass-500);
+  box-shadow: 0 0 0 3px rgba(196, 141, 43, 0.22);
+}
+
+.profileDialog__input--error {
+  border-color: var(--negative);
+}
+
+.profileDialog__input--error:focus {
+  box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.18);
+}
+
+.profileDialog__error {
+  margin: -8px 0 var(--sp-3);
+  font-size: var(--fs-caption);
+  color: var(--negative);
+}
+
+/*
+ * Avatar ızgarası — pencerenin taşabilen TEK bölgesi.
+ * `min-height: 0` olmadan flex çocuğu kendi içeriğinden küçülmez ve
+ * kaydırma hiç devreye girmez; pencere ekranı aşardı.
+ */
+.avatarGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: var(--sp-2);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-2);
+  margin-bottom: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--ink-800);
+  border: 1px solid var(--line-dark);
+  -webkit-overflow-scrolling: touch;
+}
+
+.avatarCard {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-md);
+  background: linear-gradient(160deg, var(--ink-600), var(--ink-900));
+  border: 2px solid transparent;
+  color: var(--brass-500);
+  overflow: hidden;
+  transition:
+    border-color var(--t-fast) var(--ease-standard),
+    box-shadow var(--t-fast) var(--ease-standard);
+}
+
+.avatarCard__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Seçili: derin mor zemin + altın çerçeve. */
+.avatarCard--selected {
+  border-color: var(--brass-400);
+  background: linear-gradient(160deg, var(--amethyst-500), var(--amethyst-600));
+  box-shadow:
+    0 0 0 1px var(--brass-600),
+    0 0 18px rgba(215, 170, 74, 0.35);
+}
+
+.avatarCard:focus-visible {
+  outline: 2px solid var(--brass-300);
+  outline-offset: 2px;
+}
+
+.avatarCard__check {
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-pill);
+  background: var(--surface-brass);
+  color: var(--ink-900);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+}
+
+.profileDialog__actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.profileDialog__cancel,
+.profileDialog__save {
+  height: var(--touch-min);
+  border-radius: var(--r-md);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+}
+
+.profileDialog__cancel {
+  flex: 0 0 auto;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line-light-strong);
+  color: var(--text-light-2);
+  background: transparent;
+}
+
+.profileDialog__save {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 var(--sp-3);
+  background: var(--surface-brass);
+  color: var(--ink-900);
+  border: 1px solid var(--brass-300);
+  box-shadow: 0 0 18px rgba(215, 170, 74, 0.22);
+}
+
+.profileDialog__cancel:focus-visible,
+.profileDialog__save:focus-visible {
+  outline: 2px solid var(--amethyst-400);
+  outline-offset: 2px;
+}
+
+/* Kısa ekranda kartlar küçülür; pencere yine ekrana sığar. */
+@media (max-height: 700px) {
+  .avatarGrid {
+    grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  }
+
+  .profileDialog__title {
+    font-size: var(--fs-subtitle);
+    margin-bottom: var(--sp-2);
+  }
 }

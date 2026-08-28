@@ -301,6 +301,14 @@ export const IconLock = (p: IconProps) => (
 );
 
 /** İleri / devam. */
+/** Kalem — düzenlenebilir alanların işareti. */
+export const IconPencil = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 20.2h4.2L19.4 9a2.1 2.1 0 0 0 0-3l-1.4-1.4a2.1 2.1 0 0 0-3 0L3.8 15.8Z" />
+    <path d="M13.8 5.8 18.2 10.2" />
+  </Svg>
+);
+
 export const IconChevronRight = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9.6 5.6 16 12l-6.4 6.4" />

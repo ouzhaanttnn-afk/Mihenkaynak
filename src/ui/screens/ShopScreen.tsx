@@ -166,6 +166,8 @@ export function ShopScreen() {
         speed4xUnlocked={s.speed4xUnlocked}
         onSpeed={s.setSpeed}
         onUnlock4x={s.unlock4x}
+        profile={s.profile}
+        onEditProfile={s.openProfile}
       />
 
       <MarketStrip market={s.market} onOpenMarket={() => s.setTab('business')} />

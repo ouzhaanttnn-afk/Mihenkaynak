@@ -6,8 +6,11 @@
  */
 
 import { SPEED_STEPS, type SpeedStep } from '@domain/balance';
-import { BrandMark, IconLock, IconVideo } from '@ui/icons';
+import { IconLock, IconPencil, IconVideo, BrandMark } from '@ui/icons';
+import { Art } from '@ui/Art';
+import { avatarArt } from '@ui/assets';
 import { clock, tlBare } from '@ui/format';
+import type { PlayerProfile } from '@domain/profile';
 import type { MarketState, StoreState } from '@domain/types';
 
 interface Props {
@@ -17,28 +20,74 @@ interface Props {
   speed4xUnlocked: boolean;
   onSpeed: (s: SpeedStep) => void;
   onUnlock4x: () => void;
+  /** Kuyumcunun adı ve portresi — yalnız görünüm. */
+  profile: PlayerProfile;
+  onEditProfile: () => void;
 }
 
-export function StatusStrip({ store, market, speed, speed4xUnlocked, onSpeed, onUnlock4x }: Props) {
+export function StatusStrip({
+  store,
+  market,
+  speed,
+  speed4xUnlocked,
+  onSpeed,
+  onUnlock4x,
+  profile,
+  onEditProfile,
+}: Props) {
   const xpRatio = Math.min(1, store.xp / Math.max(1, store.xpToNext));
 
   return (
     <header className="statusStrip">
-      <span className="statusStrip__brand">
-        <BrandMark size={24} />
-      </span>
+      {/*
+        PROFİL ALANI — avatar + kuyumcu adı + düzenleme kalemi, tek düğme.
 
-      <div className="statusStrip__level">
-        <div className="statusStrip__levelRow">
-          <span className="statusStrip__levelNum">Sv {store.level}</span>
-          <span className="statusStrip__xp num">
-            {store.xp}/{store.xpToNext}
+        NEDEN AD SEVİYE SATIRININ ÜSTÜNE İSTİFLENDİ:
+        Şerit 52 px ve 360 px genişlikte ÖLÇÜLDÜĞÜNDE tam doluydu — artan
+        yer 0 px. Adı yeni bir sütun olarak eklemek, tek esneyen blok olan
+        saati 37 px'in altına iterdi ve "Gün 1" iki satıra kırılırdı (bu
+        kırılma daha önce yaşandı ve geri alındı).
+
+        Bu yüzden ad, marka işaretinin yerine geçen avatarın YANINDA ama
+        seviye satırının ÜSTÜNDE duruyor: zaten var olan bloğun genişliğini
+        paylaşıyor, yeni genişlik istemiyor. Kazanılan 16 px de şerit
+        boşluğunun 12→8 px inmesinden geliyor. Saat 37 px'te kalır.
+
+        Marka işareti şeritten çıktı: 24 px'lik o alan artık oyuncunun
+        kimliğini taşıyor ve markanın kendisi zaten açılış ekranında var.
+      */}
+      <button
+        type="button"
+        className="profileChip"
+        onClick={onEditProfile}
+        aria-label={`Profili düzenle — ${profile.jewelerName}`}
+      >
+        <span className="profileChip__avatar">
+          <Art
+            art={avatarArt(profile.avatarId)}
+            size={34}
+            decorative
+            className="profileChip__img"
+            fallback={<BrandMark size={20} />}
+          />
+          <span className="profileChip__pencil" aria-hidden="true">
+            <IconPencil size={9} />
           </span>
-        </div>
-        <div className="statusStrip__xpBar">
-          <div className="statusStrip__xpFill" style={{ width: `${xpRatio * 100}%` }} />
-        </div>
-      </div>
+        </span>
+
+        <span className="profileChip__text">
+          <span className="profileChip__name">{profile.jewelerName}</span>
+          <span className="statusStrip__levelRow">
+            <span className="statusStrip__levelNum">Sv {store.level}</span>
+            <span className="statusStrip__xp num">
+              {store.xp}/{store.xpToNext}
+            </span>
+          </span>
+          <span className="statusStrip__xpBar">
+            <span className="statusStrip__xpFill" style={{ width: `${xpRatio * 100}%` }} />
+          </span>
+        </span>
+      </button>
 
       <div className="statusStrip__clock">
         <div className="statusStrip__day">Gün {market.day}</div>

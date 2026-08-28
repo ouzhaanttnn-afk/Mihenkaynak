@@ -17,6 +17,7 @@ import { BusinessScreen } from '@ui/screens/BusinessScreen';
 import { ShopScreen } from '@ui/screens/ShopScreen';
 import { StockScreen } from '@ui/screens/StockScreen';
 import { WorkshopScreen } from '@ui/screens/WorkshopScreen';
+import { ProfileDialog } from '@ui/shell/ProfileDialog';
 
 import '@ui/tokens.css';
 import '@ui/shell/AppShell.css';
@@ -28,6 +29,10 @@ export function App() {
   const setTab = useGame((s) => s.setTab);
   const toasts = useGame((s) => s.toasts);
   const dismissToast = useGame((s) => s.dismissToast);
+  const profile = useGame((s) => s.profile);
+  const profileOpen = useGame((s) => s.profileOpen);
+  const closeProfile = useGame((s) => s.closeProfile);
+  const updateProfile = useGame((s) => s.updateProfile);
 
   // Toast'lar kısa geri bildirimdir; kendiliğinden kapanır.
   useEffect(() => {
@@ -50,6 +55,19 @@ export function App() {
         </div>
 
         <BottomNav active={tab} onSelect={setTab} />
+
+        {/*
+          Profil penceresi CİHAZ SEVİYESİNDE: ekranın değil, çerçevenin
+          çocuğu. Ekranın içine konsaydı Dükkan'ın `overflow: hidden`
+          gövdesine hapsolur ve alt navigasyonun altında kalırdı.
+        */}
+        {profileOpen && (
+          <ProfileDialog
+            profile={profile}
+            onCancel={closeProfile}
+            onSave={updateProfile}
+          />
+        )}
 
         {/*
           En fazla İKİ toast görünür.
