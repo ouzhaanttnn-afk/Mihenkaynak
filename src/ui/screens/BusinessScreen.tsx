@@ -26,6 +26,7 @@ import {
 import { CHANNEL_LABEL_TR } from '@domain/channels';
 import { marketSignals } from '@domain/overnight';
 import { registrySummary } from '@domain/customer-memory';
+import { evaluateUpgrade, growthSnapshot } from '@domain/store-growth';
 import { intentAlarm } from '@domain/intent';
 import { isBullion } from '@data/bullion';
 import { spawnItem } from '@domain/item-spawn';
@@ -67,7 +68,7 @@ import {
 } from '@ui/icons';
 import { pct, pctChange, price, tl, tlSigned } from '@ui/format';
 
-type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network';
+type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network' | 'store';
 
 export function BusinessScreen() {
   const [route, setRoute] = useState<Route>('root');
@@ -76,6 +77,7 @@ export function BusinessScreen() {
   if (route === 'journal') return <JournalRoute onBack={() => setRoute('root')} />;
   if (route === 'wholesaler') return <WholesalerRoute onBack={() => setRoute('root')} />;
   if (route === 'network') return <NetworkRoute onBack={() => setRoute('root')} />;
+  if (route === 'store') return <StoreRoute onBack={() => setRoute('root')} />;
   return <BusinessRoot onOpen={setRoute} />;
 }
 
@@ -214,6 +216,12 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               sub="Gün sonunda otomatik · elle kaydet veya geri yükle"
               icon={<IconReason size={17} />}
               onPress={() => s.saveGame()}
+            />
+            <MenuLine
+              title="Mağaza"
+              sub={storeSub(s)}
+              icon={<IconBusiness size={17} />}
+              onPress={() => onOpen('store')}
             />
             <MenuLine
               title="Kariyer / Yetenekler"
@@ -800,6 +808,126 @@ function OvernightPanel() {
               value={last.cashOpportunityCost > 0 ? `−${tl(last.cashOpportunityCost)}` : '—'}
               tone={last.cashOpportunityCost > 0 ? 'warning' : undefined}
             />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function storeSub(s: ReturnType<typeof useGame.getState>): string {
+  const evaluation = evaluateUpgrade(
+    s.store,
+    growthSnapshot(
+      { store: s.store, inventory: s.inventory, items: s.items, ledger: s.ledger },
+      Object.keys(s.customers).length,
+    ),
+  );
+  if (!evaluation.next) return `${evaluation.current.name} · son kademe`;
+  const acik = evaluation.gates.filter((g) => g.met).length;
+  return `${evaluation.current.name} · ${acik}/${evaluation.gates.length} koşul hazır`;
+}
+
+/**
+ * MAĞAZA — GDD 19 "Mağaza Büyümesi ve Kariyer Katmanları".
+ *
+ * GDD 19.2 DEĞİŞMEZ: "Mağaza kademesi yalnız level sayısına bağlanmaz.
+ * Sermaye, itibar ve bazı operasyon/tedarik eşikleri BİRLİKTE istenir."
+ *
+ * Ekran bu yüzden tek bir ilerleme çubuğu göstermiyor: her kapı ayrı satır.
+ * Tek çubuk, "şu kadar daha XP" hissi verirdi — GDD'nin açıkça reddettiği şey.
+ */
+function StoreRoute({ onBack }: { onBack: () => void }) {
+  const s = useGame();
+  const evaluation = evaluateUpgrade(
+    s.store,
+    growthSnapshot(
+      { store: s.store, inventory: s.inventory, items: s.items, ledger: s.ledger },
+      Object.keys(s.customers).length,
+    ),
+  );
+
+  const fmtGate = (g: (typeof evaluation.gates)[number]) =>
+    g.unit === 'money' ? `${tl(g.current)} / ${tl(g.needed)}` : `${g.current} / ${g.needed}`;
+
+  return (
+    <div className="page">
+      <header className="pageHead">
+        <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
+          ← İşletme
+        </button>
+        <h1 className="pageHead__title">{evaluation.current.name}</h1>
+        <p className="pageHead__sub">
+          Kademe {evaluation.current.tier} · {evaluation.current.theme}
+        </p>
+      </header>
+
+      <div className="page__scroll">
+        <div className="group">
+          <h2 className="group__title">Bu kademede açık</h2>
+          <div className="group__body">
+            {evaluation.current.unlocks.map((u) => (
+              <StatLine key={u} label={u} value="" />
+            ))}
+            <StatLine label="Vitrin / arka stok" value={`${s.store.displaySlots} / ${s.store.backStockSlots}`} />
+            <StatLine label="Atölye kapasitesi" value={`${s.store.workshopCapacity} slot`} />
+            <StatLine label="Günlük gider" value={tl(s.store.dailyOverhead)} />
+          </div>
+        </div>
+
+        {!evaluation.next ? (
+          <div className="group">
+            <h2 className="group__title">Sonraki kademe</h2>
+            <div className="group__body">
+              {/* GDD 19.3 — Marka Ağı post-1.0 kapsamı. */}
+              <p className="emptyNote">{evaluation.blockedReason}</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="group">
+              <h2 className="group__title">{evaluation.next.name} · koşullar</h2>
+              <div className="group__body">
+                {evaluation.gates.map((g) => (
+                  <StatLine
+                    key={g.key}
+                    label={`${g.met ? '✓' : '·'} ${g.label}`}
+                    value={fmtGate(g)}
+                    tone={g.met ? 'positive' : undefined}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="group">
+              <h2 className="group__title">{evaluation.next.name} · açılım</h2>
+              <div className="group__body">
+                {evaluation.next.unlocks.map((u) => (
+                  <StatLine key={u} label={u} value="" />
+                ))}
+                <StatLine
+                  label="Yeni günlük gider"
+                  value={tl(evaluation.next.grants.dailyOverhead)}
+                  tone="warning"
+                />
+                <div className="lotRow">
+                  <div className="lotRow__terms">
+                    Yükseltme kalıcı bir gider taahhüdüdür: kademe büyüdükçe günlük
+                    sabit gider de büyür.
+                  </div>
+                  <button
+                    type="button"
+                    className="lotRow__buy"
+                    onClick={() => s.upgradeStore()}
+                    disabled={!evaluation.ready}
+                  >
+                    {evaluation.ready
+                      ? `${tl(evaluation.investment)} öde ve yükselt`
+                      : (evaluation.blockedReason ?? 'Hazır değil')}
+                  </button>
+                </div>
+              </div>
+            </div>
           </>
         )}
       </div>

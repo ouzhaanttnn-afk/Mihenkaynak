@@ -106,6 +106,7 @@ import {
   type CustomerRegistry,
 } from '@domain/customer-memory';
 import { flowPolicy, stageUnlocked } from '@domain/transaction-class';
+import { applyTierGrants, evaluateUpgrade, growthSnapshot } from '@domain/store-growth';
 import { clearSave, readSave, writeSave } from './save';
 import type {
   ActiveDeal,
@@ -254,6 +255,9 @@ export interface GameState {
   repayNetworkLoan: (memberId: string) => void;
 
   advanceDay: () => void;
+
+  /** GDD 19.2 — mağaza kademesini yükseltir. */
+  upgradeStore: () => void;
 
   // --- Kayıt (GDD 28.1 · Addendum §11) ---
   saveGame: () => boolean;
@@ -1462,6 +1466,54 @@ export const useGame = create<GameState>((set, get) => {
       if (ready > 0) {
         pushToast(set, get, `${ready} servis işi teslime hazır — Atölye'ye bak.`, 'info');
       }
+    },
+
+    // -----------------------------------------------------------------------
+    // Mağaza büyümesi (GDD 19)
+    // -----------------------------------------------------------------------
+    upgradeStore: () => {
+      const s = get();
+      const evaluation = evaluateUpgrade(
+        s.store,
+        growthSnapshot(economyOf(s), Object.keys(s.customers).length),
+      );
+
+      if (!evaluation.next || !evaluation.ready) {
+        pushToast(set, get, evaluation.blockedReason ?? 'Mağaza yükseltmeye hazır değil.', 'negative');
+        return;
+      }
+
+      const next = evaluation.next;
+
+      // GDD 22.1 — kasa hareketi TEK yoldan geçer. Yükseltme de bir işlemdir;
+      // doğrudan cash'e yazmak settlement garantisini delerdi.
+      const tx: SettlementTransaction = {
+        txId: `upgrade_tier_${next.tier}`,
+        dealId: `upgrade_tier_${next.tier}`,
+        day: s.market.day,
+        cashDelta: -next.investment,
+        itemsIn: [],
+        itemsOut: [],
+        trustDelta: 0,
+        reputationDelta: 0,
+        xpDelta: 0,
+        label: `${next.name} yatırımı`,
+      };
+
+      const outcome = applyTransaction(economyOf(s), tx);
+      if (!outcome.applied) {
+        pushToast(set, get, outcome.reason ?? 'Yükseltme uygulanamadı.', 'negative');
+        return;
+      }
+
+      set(economyToState({ ...outcome.state, store: applyTierGrants(outcome.state.store, next) }));
+
+      pushToast(
+        set,
+        get,
+        `${next.name} açıldı · günlük gider ${fmt(next.grants.dailyOverhead)}`,
+        'positive',
+      );
     },
 
     // -----------------------------------------------------------------------
