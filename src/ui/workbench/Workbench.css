@@ -680,6 +680,11 @@
   justify-content: center;
 }
 
+/* İçi boşsa yer kaplamaz — bkz. NegotiateStage'deki gerekçe. */
+.negotiate__spacer--empty {
+  flex: 0 0 auto;
+}
+
 /*
  * SCREEN NORTH STAR (GDD 23.24): "Oyuncu tek bakışta üç şeyi bulabilmeli:
  * 'Ne biliyorum?', 'Şimdi hangi kararı veriyorum?', 'Bu karar kabul edilirse

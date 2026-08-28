@@ -14,6 +14,7 @@ import {
   bullionUnitValue,
   isPerGramProduct,
   marketReferenceBuy,
+  marketReferenceSell,
   unitPriceView,
 } from './channels';
 import { supplyOffer } from './wholesaler';
@@ -146,6 +147,25 @@ describe('§2 — Piyasa referans alış dinamik ve tarafsızdır', () => {
   it('tipik kuyumcu ALIŞI: adil değerin altındadır', () => {
     expect(marketReferenceBuy(item, MARKET, base)).toBeLessThan(base);
     expect(marketReferenceBuy(item, MARKET, base)).toBeGreaterThan(0);
+  });
+
+  it('tipik kuyumcu SATIŞI: adil değerin üstündedir', () => {
+    // Alış akışının referansı. Alışın işaret çevrilmiş hâli DEĞİLDİR:
+    // tezgâhın alış ve satış makasları ayrı katsayılardır.
+    expect(marketReferenceSell(item, MARKET, base)).toBeGreaterThan(base);
+  });
+
+  it('satış referansı alış referansının üstündedir — makas kapanmaz', () => {
+    const alis = marketReferenceBuy(item, MARKET, base);
+    const satis = marketReferenceSell(item, MARKET, base);
+    expect(satis).toBeGreaterThan(alis);
+  });
+
+  it('iki yön simetrik DEĞİLDİR — tek fonksiyonun işareti çevrilerek üretilemez', () => {
+    const alis = marketReferenceBuy(item, MARKET, base);
+    const satis = marketReferenceSell(item, MARKET, base);
+    // Simetrik olsaydı adil değere uzaklıkları eşit olurdu.
+    expect(Math.abs(base - alis)).not.toBeCloseTo(Math.abs(satis - base), 0);
   });
 
   it('referans MÜŞTERİDEN bağımsızdır — rezervasyon fiyatı değildir', () => {

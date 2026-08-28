@@ -25,7 +25,12 @@ import { getServiceType } from '@data/service-types';
 import { expectedCompletionDay, findQuote } from '@domain/service';
 import { activeLine, canEnterStage, selectors, useGame } from '@state/gameStore';
 import { offerableStock } from '@domain/purchase';
-import { bullionUnitValue, marketReferenceBuy, unitPriceView } from '@domain/channels';
+import {
+  bullionUnitValue,
+  marketReferenceBuy,
+  marketReferenceSell,
+  unitPriceView,
+} from '@domain/channels';
 import { isBullion } from '@data/bullion';
 import { CLASS_LABEL, flowPolicy, isToolRelevant } from '@domain/transaction-class';
 
@@ -89,6 +94,7 @@ import type {
   ItemInstance,
   MarketState,
   Money,
+  PurchaseSession,
   WorkbenchStage,
 } from '@domain/types';
 
@@ -213,6 +219,18 @@ export function ShopScreen() {
                   s,
                   line.negotiation.finalOffer ?? offer,
                   deal.purchase.packageCost,
+                )}
+                /*
+                  Alış akışında bu alan boştu: band, tez ve doğrulanmış alan
+                  yok (ürün oyuncunun kendi stoğu, ölçülecek gizli gerçek
+                  yok). Oyuncunun burada ihtiyaç duyduğu çapa PİYASA
+                  FİYATIDIR — istediği fiyatı neye göre koyacağı.
+                */
+                reference={buildPackageReference(
+                  deal.purchase,
+                  s.items,
+                  s.market,
+                  line.negotiation.finalOffer ?? offer,
                 )}
               />
             ) : stage === 'result' && s.lastReview ? (
@@ -1433,6 +1451,7 @@ function buildReference(item: ItemInstance | undefined, market: MarketState, off
   const showTotal = view.perGram && view.gramsPerPiece > 1;
 
   return {
+    direction: 'shopBuys' as const,
     unitReference: view.unitPrice,
     unitOffer: offerView.unitPrice,
     unit: view.unit,
@@ -1441,6 +1460,79 @@ function buildReference(item: ItemInstance | undefined, market: MarketState, off
       ? `${view.gramsPerPiece.toLocaleString('tr-TR')} g × ${offerView.unitPrice.toLocaleString('tr-TR')} ₺/g`
       : '',
     totalReference: pieceReference,
+    totalOffer: offer,
+  };
+}
+
+/**
+ * Alış akışının piyasa referansı — dükkân SATARKEN.
+ *
+ * Neden ayrı bir fonksiyon: burada pazarlık tek bir kaleme değil bir PAKETE
+ * dönüyor. Paket birden çok satır ve adet taşıyabilir, bu yüzden referans
+ * satır satır toplanır.
+ *
+ * İKİ DÜRÜSTLÜK SINIRI:
+ *   · Pakette sarrafiye olmayan tek bir kalem varsa referans HİÇ
+ *     gösterilmez. İşçilikli üründe "tipik satış fiyatı" diye bir şey yok;
+ *     uydurmak olmayan bir kesinlik göstermek olurdu (buildReference'ın
+ *     aynı kuralı).
+ *   · Birim fiyat yalnız paket TEK ÜRÜNDEN oluşuyorsa yazılır. Karışık bir
+ *     pakette "birim fiyat" hangi ürünün olduğu belirsiz bir sayıdır.
+ */
+function buildPackageReference(
+  purchase: PurchaseSession,
+  items: Record<string, ItemInstance>,
+  market: MarketState,
+  offer: Money,
+) {
+  if (purchase.lines.length === 0) return null;
+
+  const templateIds = new Set<string>();
+  let totalReference = 0;
+  let units = 0;
+
+  for (const line of purchase.lines) {
+    const item = items[line.itemId];
+    if (!item || !isBullion(item.templateId)) return null;
+    templateIds.add(item.templateId);
+
+    const base = bullionUnitValue(item, market);
+    totalReference += marketReferenceSell(item, market, base, line.quantity) * line.quantity;
+    units += line.quantity;
+  }
+
+  if (totalReference <= 0 || units <= 0) return null;
+
+  // Tek üründen oluşan pakette birim fiyat anlamlıdır; karışıkta değildir.
+  const single =
+    templateIds.size === 1 ? items[purchase.lines[0]!.itemId] : undefined;
+
+  if (single) {
+    const refView = unitPriceView(single, Math.round(totalReference / units));
+    const offerView = unitPriceView(single, Math.round(offer / units));
+    const showTotal = units > 1 || (refView.perGram && refView.gramsPerPiece > 1);
+
+    return {
+      direction: 'shopSells' as const,
+      unitReference: refView.unitPrice,
+      unitOffer: offerView.unitPrice,
+      unit: refView.unit,
+      showTotal,
+      totalLabel: `${units} adet · piyasa ${Math.round(totalReference).toLocaleString('tr-TR')} ₺`,
+      totalReference: Math.round(totalReference),
+      totalOffer: offer,
+    };
+  }
+
+  // Karışık paket: yalnız toplam konuşur.
+  return {
+    direction: 'shopSells' as const,
+    unitReference: Math.round(totalReference),
+    unitOffer: offer,
+    unit: '₺',
+    showTotal: false,
+    totalLabel: '',
+    totalReference: Math.round(totalReference),
     totalOffer: offer,
   };
 }

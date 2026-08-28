@@ -44,6 +44,13 @@ interface Props {
    * kurallarından türeyen tipik kuyumcu alış fiyatıdır.
    */
   reference?: {
+    /**
+     * Pazarlığın yönü. Etiketi VE "iyi fark" işaretini belirler:
+     * dükkân alırken referansın ALTINDA kalmak iyidir, satarken ÜSTÜNDE.
+     * Tek yönlü yazılmış bir panel, alış akışında oyuncuya kârlı teklifi
+     * kırmızı gösterirdi.
+     */
+    direction: 'shopBuys' | 'shopSells';
     unitReference: Money;
     unitOffer: Money;
     unit: string;
@@ -74,6 +81,9 @@ export function NegotiateStage({
   const isFinal = session.state === 'FINAL_OFFER';
   const counter = session.finalOffer ?? session.activeCounter;
 
+  // Ara bölgede gösterilecek bir şey var mı: sonuç önizlemesi ya da band.
+  const hasSpacerContent = (isFinal && counter !== null && active !== undefined) || band !== null;
+
   return (
     <div className="negotiate">
       <div className="negotiate__top">
@@ -99,7 +109,13 @@ export function NegotiateStage({
         </div>
       )}
 
-      <div className="negotiate__spacer">
+      {/*
+        Boşken BÜYÜMEZ. Alış akışında band, tez ve doğrulanmış alan yoktur
+        (ürün oyuncunun kendi stoğu); bu durumda `flex: 1` taşıyan boş bir
+        kutu, konuşma balonu ile piyasa referansının arasına ekran boyu bir
+        boşluk açıp ilgili iki bilgiyi birbirinden koparıyordu.
+      */}
+      <div className={`negotiate__spacer ${hasSpacerContent ? '' : 'negotiate__spacer--empty'}`}>
         {isFinal && counter !== null && active ? (
           /* GDD 23.12 Final Offer — "'Son teklif' etiketi + SONUÇ ÖNİZLEMESİ" */
           <div className="preview">
@@ -160,13 +176,19 @@ export function NegotiateStage({
       {reference && (
         <div className="refPanel">
           <div className="refPanel__row">
-            <span className="refPanel__key">Piyasa Referans Alış</span>
+            <span className="refPanel__key">
+              {reference.direction === 'shopBuys'
+                ? 'Piyasa Referans Alış'
+                : 'Piyasa Referans Satış'}
+            </span>
             <span className="refPanel__val num">
               {tlBare(reference.unitReference)} {reference.unit}
             </span>
           </div>
           <div className="refPanel__row">
-            <span className="refPanel__key">Senin Teklifin</span>
+            <span className="refPanel__key">
+              {reference.direction === 'shopBuys' ? 'Senin Teklifin' : 'İstediğin Fiyat'}
+            </span>
             <span className="refPanel__val num">
               {tlBare(reference.unitOffer)} {reference.unit}
             </span>
@@ -175,7 +197,13 @@ export function NegotiateStage({
             <span className="refPanel__key">Referansa Göre Fark</span>
             <span
               className={`refPanel__val num refPanel__val--${
-                reference.unitOffer <= reference.unitReference ? 'positive' : 'negative'
+                (
+                  reference.direction === 'shopBuys'
+                    ? reference.unitOffer <= reference.unitReference
+                    : reference.unitOffer >= reference.unitReference
+                )
+                  ? 'positive'
+                  : 'negative'
               }`}
             >
               {/* tlSigned zaten ₺ ekliyor; birim de ₺ taşıdığı için burada

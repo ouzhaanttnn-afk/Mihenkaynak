@@ -493,6 +493,32 @@ export function marketReferenceBuy(
   }).unitPrice;
 }
 
+/**
+ * §2 referansının SATIŞ yönü — dükkân satarken tipik tezgâh fiyatı.
+ *
+ * `marketReferenceBuy`in aynası. İki ayrı fonksiyon olmasının sebebi
+ * makasın simetrik OLMAMASI: alış makası ile satış makası ayrı katsayılardır
+ * (CHANNEL.retailCustomer buySpread 0.02 / sellSpread 0.014). Tek fonksiyonu
+ * işaret çevirerek kullanmak, olmayan bir simetri uydurmak olurdu.
+ */
+export function marketReferenceSell(
+  item: ItemInstance,
+  market: MarketState,
+  baseUnitValue: Money,
+  quantity = 1,
+): Money {
+  return priceForChannel({
+    item,
+    market,
+    channel: 'retailCustomer',
+    side: 'shopSells',
+    quantity,
+    baseUnitValue,
+    // Referans NÖTR ilişkiyle hesaplanır; belirli bir müşteriye ait değildir.
+    relationship: 50,
+  }).unitPrice;
+}
+
 export const CHANNEL_LABEL_TR: Record<TradeChannel, string> = {
   retailCustomer: 'Tezgâh müşterisi',
   bulkCustomer: 'Toplu müşteri',
