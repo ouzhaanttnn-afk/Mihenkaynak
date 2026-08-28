@@ -1247,14 +1247,34 @@ export const useGame = create<GameState>((set, get) => {
         return;
       }
 
-      const invoiceId = `inv_${s.market.day}_${templateId}_${s.store.supplier.openInvoices.length}`;
+      /*
+       * SIRA NUMARASI — aynı ürünü iki kez almanın kilitlenmesini önler.
+       *
+       * Fatura kimliği eskiden `inv_<gün>_<ürün>_<açık fatura sayısı>` idi.
+       * Peşin ödemede fatura AÇILMADIĞI için o sayaç kıpırdamıyordu: aynı
+       * gün aynı üründen ikinci kez alındığında kimlik birebir aynı çıkıyor
+       * ve settlement'in idempotency kapısı işlemi HAKLI OLARAK reddediyordu
+       * (oyuncuya "Transaction wbuy_inv_2_gram_gold_1_0 zaten uygulanmış"
+       * diye düşüyordu). Kapı doğru çalışıyordu; kusurlu olan kimlikti.
+       *
+       * Defterdeki uygulanmış işlem sayısı her işlemde artar, kaydedilir ve
+       * geri yüklenir — bu yüzden hem tekildir hem determinizmi bozmaz
+       * (GDD 28.3 rastgelelik akışıyla ilgilidir, kimliklerle değil).
+       */
+      const seq = s.ledger.appliedTxIds.length;
+      const invoiceId = `inv_${s.market.day}_${templateId}_${seq}`;
 
       // Her adet ayrı bir kalem olarak girer ve yığın kuralı onları
       // birleştirir (GDD 22.1). Böylece "40 adet" tek pozisyon olur ama
       // maliyet tabanı gerçek birim maliyettir.
+      //
+      // Kalem kimliği de sıraya bağlıdır: `probe.id` (seed, spawnCounter,
+      // ürün) ile sabit olduğu için eski hâlde ikinci alım BİRİNCİNİN
+      // kalemlerini ezerdi — applyTransaction gelen kalemi kimliğiyle
+      // yazar, aynı kimlik iki kez gelirse ikincisi birincinin üstüne biner.
       const itemsIn: ItemInstance[] = Array.from({ length: units }, (_, i) => ({
         ...spawnItem(s.seed, s.spawnCounter * 100 + 7, templateId),
-        id: `${probe.id}_${s.market.day}_${i}`,
+        id: `${probe.id}_${seq}_${i}`,
         // Vade farkı maliyet tabanına BİNER: finanse edilmiş malın gerçek
         // maliyeti daha yüksektir ve kâr hesabı bunu görmek zorundadır.
         buyCost: Math.round((amount + terms.financeCost) / units),
@@ -1278,7 +1298,9 @@ export const useGame = create<GameState>((set, get) => {
 
       const outcome = applyTransaction(economyOf(s), tx);
       if (!outcome.applied) {
-        pushToast(set, get, outcome.reason ?? 'Tedarik uygulanamadı.', 'negative');
+        // `outcome.reason` işlem kimliğini taşıyan GELİŞTİRİCİ metnidir;
+        // oyuncuya gösterilmez (v1.1 §7 — iç isimler ekrana çıkmaz).
+        pushToast(set, get, 'Tedarik uygulanamadı.', 'negative');
         return;
       }
 
@@ -1474,9 +1496,13 @@ export const useGame = create<GameState>((set, get) => {
         return;
       }
 
+      // Sıra numarası: aynı gün borç alıp kapatıp yeniden almak kimlik
+      // çakıştırıyordu (bkz. buyFromWholesaler'daki aynı sınıf hata).
+      const loanId = `nloan_${memberId}_${s.market.day}_${s.ledger.appliedTxIds.length}`;
+
       const tx: SettlementTransaction = {
-        txId: `nloan_${memberId}_${s.market.day}`,
-        dealId: `nloan_${memberId}_${s.market.day}`,
+        txId: loanId,
+        dealId: loanId,
         day: s.market.day,
         cashDelta: offer.amount,
         itemsIn: [],
@@ -1492,7 +1518,9 @@ export const useGame = create<GameState>((set, get) => {
 
       set({
         ...economyToState(outcome.state),
-        network: s.network.map((m) => (m.id === memberId ? openLoan(m, offer, s.market.day) : m)),
+        network: s.network.map((m) =>
+          m.id === memberId ? openLoan(m, offer, s.market.day, loanId) : m,
+        ),
       });
 
       pushToast(
@@ -1674,7 +1702,8 @@ export const useGame = create<GameState>((set, get) => {
 
       const outcome = applyTransaction(economyOf(s), tx);
       if (!outcome.applied) {
-        pushToast(set, get, outcome.reason ?? 'Yükseltme uygulanamadı.', 'negative');
+        // Teknik gerekçe oyuncuya gösterilmez; bkz. buyFromWholesaler.
+        pushToast(set, get, 'Yükseltme uygulanamadı.', 'negative');
         return;
       }
 

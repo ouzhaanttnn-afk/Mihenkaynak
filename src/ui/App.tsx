@@ -51,9 +51,17 @@ export function App() {
 
         <BottomNav active={tab} onSelect={setTab} />
 
+        {/*
+          En fazla İKİ toast görünür.
+          Kapatma zamanlayıcısı `toasts` her değiştiğinde sıfırlandığı için
+          arka arkaya yapılan işlemlerde balonlar birikiyordu; üst üste binen
+          üç balon Stok özetini tamamen gömüyordu. Sınır, biriktirmeyi
+          içeriğin üstünü kapatmadan durdurur — sıradakiler yine gösterilir,
+          yalnız öndekiler düştükçe.
+        */}
         {toasts.length > 0 && (
           <div className="toastLayer">
-            {toasts.map((toast) => (
+            {toasts.slice(0, 2).map((toast) => (
               <div key={toast.id} className={`toast toast--${toast.tone}`}>
                 {toast.text}
               </div>

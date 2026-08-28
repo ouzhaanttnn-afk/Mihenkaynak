@@ -327,6 +327,15 @@ export function openLoan(
   member: TradeNetworkMember,
   offer: NetworkLoanOffer,
   today: GameDay,
+  /**
+   * Borcun kimliği. ÇAĞIRAN verir çünkü tekilliği yalnız o garanti edebilir.
+   *
+   * Eskiden burada `nloan_<üye>_<gün>` olarak üretiliyordu: aynı gün borç
+   * alıp kapatıp yeniden alındığında kimlik birebir aynı çıkıyordu ve
+   * ikinci borcun KAPATMA işlemi settlement'in idempotency kapısına
+   * takılıyordu — borç ekranda açık kalıyor, ödenemiyordu.
+   */
+  loanId: string = `nloan_${member.id}_${today}`,
 ): TradeNetworkMember {
   if (offer.blockedReason || member.loan) return member;
   return {
@@ -335,7 +344,7 @@ export function openLoan(
     // alamaz. Kapasitenin tek ve ortak kaynağı budur.
     cashOnHand: Math.max(0, member.cashOnHand - offer.amount),
     loan: {
-      id: `nloan_${member.id}_${today}`,
+      id: loanId,
       memberId: member.id,
       principal: offer.amount,
       totalDue: offer.totalDue,
