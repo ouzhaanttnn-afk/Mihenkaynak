@@ -29,6 +29,7 @@ import { createMarketForDay } from '@domain/market';
 import { dayCharacter, emptyTelemetry } from '@domain/intent';
 import { createLedger, type Ledger } from '@domain/settlement';
 import type { GameState } from './gameStore';
+import type { CustomerRegistry } from '@domain/customer-memory';
 import type {
   InventoryPosition,
   ItemInstance,
@@ -60,6 +61,11 @@ export interface SaveFile {
   jobs: ServiceJob[];
   /** §8 ağı: üye ilişkileri, kasaları ve açık borçları. */
   network: TradeNetworkMember[];
+  /**
+   * GDD 10 — müşteri hafızası. Kaydedilmezse her yüklemede tüm müşteriler
+   * yeniden yabancı olurdu ve güven "ekonomik varlık" olmaktan çıkardı.
+   */
+  customers: CustomerRegistry;
 
   speed4xUnlocked: boolean;
 }
@@ -84,6 +90,7 @@ export function serialize(state: GameState): SaveFile {
     ledger: state.ledger,
     jobs: state.jobs,
     network: state.network,
+    customers: state.customers,
     speed4xUnlocked: state.speed4xUnlocked,
   };
 }
@@ -101,6 +108,7 @@ export type LoadedState = Pick<
   | 'ledger'
   | 'jobs'
   | 'network'
+  | 'customers'
   | 'dayCharacter'
   | 'intentTelemetry'
   | 'speed4xUnlocked'
@@ -138,6 +146,8 @@ export function deserialize(file: SaveFile): LoadedState {
     ledger: save.ledger,
     jobs: save.jobs,
     network: save.network,
+    // Eski kayıtta defter yoksa boş başlar; çökmez.
+    customers: save.customers ?? {},
     dayCharacter: dayCharacter(save.seed, save.day, market),
     // Telemetri bir ÖLÇÜMdür, bir durum değil: yüklemede sıfırlanır ve
     // yeni örneklem penceresi başlar (§3 "uygun örneklem penceresinde").

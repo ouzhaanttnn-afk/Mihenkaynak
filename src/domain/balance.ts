@@ -746,6 +746,61 @@ export const TRUST = {
   reputationTransfer: 0.12,
 } as const;
 
+/**
+ * GDD 10 — MÜŞTERİ HAFIZASI VE SADAKAT.
+ *
+ * DEĞİŞMEZ (10.4): güven tek jestle satın alınamaz, küçük işlem spam'i hızlı
+ * VIP üretmez, ciddi olaylar daha ağır basar, referans yüksek güven VE
+ * yeterli ziyaret ister.
+ */
+export const MEMORY = {
+  /** Hafızanın çıpası — yeni müşterinin nötr güveni. */
+  baseTrust: 50,
+  /** Kaç ziyaret saklanır. */
+  maxHistory: 12,
+  /** Yaşlanan olayın ağırlık sönümü (ziyaret başına). */
+  recencyDecay: 0.82,
+  /** Bu büyüklüğün altındaki kazanç "küçük" sayılır ve spam korumasına girer. */
+  smallGainThreshold: 8,
+  /** Art arda gelen küçük kazançların azalan getirisi. */
+  repeatGainFalloff: 0.55,
+  /**
+   * GDD 10.4 — tek bir ziyaretin güvene azami etkisi. Tavan olmadan büyük
+   * tek bir jest istikrarlı geçmişi geçiyordu, yani güven satın alınabiliyordu.
+   */
+  maxSingleEventSwing: 12,
+
+  /** Kaç ziyaretten sonra tam sadakat sayılır. */
+  loyalVisits: 5,
+  /**
+   * Tek ziyaretin ilişkiye verdiği kesinlik payı. Ziyaret sayısı güvenin
+   * YÖNÜNÜ pekiştirir; yönü tersine çevirmez.
+   */
+  singleVisitWeight: 0.5,
+  /** Sadakatin sepete etkisi (± oran). */
+  basketSwing: 0.28,
+  /** Sadakatin şüpheye etkisi (puan). */
+  suspicionRelief: 14,
+
+  /** GDD 10.4 — referans için gereken güven ve ziyaret sayısı. */
+  referralTrust: 72,
+  referralVisits: 3,
+  referralChance: 0.18,
+  /** Bu güvenin altındaki müşteri "küsmüş" sayılır. */
+  upsetTrust: 32,
+
+  /** Dönüş olasılığı tabanı. */
+  baseReturnWeight: 0.08,
+  /** Güvenin dönüş olasılığına çarpan etkisi. */
+  trustReturnSwing: 0.9,
+  /** Aynı müşteri en erken bu kadar gün sonra döner. */
+  minDaysBetweenVisits: 1,
+  /** Bu kadar gün görülmeyen müşteri yavaşça unutulur. */
+  forgetAfterDays: 30,
+  /** Gelen müşterilerin en fazla bu payı tanıdık olabilir. */
+  maxReturnShare: 0.45,
+} as const;
+
 /** Gün akışı (GDD 3.2). */
 export const DAY = {
   openMinutes: 9 * 60,

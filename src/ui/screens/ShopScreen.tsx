@@ -152,6 +152,7 @@ export function ShopScreen() {
 
       <CustomerStrip
         customer={s.activeCustomer}
+        record={s.activeCustomer ? (s.customers[s.activeCustomer.id] ?? null) : null}
         queueLength={s.queue.length}
         lineCount={deal?.lines.length ?? 0}
       />

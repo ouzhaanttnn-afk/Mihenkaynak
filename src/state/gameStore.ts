@@ -99,6 +99,12 @@ import {
 } from '@domain/service';
 import { getTool } from '@data/tools';
 import { makeId } from '@domain/rng';
+import {
+  createRecord,
+  recordVisit,
+  reputationDelta,
+  type CustomerRegistry,
+} from '@domain/customer-memory';
 import { flowPolicy, stageUnlocked } from '@domain/transaction-class';
 import { clearSave, readSave, writeSave } from './save';
 import type {
@@ -121,6 +127,7 @@ import type {
   SettlementTransaction,
   StoreState,
   TradeNetworkMember,
+  VisitRecord,
   TradeSide,
   WorkbenchStage,
 } from '@domain/types';
@@ -165,6 +172,13 @@ export interface GameState {
   dayCharacter: DayCharacter;
   /** §3 "dağılım ... izlenir" — üretilen intentlerin sayacı. */
   intentTelemetry: IntentTelemetry;
+
+  /**
+   * GDD 10 — müşteri hafızası. Müşteri gidince silinmez; geri döndüğünde
+   * ilişkisi ve geçmişiyle birlikte gelir. Güvenin "ekonomik varlık"
+   * olmasının tek koşulu bu defterin kalıcı olmasıdır.
+   */
+  customers: CustomerRegistry;
 
   /** Kapıda bekleyen müşteriler. */
   queue: { customer: Customer; items: ItemInstance[] }[];
@@ -309,6 +323,7 @@ export const useGame = create<GameState>((set, get) => {
 
     dayCharacter: dayCharacter(seed, 1, market),
     intentTelemetry: emptyTelemetry(),
+    customers: {},
     network: spawnNetwork(seed, START.reputation),
     overnight: null,
     lastOvernight: null,
@@ -371,7 +386,14 @@ export const useGame = create<GameState>((set, get) => {
       let telemetry = s.intentTelemetry;
 
       if (clock >= nextCustomerAtMinutes && queue.length < 3) {
-        const spawned = spawnCustomer(s.seed, spawnCounter, market, s.store, s.dayCharacter);
+        const spawned = spawnCustomer(
+          s.seed,
+          spawnCounter,
+          market,
+          s.store,
+          s.dayCharacter,
+          s.customers,
+        );
         queue = [...queue, spawned];
         spawnCounter += 1;
         telemetry = recordIntent(telemetry, spawned.customer.intent, spawned.fromDynamicPool);
@@ -427,6 +449,15 @@ export const useGame = create<GameState>((set, get) => {
 
       const dealId = makeId('deal', s.seed, s.spawnCounter);
 
+      // GDD 10 — ilk karşılaşmada kalıcı kayıt açılır. Kayıt açmadan güven
+      // yazacak yer olmaz ve müşteri yine yabancı kalırdı.
+      const customers = s.customers[head.customer.id]
+        ? s.customers
+        : {
+            ...s.customers,
+            [head.customer.id]: createRecord(head.customer, s.market.day, s.spawnCounter),
+          };
+
       // GDD 23.23 intent matrisi — niyet hangi aşama dizisinin kullanılacağını
       // belirler. Servis müşterisi ana ticaret slider'ına ZORLANMAZ (GDD 23.14),
       // alış müşterisi de değerleme akışına zorlanmaz: elinde ürün yoktur,
@@ -472,6 +503,7 @@ export const useGame = create<GameState>((set, get) => {
 
       set({
         items,
+        customers,
         queue: s.queue.slice(1),
         activeCustomer: head.customer,
         activeDeal: {
@@ -905,7 +937,22 @@ export const useGame = create<GameState>((set, get) => {
 
     // -----------------------------------------------------------------------
     finishDeal: () => {
-      set({ activeDeal: null, activeCustomer: null, customerMessage: '', lastReview: null });
+      const s = get();
+      // GDD 10.2 — ziyaret KAPANIRKEN deftere yazılır. İşlem içinde oynayan
+      // güveni kaydetmeden müşteriyi göndermek, güveni ekonomik varlık değil
+      // geçici bir sayı yapardı (GDD 10).
+      const customers = commitVisit(s);
+      const repDelta = visitReputationDelta(s);
+      set({
+        customers,
+        store: repDelta
+          ? { ...s.store, reputation: clamp(s.store.reputation + repDelta, 0, 100) }
+          : s.store,
+        activeDeal: null,
+        activeCustomer: null,
+        customerMessage: '',
+        lastReview: null,
+      });
     },
 
     // -----------------------------------------------------------------------
@@ -1740,6 +1787,76 @@ function settlePurchase(
     ...economyToState({ ...economy, inventory: revalued }),
     activeDeal: { ...deal, settled: true },
   });
+}
+
+/**
+ * GDD 10.2 — ziyaretin deftere yazılması.
+ *
+ * Ne yazılır: sonuç (kabul/red/çıkıp gitme/servis), güven değişimi, kısa not
+ * ve ciro. Ne yazılmaz: gizli gerçek. Defter oyuncunun da göreceği bir
+ * hafızadır; müşterinin bilmediği şeyi taşımaz (GDD 6.6).
+ */
+function commitVisit(s: GameState): CustomerRegistry {
+  const deal = s.activeDeal;
+  const customer = s.activeCustomer;
+  if (!deal || !customer) return s.customers;
+
+  const record = s.customers[customer.id];
+  if (!record) return s.customers;
+
+  const outcome = visitOutcome(deal, customer);
+  const volume = dealVolume(deal);
+
+  const visit: VisitRecord = {
+    day: s.market.day,
+    dealId: deal.dealId,
+    outcome,
+    // Ziyaretin net güven etkisi: işlem içinde oynayan güvenin defterdeki
+    // değere göre farkı.
+    trustDelta: customer.trust - record.trust,
+    note: visitNote(outcome, volume),
+  };
+
+  return { ...s.customers, [customer.id]: recordVisit(record, visit, volume) };
+}
+
+/**
+ * GDD 10.1 — kişisel güvenin semt itibarına yansıması.
+ * "Tek işlem itibarı uçurmaz" (10.4): transfer küçüktür ve yalnız kapanan
+ * ziyaretten doğar.
+ */
+function visitReputationDelta(s: GameState): number {
+  const customer = s.activeCustomer;
+  const record = customer ? s.customers[customer.id] : undefined;
+  if (!customer || !record) return 0;
+  return reputationDelta(customer.trust - record.trust);
+}
+
+function visitOutcome(deal: ActiveDeal, customer: Customer): VisitRecord['outcome'] {
+  if (deal.flow === 'service') {
+    return deal.service?.outcome === 'accepted' ? 'serviceBooked' : 'rejected';
+  }
+  // Sabrı bitip çıkan müşteri, fiyatı beğenmeyip redden ayrı tutulur:
+  // GDD 10.4 ciddi olayları daha ağır sayar.
+  if (customer.patience <= 0) return 'walkedOut';
+  return deal.lines.some((l) => l.negotiation.state === 'ACCEPTED') ? 'accepted' : 'rejected';
+}
+
+function dealVolume(deal: ActiveDeal): Money {
+  return deal.lines.reduce((sum, l) => sum + (l.negotiation.settledPrice ?? 0), 0);
+}
+
+function visitNote(outcome: VisitRecord['outcome'], volume: Money): string {
+  switch (outcome) {
+    case 'accepted':
+      return `İşlem kapandı · ${fmt(volume)}`;
+    case 'serviceBooked':
+      return 'Servis işi bırakıldı';
+    case 'walkedOut':
+      return 'Sabrı bitti, çıkıp gitti';
+    default:
+      return 'Anlaşma olmadı';
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -7,14 +7,25 @@
  * GDD 11.3: Sabır sayısal skor olarak gösterilmez; nokta dizisiyle okunur.
  */
 
+import { MEMORY } from '@domain/balance';
+import { loyaltyEffects, type CustomerRecord } from '@domain/customer-memory';
 import { getArchetype } from '@data/archetypes';
 import { IconQueue } from '@ui/icons';
 import type { Customer } from '@domain/types';
 
 interface Props {
   customer: Customer | null;
+  /** GDD 10 — bu müşterinin kalıcı kaydı; yeni müşteride null. */
+  record?: CustomerRecord | null;
   queueLength: number;
   lineCount: number;
+}
+
+/** Etiket tonu: sadık yeşil, küsmüş kırmızı, arası nötr. */
+function tieTone(record: CustomerRecord): 'good' | 'bad' | 'neutral' {
+  if (record.trust >= MEMORY.referralTrust) return 'good';
+  if (record.trust <= MEMORY.upsetTrust) return 'bad';
+  return 'neutral';
 }
 
 const INTENT_TEXT: Record<Customer['intent'], string> = {
@@ -24,7 +35,7 @@ const INTENT_TEXT: Record<Customer['intent'], string> = {
   appraisal: 'Ekspertiz danışıyor',
 };
 
-export function CustomerStrip({ customer, queueLength, lineCount }: Props) {
+export function CustomerStrip({ customer, record, queueLength, lineCount }: Props) {
   if (!customer) {
     return (
       <div className="customerStrip">
@@ -59,7 +70,20 @@ export function CustomerStrip({ customer, queueLength, lineCount }: Props) {
             <span style={{ color: 'var(--brass-600)', fontWeight: 500 }}> · {lineCount} ürün</span>
           )}
         </div>
-        <div className="customerStrip__intent">{INTENT_TEXT[customer.intent]}</div>
+        <div className="customerStrip__intent">
+          {INTENT_TEXT[customer.intent]}
+          {/*
+            GDD 10.3 — tanıdık müşteri tanınmalı. Oyuncu karşısındakinin
+            geçmişini görmeden "uzun vadeli değeri korumak" diye bir karar
+            veremez; etiket o kararın bilgi tarafıdır.
+          */}
+          {record && record.visits > 0 && (
+            <span className={`customerStrip__tie customerStrip__tie--${tieTone(record)}`}>
+              {' · '}
+              {loyaltyEffects(record).label}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="customerStrip__meta">

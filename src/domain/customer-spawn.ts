@@ -12,6 +12,12 @@ import { ARCHETYPES, FIRST_NAMES_F, FIRST_NAMES_M, HONORIFIC_F, HONORIFIC_M, get
 import { PURCHASE } from './balance';
 import { rollIntent, type DayCharacter } from './intent';
 import { applyBulkProfile, spawnDemand } from './purchase';
+import {
+  applyMemory,
+  pickReturningCustomer,
+  type CustomerRecord,
+  type CustomerRegistry,
+} from './customer-memory';
 import { bullionMeta } from '@data/bullion';
 import { templatesForTier } from './item-spawn';
 import { spawnItem } from './item-spawn';
@@ -31,6 +37,8 @@ export interface SpawnedCustomer {
   items: ItemInstance[];
   /** §3 telemetrisi: bu niyet sabit tabandan mı, dinamik havuzdan mı geldi. */
   fromDynamicPool: boolean;
+  /** GDD 10 — bu bir tekrar ziyaretse ilgili kalıcı kayıt. */
+  returningRecord: CustomerRecord | null;
 }
 
 /**
@@ -45,6 +53,8 @@ export function spawnCustomer(
   market: MarketState,
   store: StoreState,
   character: DayCharacter,
+  /** GDD 10 — tanıdık müşteri defteri. Boşsa herkes yabancıdır. */
+  registry: CustomerRegistry = {},
 ): SpawnedCustomer {
   const rng = new Rng(deriveSeed(rootSeed, 'customer', spawnIndex));
 
@@ -168,10 +178,17 @@ export function spawnCustomer(
     lineIds,
   };
 
+  // GDD 10.3 — tanıdık müşteri geri döner. Kimlik ve ilişki defterden
+  // gelir; sabır, aciliyet ve bugünkü niyet ziyaretin kendisinden.
+  // Aynı kişi, ama aynı gün değil.
+  const returning = pickReturningCustomer(rootSeed, spawnIndex, registry, market.day);
+  const withMemory = returning ? applyMemory(base, returning) : base;
+
   return {
-    customer: applyBulkProfile(base),
+    customer: applyBulkProfile(withMemory),
     items,
     fromDynamicPool,
+    returningRecord: returning,
   };
 }
 

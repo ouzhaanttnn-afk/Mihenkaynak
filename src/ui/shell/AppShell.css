@@ -784,3 +784,8 @@
 .toast--negative {
   border-color: rgba(217, 86, 79, 0.5);
 }
+
+/* GDD 10.3 — tanıdık müşteri etiketi. */
+.customerStrip__tie--good { color: var(--positive-soft); }
+.customerStrip__tie--bad { color: var(--negative-soft); }
+.customerStrip__tie--neutral { color: var(--brass-400); }

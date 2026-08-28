@@ -25,6 +25,7 @@ import {
 } from '@domain/settlement';
 import { CHANNEL_LABEL_TR } from '@domain/channels';
 import { marketSignals } from '@domain/overnight';
+import { registrySummary } from '@domain/customer-memory';
 import { intentAlarm } from '@domain/intent';
 import { isBullion } from '@data/bullion';
 import { spawnItem } from '@domain/item-spawn';
@@ -90,6 +91,7 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
   });
   const ratio = liquidityRatio(s.store.cash, s.inventory);
   const band = liquidityBand(ratio);
+  const memory = registrySummary(s.customers);
 
   return (
     <div className="page">
@@ -148,6 +150,25 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               value={`${Math.round(s.store.reputation)}/100`}
               icon={<IconTrust size={15} />}
             />
+            {/*
+              GDD 10.1 — üç ayrı ilişki metriği. Semt itibarı ve toptancı
+              güveni zaten vardı; KİŞİSEL GÜVEN görünmüyordu, yani oyuncu
+              müşteri ilişkisinin biriktiğini hiç göremiyordu.
+            */}
+            <StatLine
+              label="Tanıdık müşteri"
+              value={
+                memory.known === 0
+                  ? 'Henüz yok'
+                  : `${memory.known} kişi · ${memory.loyal} sadık${
+                      memory.upset > 0 ? ` · ${memory.upset} küsmüş` : ''
+                    }`
+              }
+              tone={memory.upset > memory.loyal ? 'warning' : undefined}
+            />
+            {memory.lifetimeVolume > 0 && (
+              <StatLine label="Tanıdıklardan gelen ciro" value={tl(memory.lifetimeVolume)} />
+            )}
             <StatLine
               label={TERM.supplierTrust}
               value={`${Math.round(s.store.supplier.trust)}/100`}
