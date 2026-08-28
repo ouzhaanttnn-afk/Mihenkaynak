@@ -284,6 +284,11 @@ function BullionOffer({ templateId }: { templateId: string }) {
           {affordable ? 'Al' : 'Nakit yok'}
         </button>
       </div>
+      {!affordable && (
+        <p className="offerRow__shortfall" role="status">
+          Mevcut nakit {tl(s.store.cash)} · eksik {tl(lot.total - s.store.cash)}
+        </p>
+      )}
     </div>
   );
 }
@@ -315,6 +320,7 @@ const PLAYTEST_BULLION = [
 
 function StockRow({ position }: { position: InventoryPosition }) {
   const item = useGame((s) => s.items[position.itemId]);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   if (!item) return null;
 
   const template = getTemplate(item.templateId);
@@ -383,6 +389,21 @@ function StockRow({ position }: { position: InventoryPosition }) {
           <div className="rowAlert">
             <IconWarning size={12} />
             Ölü stok riski · {position.age} gündür bekliyor
+          </div>
+        )}
+        <button
+          type="button"
+          className="rowDetailToggle"
+          onClick={() => setDetailsOpen((open) => !open)}
+          aria-expanded={detailsOpen}
+        >
+          {detailsOpen ? 'Detayı kapat' : 'Konum ve çıkış planı'}
+        </button>
+        {detailsOpen && (
+          <div className="rowDetailPanel">
+            <p><strong>Konum:</strong> {position.location === 'display' ? 'Vitrin' : position.location === 'backStock' ? 'Arka stok' : position.location === 'workshop' ? 'Serviste' : 'Müşteride'}</p>
+            <p><strong>Çıkış planı:</strong> {position.thesis ? CHANNEL_SHORT[position.thesis] : 'Henüz seçilmedi.'}</p>
+            {!position.thesis && <p>Çıkış planı, ürünün müşteri işleminde değerlendirilip bir satış kanalı seçildiğinde atanır.</p>}
           </div>
         )}
       </div>

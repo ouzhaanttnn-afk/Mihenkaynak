@@ -1070,12 +1070,20 @@ function ShopDock({
                   label: 'Kabul Et',
                   onPress: () => s.negotiationMove({ kind: 'acceptCounter', atRound: session.round }),
                   disabled: counter > s.store.cash,
+                  disabledReason: counter > s.store.cash
+                    ? `Minimum teklif ${tl(counter)} · mevcut nakit ${tl(s.store.cash)} · eksik ${tl(counter - s.store.cash)}`
+                    : undefined,
                   icon: <IconSend size={18} />,
                 }
               : {
                   label: 'Teklifi Gönder',
                   onPress: () => s.submitOffer(offer),
                   disabled: !canAfford || offer <= 0,
+                  disabledReason: offer <= 0
+                    ? 'Teklif tutarı sıfırdan büyük olmalı.'
+                    : !canAfford
+                      ? `Teklif ${tl(offer)} · mevcut nakit ${tl(s.store.cash)} · eksik ${tl(offer - s.store.cash)}`
+                      : undefined,
                   icon: <IconSend size={18} />,
                 }
           }

@@ -68,9 +68,9 @@ import {
 } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { NAV_ART, merchantArt } from '@ui/assets';
-import { pct, pctChange, price, tl, tlSigned } from '@ui/format';
+import { clock, pct, pctChange, price, tl, tlSigned } from '@ui/format';
 
-type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network' | 'store' | 'career';
+type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network' | 'store' | 'career' | 'save';
 
 export function BusinessScreen() {
   const [route, setRoute] = useState<Route>('root');
@@ -81,6 +81,7 @@ export function BusinessScreen() {
   if (route === 'network') return <NetworkRoute onBack={() => setRoute('root')} />;
   if (route === 'store') return <StoreRoute onBack={() => setRoute('root')} />;
   if (route === 'career') return <ComingSoonRoute title="Kariyer / Yetenekler" onBack={() => setRoute('root')} />;
+  if (route === 'save') return <SaveRoute onBack={() => setRoute('root')} />;
   return <BusinessRoot onOpen={setRoute} />;
 }
 
@@ -225,7 +226,7 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               title="Kayıt"
               sub="Gün sonunda otomatik · elle kaydet veya geri yükle"
               icon={<IconReason size={17} />}
-              onPress={() => s.saveGame()}
+              onPress={() => onOpen('save')}
             />
             <MenuLine
               title="Mağaza"
@@ -260,6 +261,60 @@ function ComingSoonRoute({ title, onBack }: { title: string; onBack: () => void 
         <span className="empty__icon"><IconBusiness size={30} /></span>
         <h2 className="empty__title">Bu bölüm hazırlanıyor</h2>
         <p className="empty__text">İlerleme ve yetenek ayrıntıları burada yer alacak.</p>
+      </div>
+    </div>
+  );
+}
+
+function SaveRoute({ onBack }: { onBack: () => void }) {
+  const s = useGame();
+  const [confirmLoad, setConfirmLoad] = useState(false);
+  const [lastAction, setLastAction] = useState<string | null>(null);
+
+  const save = () => {
+    const ok = s.saveGame();
+    setLastAction(ok ? `Kaydedildi · Gün ${s.market.day}, ${clock(s.market.clockMinutes)}` : 'Kayıt oluşturulamadı.');
+  };
+
+  const load = () => {
+    const ok = s.loadGame();
+    setConfirmLoad(false);
+    setLastAction(ok ? `Son kayıt yüklendi · Gün ${useGame.getState().market.day}` : 'Yüklenecek kayıt bulunamadı.');
+  };
+
+  return (
+    <div className="page">
+      <header className="pageHead">
+        <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>← İşletme</button>
+        <h1 className="pageHead__title">Kayıt</h1>
+        <p className="pageHead__sub">Gün sonunda otomatik, istediğin anda elle kayıt</p>
+      </header>
+      <div className="page__scroll">
+        <div className="group">
+          <h2 className="group__title">Mevcut oyun</h2>
+          <div className="group__body">
+            <StatLine label="Gün / Saat" value={`${s.market.day}. gün · ${clock(s.market.clockMinutes)}`} />
+            <StatLine label="Nakit" value={tl(s.store.cash)} />
+            <button type="button" className="cta" onClick={save}>Şimdi Kaydet</button>
+          </div>
+        </div>
+        <div className="group">
+          <h2 className="group__title">Geri yükleme</h2>
+          <div className="group__body">
+            {!confirmLoad ? (
+              <button type="button" className="secondary" onClick={() => setConfirmLoad(true)}>Son Kaydı Geri Yükle</button>
+            ) : (
+              <div className="confirmPanel">
+                <p>Kaydedilmemiş mevcut ilerleme kaybolacak. Son kaydı yüklemek istiyor musun?</p>
+                <div className="confirmPanel__actions">
+                  <button type="button" className="secondary" onClick={() => setConfirmLoad(false)}>Vazgeç</button>
+                  <button type="button" className="secondary secondary--danger" onClick={load}>Evet, Geri Yükle</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        {lastAction && <p className="routeFeedback" role="status">{lastAction}</p>}
       </div>
     </div>
   );

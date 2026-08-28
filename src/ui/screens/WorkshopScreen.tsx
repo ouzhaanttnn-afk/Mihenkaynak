@@ -83,6 +83,28 @@ export function WorkshopScreen() {
       </header>
 
       <div className="page__scroll">
+        {s.lastServiceDelivery && (
+          <section className={`deliveryResult ${s.lastServiceDelivery.succeeded ? 'deliveryResult--success' : 'deliveryResult--failed'}`} aria-live="polite">
+            <div className="deliveryResult__head">
+              <div>
+                <span className="deliveryResult__eyebrow">Son teslimat</span>
+                <h2>{s.lastServiceDelivery.jobName}</h2>
+                <p>{s.lastServiceDelivery.customerName} · {s.lastServiceDelivery.succeeded ? 'Başarılı' : 'Hatalı sonuç'}</p>
+              </div>
+              <span className="tag">{s.lastServiceDelivery.succeeded ? 'BAŞARILI' : 'HATALI'}</span>
+            </div>
+            <div className="deliveryResult__grid">
+              <span>Ücret <strong>{tl(s.lastServiceDelivery.fee)}</strong></span>
+              <span>Tazmin <strong>{tl(s.lastServiceDelivery.compensation)}</strong></span>
+              <span>Net nakit <strong>{tl(s.lastServiceDelivery.cashDelta)}</strong></span>
+              <span>Net katkı <strong>{tl(s.lastServiceDelivery.netContribution)}</strong></span>
+              <span>İlişki <strong>{s.lastServiceDelivery.trustDelta > 0 ? '+' : ''}{s.lastServiceDelivery.trustDelta}</strong></span>
+              <span>İtibar <strong>{s.lastServiceDelivery.reputationDelta > 0 ? '+' : ''}{s.lastServiceDelivery.reputationDelta}</strong></span>
+            </div>
+            <p className="deliveryResult__message">Risk {pct(s.lastServiceDelivery.risk)} · {s.lastServiceDelivery.message}</p>
+            <button type="button" className="secondary" onClick={s.dismissServiceDelivery}>Devam Et</button>
+          </section>
+        )}
         {/* Teslime hazır işler önce — oyuncunun aksiyon alması gerekenler. */}
         {ready.length > 0 && (
           <div className="group">
@@ -102,11 +124,11 @@ export function WorkshopScreen() {
           </h2>
 
           {active.length === 0 ? (
-            <div className="empty">
+            <div className="empty empty--compact">
               <div className="empty__icon">
                 <Art
                   art={NAV_ART.workshop}
-                  size={96}
+                  size={56}
                   decorative
                   className="art--hero"
                   fallback={<IconWorkshop size={34} />}
@@ -114,9 +136,8 @@ export function WorkshopScreen() {
               </div>
               <p className="empty__title">Kuyruk boş</p>
               <p className="empty__text">
-                Servis işleri müşteriden kabul edildiğinde buraya düşer. Atölye pasif gelir
-                üretmez — gelir kabul edilen gerçek işten, kullanılan kapasiteden ve
-                üstlenilen hata riskinden doğar.
+                Kabul ettiğin servis işleri burada görünür. Gelir yalnız tamamlanan gerçek
+                işlerden doğar.
               </p>
             </div>
           ) : (

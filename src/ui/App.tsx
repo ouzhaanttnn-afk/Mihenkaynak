@@ -2,7 +2,7 @@
  * MIHENKAYNAK — Uygulama kökü
  *
  * GDD 23.9.2 global kabuğu burada birleşir. Dört kök ekran (Dükkan / Stok /
- * Atölye / İşletme) aynı cihaz çerçevesini paylaşır; alt navigasyon aktif
+ * Atölye / Market / İşletme) aynı cihaz çerçevesini paylaşır; alt navigasyon aktif
  * işlemde de yerini korur (GDD 23.9.2).
  *
  * GDD 23.22: Aktif Dükkan dikey scroll kullanmaz → cihaz gövdesi

@@ -17,6 +17,7 @@ export interface DockAction {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  disabledReason?: string;
   danger?: boolean;
   icon?: ReactNode;
 }
@@ -51,6 +52,8 @@ export function DecisionDock({ summaryLabel, summaryValue, children, primary, se
           className="cta"
           onClick={primary.onPress}
           disabled={primary.disabled}
+          aria-label={primary.disabled && primary.disabledReason ? `${primary.label} — ${primary.disabledReason}` : undefined}
+          title={primary.disabled ? primary.disabledReason : undefined}
         >
           {primary.icon}
           {primary.label}
@@ -61,6 +64,10 @@ export function DecisionDock({ summaryLabel, summaryValue, children, primary, se
           <SecondaryButton action={actions[0]} />
         )}
       </div>
+
+      {primary.disabled && primary.disabledReason && (
+        <p className="dock__disabledReason" role="status">{primary.disabledReason}</p>
+      )}
 
       {actions.length === 2 && (
         <div className="dock__secondaryRow">

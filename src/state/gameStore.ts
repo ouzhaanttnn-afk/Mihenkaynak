@@ -99,6 +99,7 @@ import {
   type QuoteContext,
 } from '@domain/service';
 import { getTool } from '@data/tools';
+import { getServiceType } from '@data/service-types';
 import { makeId } from '@domain/rng';
 import {
   createRecord,
@@ -161,6 +162,21 @@ export interface ToastMessage {
   id: string;
   text: string;
   tone: 'info' | 'positive' | 'negative';
+}
+
+export interface ServiceDeliverySummary {
+  jobId: string;
+  jobName: string;
+  customerName: string;
+  succeeded: boolean;
+  fee: Money;
+  compensation: Money;
+  cashDelta: Money;
+  netContribution: Money;
+  trustDelta: number;
+  reputationDelta: number;
+  risk: number;
+  message: string;
 }
 
 export interface GameState {
@@ -234,6 +250,7 @@ export interface GameState {
 
   /** Atölyedeki tüm servis işleri (GDD 28.2 ServiceJob). */
   jobs: ServiceJob[];
+  lastServiceDelivery: ServiceDeliverySummary | null;
   /** Deterministik iş kimliği için artan sayaç. */
   jobCounter: number;
 
@@ -282,6 +299,7 @@ export interface GameState {
   issueReport: () => void;
   declineAppraisal: () => void;
   deliverJob: (jobId: string) => void;
+  dismissServiceDelivery: () => void;
 
   // --- Müşteri alış akışı (GDD 23.23 · Addendum §3, §4.1) ---
   togglePackageItem: (itemId: string) => void;
@@ -390,6 +408,7 @@ export const useGame = create<GameState>((set, get) => {
     nextCustomerAtMinutes: DAY.openMinutes + 3,
 
     jobs: [],
+    lastServiceDelivery: null,
     jobCounter: 0,
 
     activeCustomer: null,
@@ -813,10 +832,26 @@ export const useGame = create<GameState>((set, get) => {
         jobs: s.jobs.map((j) =>
           j.jobId === jobId ? { ...j, result: 'delivered' as const } : j,
         ),
+        lastServiceDelivery: {
+          jobId: job.jobId,
+          jobName: `${getServiceType(job.type).label} · ${job.itemName}`,
+          customerName: job.customerName,
+          succeeded: delivery.succeeded,
+          fee: delivery.succeeded ? job.fee : 0,
+          compensation: delivery.succeeded ? 0 : job.compensation,
+          cashDelta: delivery.cashDelta,
+          netContribution: delivery.netContribution,
+          trustDelta: delivery.trustDelta,
+          reputationDelta: delivery.reputationDelta,
+          risk: job.risk,
+          message: delivery.message,
+        },
       });
 
       pushToast(set, get, delivery.message, delivery.succeeded ? 'positive' : 'negative');
     },
+
+    dismissServiceDelivery: () => set({ lastServiceDelivery: null }),
 
     // -----------------------------------------------------------------------
     // Ekspertiz / danışma akışı (GDD 23.23 · İncele → Test → Rapor/Ücret → Sonuç)

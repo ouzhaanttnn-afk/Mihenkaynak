@@ -125,7 +125,7 @@
   --r-pill: 999px;
 
   /* ---- Bölge yükseklikleri (GDD 23.9.2 — bağlayıcı) ---- */
-  --h-status-strip: 52px;
+  --h-status-strip: 72px;
   --h-market-strip: 44px;
   --h-customer-strip: 50px;
   --h-stage-strip: 32px;
@@ -192,6 +192,7 @@
  */
 @media (max-height: 720px) {
   :root {
+    --h-status-strip: 64px;
     /*
      * DURUM ŞERİDİ 52 px'TE KALIR — denendi ve geri alındı.
      * 46 px'e indirildiğinde "GÜN 1" iki satıra kırılıyor, saat aşağı

@@ -87,7 +87,9 @@ export function spawnNetwork(rootSeed: number, reputation: number): TradeNetwork
 
     return {
       id: `esnaf_${i}`,
-      displayName: `${rng.pick(FIRST_NAMES)} ${CRAFT_LABEL[craft]}`,
+      // İlk adlar üye indeksinden seçilir; aynı ağda iki farklı kişinin
+      // aynı görünen adla oluşması oyuncunun borç/ilişki takibini bozuyordu.
+      displayName: `${FIRST_NAMES[(i + (rootSeed >>> 0)) % FIRST_NAMES.length]} ${CRAFT_LABEL[craft]}`,
       craft,
       // Yerel ilişki semt itibarından türer ama kişiseldir.
       trust: clamp(Math.round(reputation * 0.5 + rng.range(-10, 18)), 5, 80),

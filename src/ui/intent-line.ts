@@ -65,6 +65,24 @@ function sellVerb(items: ItemInstance[]): string {
   return allBullion ? 'bozdurmak istiyor' : 'satmak istiyor';
 }
 
+/** Müşterinin ağzındaki doğal ürün adı; katalog etiketini birebir okumaz. */
+function requestedPhrase(templateId: string, name: string, quantity: number): string {
+  const gram = /^gram_gold_(.+)$/.exec(templateId);
+  if (gram) {
+    const weight = gram[1]!.replace('_', ',');
+    return quantity > 1 ? `${quantity} adet ${weight} gram altın` : `${weight} gram altın`;
+  }
+  const articleNames: Record<string, string> = {
+    quarter_gold: 'çeyrek altın',
+    half_gold: 'yarım altın',
+    full_gold: 'tam altın',
+    ata_gold: 'Ata lira',
+  };
+  const natural = articleNames[templateId];
+  if (natural && quantity === 1) return `Bir ${natural}`;
+  return countPhrase(name, quantity, templateId);
+}
+
 /**
  * Şeritte gösterilecek niyet cümlesi.
  *
@@ -85,7 +103,7 @@ export function customerIntentLine(customer: Customer, items: ItemInstance[]): s
 
       if (demand.templateId) {
         const name = getTemplate(demand.templateId)?.displayName ?? demand.templateId;
-        const phrase = countPhrase(name, demand.quantity, demand.templateId);
+        const phrase = requestedPhrase(demand.templateId, name, demand.quantity);
         const bulk = demand.isBulk ? 'toplu olarak ' : '';
         return `${bulk}${phrase} almak istiyor`;
       }

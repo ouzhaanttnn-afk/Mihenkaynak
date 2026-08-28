@@ -376,6 +376,39 @@
   margin: 0 auto;
 }
 
+.empty--compact {
+  min-height: 0;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.empty--compact .empty__icon { margin-bottom: var(--sp-1); }
+.empty--compact .empty__icon .art { height: 56px; }
+
+.deliveryResult {
+  margin: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line-light-strong);
+  border-left: 4px solid var(--positive);
+  border-radius: var(--r-card);
+  background: var(--stone-50);
+  box-shadow: var(--sh-raised);
+}
+
+.deliveryResult--failed { border-left-color: var(--negative); }
+.deliveryResult__head { display: flex; justify-content: space-between; gap: var(--sp-3); }
+.deliveryResult__head h2 { font-size: var(--fs-body); margin: 2px 0; }
+.deliveryResult__head p,
+.deliveryResult__message { color: var(--text-light-3); font-size: var(--fs-caption); }
+.deliveryResult__eyebrow { color: var(--brass-700); font-size: var(--fs-micro); text-transform: uppercase; }
+.deliveryResult__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px var(--sp-3); margin: var(--sp-3) 0; }
+.deliveryResult__grid span { display: flex; justify-content: space-between; font-size: var(--fs-caption); color: var(--text-light-2); }
+.deliveryResult__grid strong { color: var(--text-light-1); }
+.deliveryResult .secondary { width: 100%; margin-top: var(--sp-3); }
+
+.confirmPanel { font-size: var(--fs-caption); color: var(--text-light-2); }
+.confirmPanel__actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); margin-top: var(--sp-3); }
+.routeFeedback { margin: var(--sp-3); padding: var(--sp-3); border-radius: var(--r-md); background: var(--stone-100); color: var(--text-light-2); font-size: var(--fs-caption); }
+
 .marketPlaceholder {
   min-height: 100%;
   display: grid;
@@ -647,9 +680,11 @@
 
 .counter__list {
   border-top: 1px solid var(--line-light);
-  max-height: 46vh;
-  overflow-y: auto;
 }
+
+.offerRow__shortfall { color: var(--negative); font-size: var(--fs-micro); text-align: right; }
+.rowDetailToggle { margin-top: var(--sp-2); min-height: 44px; color: var(--brass-700); font-size: var(--fs-caption); text-align: left; }
+.rowDetailPanel { margin-top: var(--sp-1); padding: var(--sp-2); border-radius: var(--r-sm); background: var(--stone-100); color: var(--text-light-2); font-size: var(--fs-caption); line-height: 1.4; }
 
 .offerRow {
   display: flex;

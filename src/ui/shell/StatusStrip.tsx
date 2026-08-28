@@ -1,5 +1,5 @@
 /**
- * A — Durum Şeridi (GDD 23.9.2, 52 px)
+ * A — Durum Şeridi (UPDATEv1, 64–72 px)
  * "Seviye/XP, Gün-Saat, Nakit + kompakt 1x/2x/4x hız kontrolü."
  *
  * GDD 23.6: "Kompakt; ekranı domine etmez. 4x rewarded state ayrı kart açmaz."
@@ -43,7 +43,7 @@ export function StatusStrip({
         PROFİL ALANI — avatar + kuyumcu adı + düzenleme kalemi, tek düğme.
 
         NEDEN AD SEVİYE SATIRININ ÜSTÜNE İSTİFLENDİ:
-        Şerit 52 px ve 360 px genişlikte ÖLÇÜLDÜĞÜNDE tam doluydu — artan
+        Şerit 390 px genişlikte ÖLÇÜLDÜĞÜNDE tam doluydu — artan
         yer 0 px. Adı yeni bir sütun olarak eklemek, tek esneyen blok olan
         saati 37 px'in altına iterdi ve "Gün 1" iki satıra kırılırdı (bu
         kırılma daha önce yaşandı ve geri alındı).
@@ -65,7 +65,7 @@ export function StatusStrip({
         <span className="profileChip__avatar">
           <Art
             art={avatarArt(profile.avatarId)}
-            size={34}
+            size={52}
             decorative
             className="profileChip__img"
             fallback={<BrandMark size={20} />}

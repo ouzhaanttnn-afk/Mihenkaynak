@@ -95,7 +95,7 @@ export const LESSONS: Lesson[] = [
     id: 'fastFlow',
     title: 'Sarrafiyede test şart değil',
     body:
-      'Çeyreğin gramajı ve ayarı standarttır; zaten bilirsin. Şüpheli bir hâli yoksa doğrudan ' +
+      'Standart sarrafiyenin gramajı ve ayarı bellidir. Şüpheli bir hâli yoksa doğrudan ' +
       'fiyata geçebilirsin.',
     when: (c) => c.stage === 'inspect' && c.transactionClass === 'fast',
   },

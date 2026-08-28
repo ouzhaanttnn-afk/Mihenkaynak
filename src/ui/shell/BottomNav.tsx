@@ -1,9 +1,7 @@
 /**
- * H — Alt Navigasyon (GDD 23.9.1, 64 px)
+ * H — Alt Navigasyon (UPDATEv1, 64 px)
  *
- * DEĞİŞMEZ — GDD 23.9.1:
- *   "Alt navigasyon TAM OLARAK 4 kök içerir: Dükkan / Stok / Atölye / İşletme.
- *    Hamburger menü kullanılmaz."
+ * UPDATEv1: Beş kök içerir: Dükkan / Stok / Atölye / Market / İşletme.
  *   "Piyasa, Toptancı, Kariyer ve İşlem Defteri ikincil rotalardır."
  *
  * GDD 23.9.2: "Aktif işlemde de yerini korur."
