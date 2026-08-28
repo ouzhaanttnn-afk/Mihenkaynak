@@ -1,0 +1,88 @@
+{
+  "version": "6.0.0",
+  "brand": { "mark": "logo/mihenk-mark.svg" },
+  "backgrounds": { "stoneNoise": "backgrounds/stone-noise.svg" },
+  "scenes": {
+    "showroomDark": "backgrounds/showroom-dark.svg",
+    "workbenchLight": "backgrounds/workbench-light.svg"
+  },
+  "foregrounds": ["foregrounds/gold-corner-frame.svg", "foregrounds/header-ornament.svg"],
+  "components": ["components/panel-dark.svg", "components/card-stone.svg"],
+  "products": [
+    { "id": "filigree-bracelet", "file": "products/filigree-bracelet.png", "alt": "22 ayar telkari altın bilezik" },
+    { "id": "signet-ring", "file": "products/signet-ring.png", "alt": "Geometrik yüzlü altın şövalye yüzüğü" },
+    { "id": "rope-chain", "file": "products/rope-chain.png", "alt": "22 ayar altın burgu zincir" }
+  ],
+  "gold": [
+    { "id": "gram-gold", "file": "gold/gram-gold.png", "alt": "Bir gramlık külçe altın" },
+    { "id": "quarter-gold", "file": "gold/quarter-gold.png", "alt": "Çeyrek altın" },
+    { "id": "half-gold", "file": "gold/half-gold.png", "alt": "Yarım altın" },
+    { "id": "full-gold", "file": "gold/full-gold.png", "alt": "Tam altın" }
+  ],
+  "realistic": {
+    "tools": [
+      { "id": "precision-scale", "file": "realistic/tools/precision-scale.png", "usage": "İncele ekranı ana hero" },
+      { "id": "touchstone-kit", "file": "realistic/tools/touchstone-kit.png", "usage": "Mihenk testi sonucu" },
+      { "id": "magnetic-tester", "file": "realistic/tools/magnetic-tester.png", "usage": "Mıknatıs testi" },
+      { "id": "jeweler-loupe", "file": "realistic/tools/jeweler-loupe.png", "usage": "Lup/kondisyon testi" },
+      { "id": "jeweler-hammer-anvil", "file": "realistic/tools/jeweler-hammer-anvil.png", "usage": "Atölye ve tamir" },
+      { "id": "density-kit", "file": "realistic/tools/density-kit.png", "usage": "Yoğunluk testi ana sahnesi" },
+      { "id": "digital-caliper", "file": "realistic/tools/digital-caliper.png", "usage": "Ölçü ve kalınlık kontrolü" },
+      { "id": "polishing-machine", "file": "realistic/tools/polishing-machine.png", "usage": "Atölye polisaj işlemi" },
+      { "id": "ultrasonic-cleaner", "file": "realistic/tools/ultrasonic-cleaner.png", "usage": "Atölye ultrasonik temizlik" },
+      { "id": "soldering-station", "file": "realistic/tools/soldering-station.png", "usage": "Zincir ve kilit lehimleme" },
+      { "id": "melting-crucible", "file": "realistic/tools/melting-crucible.png", "usage": "Eritme ve HAS operasyonu" }
+    ],
+    "inventory": [
+      { "id": "gold-bar-1g", "file": "realistic/inventory/gold-bar-1g.png", "usage": "Sarrafiye 1 g külçe" },
+      { "id": "gold-bar-2-5g", "file": "realistic/inventory/gold-bar-2-5g.png", "usage": "Sarrafiye 2,5 g külçe" },
+      { "id": "gold-bar-5g", "file": "realistic/inventory/gold-bar-5g.png", "usage": "Sarrafiye 5 g külçe" },
+      { "id": "gold-bar-10g", "file": "realistic/inventory/gold-bar-10g.png", "usage": "Sarrafiye 10 g külçe" },
+      { "id": "gold-bar-20g", "file": "realistic/inventory/gold-bar-20g.png", "usage": "Sarrafiye 20 g külçe" },
+      { "id": "gold-bar-50g", "file": "realistic/inventory/gold-bar-50g.png", "usage": "Sarrafiye 50 g külçe" },
+      { "id": "gold-bar-100g", "file": "realistic/inventory/gold-bar-100g.png", "usage": "Sarrafiye 100 g külçe" },
+      { "id": "quarter-gold-v2", "file": "realistic/inventory/quarter-gold-v2.png", "usage": "Yeni gerçekçi ailede çeyrek altın" },
+      { "id": "half-gold-v2", "file": "realistic/inventory/half-gold-v2.png", "usage": "Yeni gerçekçi ailede yarım altın" },
+      { "id": "full-gold-v2", "file": "realistic/inventory/full-gold-v2.png", "usage": "Yeni gerçekçi ailede tam altın" },
+      { "id": "ata-gold", "file": "realistic/inventory/ata-gold.png", "usage": "Sarrafiye Ata Lira" }
+    ],
+    "navigation": [
+      { "id": "shop-realistic", "file": "realistic/navigation/shop.png", "usage": "Dükkan ana navigasyon/boş durum" },
+      { "id": "stock-realistic", "file": "realistic/navigation/stock.png", "usage": "Stok ana navigasyon" },
+      { "id": "workshop-realistic", "file": "realistic/navigation/workshop.png", "usage": "Atölye ana navigasyon" },
+      { "id": "investments-realistic", "file": "realistic/navigation/investments.png", "usage": "İşletme ve yatırımlar" },
+      { "id": "skills-realistic", "file": "realistic/navigation/skills.png", "usage": "Yetenekler ve başarılar" },
+      { "id": "profile-realistic", "file": "realistic/navigation/profile.png", "usage": "Oyuncu profili" },
+      { "id": "wholesaler-realistic", "file": "realistic/navigation/wholesaler.png", "usage": "Toptancı ekranı" }
+    ],
+    "characters": [
+      { "id": "customer-adnan", "file": "realistic/characters/customer-adnan.png", "usage": "Adnan Bey müşteri portresi" },
+      { "id": "customer-zeynep", "file": "realistic/characters/customer-zeynep.png", "usage": "Zeynep Hanım müşteri portresi" },
+      { "id": "customer-hasan", "file": "realistic/characters/customer-hasan.png", "usage": "Hasan Bey müşteri portresi" },
+      { "id": "customer-nermin", "file": "realistic/characters/customer-nermin.png", "usage": "Nermin Hanım müşteri portresi" },
+      { "id": "customer-ahmet", "file": "realistic/characters/customer-ahmet.png", "usage": "Ahmet Bey müşteri portresi" },
+      { "id": "customer-selin", "file": "realistic/characters/customer-selin.png", "usage": "Selin Hanım müşteri portresi" },
+      { "id": "merchant-nadir", "file": "realistic/characters/merchant-nadir.png", "usage": "Esnaf Ağı Nadir Sarraf" },
+      { "id": "merchant-sabri", "file": "realistic/characters/merchant-sabri.png", "usage": "Esnaf Ağı Sabri Kuyumcu" },
+      { "id": "merchant-kemal", "file": "realistic/characters/merchant-kemal.png", "usage": "Esnaf Ağı Kemal Ödünççü" },
+      { "id": "merchant-vedat", "file": "realistic/characters/merchant-vedat.png", "usage": "Esnaf Ağı Vedat Sarraf" },
+      { "id": "outside-master", "file": "realistic/characters/outside-master.png", "usage": "Atölye dış usta" },
+      { "id": "first-employee", "file": "realistic/characters/first-employee.png", "usage": "Cadde mağazası ilk çalışan" }
+    ],
+    "gameplay": [
+      { "id": "bargain-reason", "file": "realistic/gameplay/bargaining/reason.png", "usage": "Pazarlık Gerekçe aksiyonu" },
+      { "id": "bargain-gesture", "file": "realistic/gameplay/bargaining/gesture.png", "usage": "Pazarlık Jest aksiyonu" },
+      { "id": "bargain-package", "file": "realistic/gameplay/bargaining/package.png", "usage": "Pazarlık Paket/ikram aksiyonu" },
+      { "id": "bargain-counter-offer", "file": "realistic/gameplay/bargaining/counter-offer.png", "usage": "Pazarlık Karşı Teklif aksiyonu" },
+      { "id": "offer-measured", "file": "realistic/gameplay/offer-tiers/measured.png", "usage": "Ölçülü teklif rozeti" },
+      { "id": "offer-reasonable", "file": "realistic/gameplay/offer-tiers/reasonable.png", "usage": "Makul teklif rozeti" },
+      { "id": "offer-generous", "file": "realistic/gameplay/offer-tiers/generous.png", "usage": "Cömert teklif rozeti" },
+      { "id": "exit-showcase", "file": "realistic/gameplay/exit-plans/showcase.png", "usage": "Vitrine Koy çıkış planı" },
+      { "id": "exit-wholesale", "file": "realistic/gameplay/exit-plans/wholesale.png", "usage": "Toptancıya Çıkar çıkış planı" },
+      { "id": "exit-melt-has", "file": "realistic/gameplay/exit-plans/melt-has.png", "usage": "Erit / HAS çıkış planı" }
+    ]
+  },
+  "iconSprite": "icons/mihenk-icons.svg",
+  "marketIconSprite": "icons/market-icons.svg",
+  "icons": ["shop", "stock", "workshop", "business", "scale", "loupe", "chart", "users", "risk", "note", "gold-coin", "gold-bar", "cash", "handshake", "hammer", "furnace", "reputation", "ledger", "package", "portrait"]
+}

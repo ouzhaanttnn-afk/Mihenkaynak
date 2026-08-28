@@ -11,6 +11,8 @@ import { MEMORY } from '@domain/balance';
 import { loyaltyEffects, type CustomerRecord } from '@domain/customer-memory';
 import { getArchetype } from '@data/archetypes';
 import { IconQueue } from '@ui/icons';
+import { Art } from '@ui/Art';
+import { customerArt } from '@ui/assets';
 import type { Customer } from '@domain/types';
 
 interface Props {
@@ -59,9 +61,22 @@ export function CustomerStrip({ customer, record, queueLength, lineCount }: Prop
 
   return (
     <div className="customerStrip">
-      <span className="customerStrip__avatar" aria-hidden="true">
-        {initial}
-      </span>
+      {/*
+        Müşteri portresi. Şerit 44–50 px olduğu için yuva 38 px: bu, 16–32 px
+        SVG bandının da 64 px gerçekçi bandının da dışında kalan bir PORTRE
+        yuvası — paketin README'si portreleri 72–160 px dairesel avatar için
+        hazırladığını söylüyor, ama şerit sözleşmesi (GDD 23.9.2) burada
+        daha fazlasına izin vermiyor. Aynı portre Pazarlık ekranında, müşteri
+        konuşurken 72 px olarak açılır; burada kimliği tanıtan küçük hâli durur.
+        Görsel yüklenemezse eski baş harf rozetine düşülür.
+      */}
+      <Art
+        art={customerArt(customer.displayName)}
+        size={38}
+        decorative
+        className="customerStrip__avatar art--portrait"
+        fallback={<span className="customerStrip__initial">{initial}</span>}
+      />
 
       <div className="customerStrip__main">
         <div className="customerStrip__name">

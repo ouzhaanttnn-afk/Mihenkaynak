@@ -16,6 +16,9 @@ import { TERM } from '@ui/terms';
 import { CHANNEL_SHORT } from '@domain/thesis';
 import { STATE_LABEL } from '@domain/negotiation';
 import { CONFIDENCE_LABEL } from '@domain/valuation';
+import { Art } from '@ui/Art';
+import { MOVE_ART, OFFER_TIER_ART, OFFER_TIER_LABEL, customerArt, offerTier } from '@ui/assets';
+import { IconCounter, IconGesture, IconPackage, IconReason } from '@ui/icons';
 import { tl, tlBare, tlSigned, tonWord } from '@ui/format';
 import type {
   ExitChannel,
@@ -27,9 +30,26 @@ import type {
 
 const STATE_ORDER: NegotiationSession['state'][] = ['OPEN', 'HARDENING', 'FINAL_OFFER'];
 
+/** Fiyat dışı hamlelerin oyuncuya görünen adı ve SVG karşılığı. */
+const MOVE_LABEL: Record<string, string> = {
+  reason: 'Gerekçe gösterdin',
+  gesture: 'Jest yaptın',
+  package: 'Paket teklif ettin',
+  requestCounter: 'Karşı teklif istedin',
+};
+
+const MOVE_ICON: Record<string, typeof IconReason> = {
+  reason: IconReason,
+  gesture: IconGesture,
+  package: IconPackage,
+  requestCounter: IconCounter,
+};
+
 interface Props {
   session: NegotiationSession;
   message: string;
+  /** Konuşan müşterinin görünen adı — portre bunun üzerinden eşlenir. */
+  customerName?: string;
   selectedThesis: ExitChannel | null;
   thesisOptions: ThesisOption[];
   band: ValuationBand | null;
@@ -66,6 +86,7 @@ interface Props {
 export function NegotiateStage({
   session,
   message,
+  customerName,
   selectedThesis,
   thesisOptions,
   band,
@@ -84,9 +105,43 @@ export function NegotiateStage({
   // Ara bölgede gösterilecek bir şey var mı: sonuç önizlemesi ya da band.
   const hasSpacerContent = (isFinal && counter !== null && active !== undefined) || band !== null;
 
+  /*
+    HAMLE ŞERİDİ — pazarlığın "az önce ne oldu" satırı.
+    Fiyat dışı son hamle (Gerekçe / Jest / Paket / Karşı Teklif) ve
+    oyuncunun masadaki teklifinin seviyesi burada okunur.
+
+    NEDEN ARAÇ RAYINDA DEĞİL: ray 56 px ve içindeki ikonlar 19 px — yani
+    16–32 px SVG bandı. Gerçekçi pazarlık görselini oraya sıkıştırmak ya
+    dokunma hedefini ya da şerit sözleşmesini bozardı. Aksiyonlar rayda
+    SVG olarak kalır; gerçekçi karşılıkları hamle YAPILDIKTAN sonra
+    burada, 72 px'te görünür.
+  */
+  const lastTactic = [...session.moveHistory]
+    .reverse()
+    .find((m) => m.kind in MOVE_LABEL);
+  const standingOffer = session.offerHistory[session.offerHistory.length - 1] ?? 0;
+  const tier = active ? offerTier(standingOffer, active.buyCeiling) : null;
+  const TacticIcon = lastTactic ? MOVE_ICON[lastTactic.kind] : undefined;
+
   return (
     <div className="negotiate">
       <div className="negotiate__top">
+        {/*
+          Konuşan müşterinin portresi mesajın yanında. GDD 23.24 pazarlığı
+          "müşteri mesajı ve state AYNI YÜZEYDE" tutmaya bağlıyor; portre o
+          yüzeyin kim olduğunu söyleyen parçası. 72 px — paketin portreler
+          için verdiği 72–160 px bandının alt ucu, şerit sözleşmesini
+          zorlamayan tek değer.
+        */}
+        {customerName && (
+          <Art
+            art={customerArt(customerName)}
+            size={72}
+            alt={`${customerName} portresi`}
+            className="speech__portrait art--portrait"
+            fallback={null}
+          />
+        )}
         <p className="speech">“{message}”</p>
         <StateBadge state={session.state} />
       </div>
@@ -244,6 +299,41 @@ export function NegotiateStage({
               </span>
             );
           })}
+        </div>
+      )}
+      {/*
+        ŞERİT KOLONUN SONUNDA — ölçüp taşıdım.
+        Önce konuşma balonunun hemen altındaydı. 390×844'te ölçünce şunu
+        gördüm: 74 px'lik şerit, PİYASA REFERANS ALIŞ panelini ve değer
+        bandını katlanın altına itiyordu. O panel bu ekranda özellikle
+        istenmiş bilgidir — "istediğim fiyatı neye göre koyacağım"ın cevabı.
+        Az önce kendi bastığın düğmenin hatırlatmasını, kararı verdiren
+        rakamın önüne koymak yanlış sıralamaydı. Şerit artık en sonda:
+        kimseyi aşağı itmez, yer daralınca ilk o görünmez olur.
+      */}
+      {(lastTactic || tier) && (
+        <div className="moveStrip">
+          {lastTactic && (
+            <span className="moveStrip__cell">
+              <Art
+                art={MOVE_ART[lastTactic.kind]}
+                size={72}
+                decorative
+                className="art--onDark"
+                fallback={TacticIcon ? <TacticIcon size={26} /> : null}
+              />
+              <span className="moveStrip__label">{MOVE_LABEL[lastTactic.kind]}</span>
+            </span>
+          )}
+
+          {tier && (
+            <span className="moveStrip__cell moveStrip__cell--tier">
+              <Art art={OFFER_TIER_ART[tier]} size={56} decorative fallback={null} />
+              <span className="moveStrip__label">
+                Teklifin: <strong>{OFFER_TIER_LABEL[tier]}</strong>
+              </span>
+            </span>
+          )}
         </div>
       )}
     </div>

@@ -14,6 +14,8 @@ import { signalPressure } from '@domain/valuation';
 import { getTemplate } from '@data/item-templates';
 import { getTool } from '@data/tools';
 import { IconWarning, ProductSilhouette } from '@ui/icons';
+import { Art } from '@ui/Art';
+import { TOOL_ART, productArt } from '@ui/assets';
 import { grams, tlBare } from '@ui/format';
 import { relevantFields } from '@domain/transaction-class';
 import { bullionUnitValue, unitPriceView } from '@domain/channels';
@@ -74,7 +76,18 @@ export function InspectStage({ item, knowledge, testResults, market }: Props) {
     <>
       <div className="inspect">
         <div className={`inspect__stage ${stageTone}`}>
-          <ProductSilhouette kind={template.silhouette} size={118} />
+          {/*
+            Ürün görseli 118 px — 64 px bandının üstünde, yani gerçekçi
+            cutout kullanılır. Pakette karşılığı olmayan siluetlerde (küpe,
+            broş, obje) <Art> kendiliğinden SVG siluetine düşer.
+          */}
+          <Art
+            art={productArt(item.templateId, template.silhouette)}
+            size={118}
+            alt={item.displayName}
+            className="art--onDark"
+            fallback={<ProductSilhouette kind={template.silhouette} size={118} />}
+          />
         </div>
 
         <div className="inspect__fields">
@@ -137,10 +150,26 @@ export function InspectStage({ item, knowledge, testResults, market }: Props) {
         </div>
       </div>
 
+      {/*
+        GDD 23.11 — "araç seçimi yeni tam ekran açmaz; sonuç aynı masada
+        ilgili veri satırını günceller." Cihaz görseli o satırın yanında,
+        okumayı bırakan aletin kendisi olarak durur: hangi testin konuştuğu
+        metni okumadan anlaşılır. Araç RAYI 22 px SVG kalır (16–32 px bandı);
+        gerçekçi görsel yalnız burada, 72 px'te açılır.
+      */}
       {lastResult && (
         <div className="readout">
-          <span className="readout__tool">{getTool(lastResult.toolId).name}</span>
-          {lastResult.readout}
+          <Art
+            art={TOOL_ART[lastResult.toolId]}
+            size={72}
+            decorative
+            className="readout__art art--onDark"
+            fallback={null}
+          />
+          <span className="readout__body">
+            <span className="readout__tool">{getTool(lastResult.toolId).name}</span>
+            {lastResult.readout}
+          </span>
         </div>
       )}
 

@@ -66,6 +66,8 @@ import {
   IconTrust,
   IconWholesale,
 } from '@ui/icons';
+import { Art } from '@ui/Art';
+import { NAV_ART, merchantArt } from '@ui/assets';
 import { pct, pctChange, price, tl, tlSigned } from '@ui/format';
 
 type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network' | 'store';
@@ -97,7 +99,14 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
 
   return (
     <div className="page">
-      <header className="pageHead">
+      <header className="pageHead pageHead--withArt">
+        <Art
+          art={NAV_ART.business}
+          size={88}
+          decorative
+          className="pageHead__art art--hero"
+          fallback={null}
+        />
         <h1 className="pageHead__title">İşletme</h1>
         <p className="pageHead__sub">
           {s.store.name} · Kademe {s.store.storeTier} · Seviye {s.store.level}
@@ -315,10 +324,21 @@ function WholesalerRoute({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="page">
-      <header className="pageHead">
+      <header className="pageHead pageHead--withArt">
         <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
           ← İşletme
         </button>
+        {/*
+          Toptancı ekranının kimlik görseli — 88 px. Başlık şeridi zaten iki
+          satır; görsel sağa yaslanıp o yüksekliği kullanır, satır eklemez.
+        */}
+        <Art
+          art={NAV_ART.wholesaler}
+          size={88}
+          decorative
+          className="pageHead__art art--hero"
+          fallback={null}
+        />
         <h1 className="pageHead__title">Toptancı Hesabı</h1>
         <p className="pageHead__sub">
           {TERM.supplierTrust} {Math.round(s.store.supplier.trust)}/100 · {creditTermDays(s.store)} gün vade ·
@@ -637,8 +657,21 @@ function NetworkMemberCard({
 
   return (
     <div className="group">
-      <h2 className="group__title">
-        {member.displayName} · ilişki {member.trust}/100
+      {/*
+        §8 ağın tamamı ilişki üzerine kurulu: kimden borç alacağın, kime mal
+        vereceğin ilişkiye bakıyor. Portre o ilişkinin muhatabını gösterir —
+        72 px, paketin portre bandının alt ucu.
+      */}
+      <h2 className="group__title group__title--withPortrait">
+        <Art
+          art={merchantArt(member.id, member.displayName)}
+          size={72}
+          className="group__portrait art--portrait"
+          fallback={null}
+        />
+        <span>
+          {member.displayName} · ilişki {member.trust}/100
+        </span>
       </h2>
       <div className="group__body">
         <StatLine label="Kasasındaki nakit" value={tl(member.cashOnHand)} />

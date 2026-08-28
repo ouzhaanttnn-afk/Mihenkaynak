@@ -87,6 +87,8 @@ import {
   IconWholesale,
   IconWorkshop,
 } from '@ui/icons';
+import { Art } from '@ui/Art';
+import { NAV_ART } from '@ui/assets';
 import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
 import { offerUnitLabel } from '@ui/offer-view';
 import type {
@@ -215,6 +217,7 @@ export function ShopScreen() {
               <NegotiateStage
                 session={line.negotiation}
                 message={s.customerMessage}
+                customerName={s.activeCustomer?.displayName}
                 selectedThesis={null}
                 thesisOptions={[]}
                 band={null}
@@ -327,6 +330,7 @@ export function ShopScreen() {
             <NegotiateStage
               session={line.negotiation}
               message={s.customerMessage}
+              customerName={s.activeCustomer?.displayName}
               selectedThesis={line.selectedThesis}
               thesisOptions={line.thesisOptions}
               band={line.band}
@@ -425,8 +429,27 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
 
   return (
     <div className={`idle ${coaching ? 'idle--coaching' : ''}`}>
-      <h2 className="idle__title">{s.store.name}</h2>
-      <p className="idle__sub">Gün {s.market.day} · Semt itibarı {Math.round(s.store.reputation)}</p>
+      {/*
+        Dükkanın kimlik görseli, başlıkla AYNI SATIRDA.
+        Bu ekranın "çok yer kapladığı" daha önce bildirilmişti; görsel bu
+        yüzden yeni bir blok açmaz, zaten var olan iki metin satırının
+        yüksekliğine (64 px) oturur ve toplam yüksekliği artırmaz.
+      */}
+      <div className="idle__head">
+        <Art
+          art={NAV_ART.shop}
+          size={64}
+          decorative
+          className="idle__art art--onDark"
+          fallback={null}
+        />
+        <div className="idle__headText">
+          <h2 className="idle__title">{s.store.name}</h2>
+          <p className="idle__sub">
+            Gün {s.market.day} · Semt itibarı {Math.round(s.store.reputation)}
+          </p>
+        </div>
+      </div>
 
       {/*
         POZİSYON PANELİ.

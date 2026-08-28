@@ -20,6 +20,8 @@ import {
   IconServiceResale,
   IconWholesale,
 } from '@ui/icons';
+import { Art } from '@ui/Art';
+import { EXIT_ART } from '@ui/assets';
 import { dayRange, tl } from '@ui/format';
 import type { ExitChannel, ThesisOption } from '@domain/types';
 
@@ -61,8 +63,20 @@ export function ThesisStage({ options, selected, suggested, onSelect }: Props) {
             onClick={() => onSelect(option.channel)}
             aria-pressed={isSelected}
           >
+            {/*
+              Çıkış planı görseli 64 px — kartın kimliğini taşıyan ana
+              görsel, bu yüzden gerçekçi varlık. Pakette yalnız üç plan var
+              (vitrin / toptan / erit); servis-satış ve koleksiyon kanalları
+              SVG ikonunda kalır ve <Art> onları kendiliğinden çizer.
+            */}
             <span className="thesisCard__icon">
-              <Icon size={18} />
+              <Art
+                art={EXIT_ART[option.channel]}
+                size={64}
+                decorative
+                className="art--hero"
+                fallback={<Icon size={26} />}
+              />
             </span>
 
             <span className="thesisCard__body">

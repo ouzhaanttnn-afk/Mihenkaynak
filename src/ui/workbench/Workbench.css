@@ -97,7 +97,7 @@
   justify-content: center;
   border-radius: var(--r-card);
   background:
-    radial-gradient(70% 60% at 50% 40%, rgba(201, 160, 74, 0.12) 0%, transparent 70%),
+    radial-gradient(70% 60% at 50% 40%, rgba(196, 141, 43, 0.12) 0%, transparent 70%),
     var(--ink-900);
   border: 1px solid var(--line-dark);
   color: var(--brass-400);
@@ -191,7 +191,7 @@
   color: var(--text-dark-2);
 }
 .status--partial {
-  background: rgba(201, 160, 74, 0.18);
+  background: rgba(196, 141, 43, 0.18);
   color: var(--brass-300);
 }
 .status--verified {
@@ -244,7 +244,7 @@
   flex: 0 0 auto;
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-sm);
-  background: rgba(201, 160, 74, 0.1);
+  background: rgba(196, 141, 43, 0.1);
   border-left: 2px solid var(--brass-500);
   font-size: var(--fs-micro);
   color: var(--brass-300);
@@ -1397,7 +1397,7 @@
   height: 94px;
   border-radius: var(--r-card);
   background:
-    radial-gradient(70% 60% at 50% 40%, rgba(201, 160, 74, 0.12) 0%, transparent 70%),
+    radial-gradient(70% 60% at 50% 40%, rgba(196, 141, 43, 0.12) 0%, transparent 70%),
     var(--ink-900);
   border: 1px solid var(--line-dark);
   color: var(--brass-400);
@@ -1765,7 +1765,7 @@
   width: 34px;
   height: 34px;
   border-radius: var(--r-sm);
-  background: rgba(201, 160, 74, 0.12);
+  background: rgba(196, 141, 43, 0.12);
   border: 1px solid var(--line-dark);
   color: var(--brass-400);
 }
@@ -1885,7 +1885,7 @@
 
 .pickRow--on {
   border-color: var(--brass-500);
-  background: rgba(201, 160, 74, 0.14);
+  background: rgba(196, 141, 43, 0.14);
 }
 
 .pickRow__art {
@@ -2073,7 +2073,7 @@
   gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-sm);
-  background: rgba(201, 160, 74, 0.09);
+  background: rgba(196, 141, 43, 0.09);
   border-left: 2px solid var(--brass-400);
   margin-bottom: var(--sp-3);
 }
@@ -2117,7 +2117,7 @@
 
 .stance--selected {
   border-color: var(--brass-400);
-  background: rgba(201, 160, 74, 0.08);
+  background: rgba(196, 141, 43, 0.08);
 }
 
 .stance__head {
@@ -2355,4 +2355,141 @@
 
 .apr__miss {
   color: var(--negative-soft);
+}
+
+/* ------------------------------------------------------------------ */
+/* GERÇEKÇİ GÖRSEL YUVALARI (asset paketi v6.0.0)                      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * İncele — ürün cutout'u siluetle aynı yuvayı paylaşır. Silueti hedefleyen
+ * `.inspect__stage svg` kuralının aynısı görsele de uygulanır ki gerçekçi
+ * varlığa düşülünce ölçü zıplamasın.
+ */
+.inspect__stage .art {
+  width: 92%;
+  height: auto;
+  max-height: 100%;
+}
+
+/*
+ * Test okuması — cihaz görseli metnin solunda.
+ * Satır artık iki sütun: sabit görsel + akan metin. Görseli ve metni
+ * doğrudan aynı flex kutusuna koymak, ikisini ayrı ayrı sıkıştırıp
+ * okumayı iki satıra kırıyordu.
+ */
+.readout {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.readout__art {
+  width: 72px;
+  height: 44px;
+  object-fit: contain;
+}
+
+.readout__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Tez — çıkış planı görseli kartın kimlik alanı. */
+.thesisCard__icon {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 100%;
+  max-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thesisCard__icon .art {
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * Pazarlık — konuşan müşterinin portresi.
+ * `align-items: stretch` taşıyan bir satırda kare yuva korunsun diye
+ * yükseklik sabitlenir; aksi halde portre balonun boyuna uzayıp
+ * yüzü deforme ederdi.
+ */
+.speech__portrait {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  align-self: flex-start;
+  border: 1px solid var(--line-dark-strong);
+}
+
+/*
+ * Pazarlık — hamle şeridi. İki hücre: son taktik hamle ve teklif seviyesi.
+ * `flex-shrink: 0` (bkz. `.negotiate > *`) bu satırı da korur; taşma
+ * durumunda `.negotiate` zaten kendi içinde kayar.
+ */
+.moveStrip {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  background: rgba(196, 141, 43, 0.07);
+  border: 1px solid var(--line-dark);
+}
+
+.moveStrip__cell {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.moveStrip__cell--tier {
+  margin-left: auto;
+}
+
+/*
+ * 64 px — DENEDİM VE DÜZELTTİM: önce 44 px'e ayarlamıştım ve tarayıcıda
+ * ölçünce gerçekçi pazarlık görselleri 42–43 px çıktı. Bu, brief'in
+ * "16–32 px SVG / 64 px+ gerçekçi" ayrımının tam ortasına düşen ölü bir
+ * bant: fotoğraf gerçekçiliğini taşımayacak kadar küçük, ikon netliğini
+ * verecek kadar sade değil. Şerit birkaç piksel uzuyor; karşılığında
+ * görsel gerçekten görsel oluyor.
+ */
+.moveStrip__cell .art {
+  flex: 0 0 auto;
+  height: 64px;
+  width: auto;
+  max-width: 88px;
+}
+
+.moveStrip__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+  line-height: 1.2;
+}
+
+.moveStrip__label strong {
+  color: var(--brass-300);
+  font-weight: var(--fw-semibold);
+}
+
+/*
+ * KISA EKRAN: hamle şeridi ve portre ilk kırpılacak yerlerdir.
+ * Pazarlıkta okunması ZORUNLU olan şey teklif, karşı teklif ve müşterinin
+ * mesajıdır; hamle şeridi bunların yanında bilgilendirici bir eklentidir.
+ * 620 px'in altında şerit kapanır, portre küçülür — kırpmak yerine.
+ */
+@media (max-height: 620px) {
+  .moveStrip {
+    display: none;
+  }
+
+  .speech__portrait {
+    width: 56px;
+    height: 56px;
+  }
 }

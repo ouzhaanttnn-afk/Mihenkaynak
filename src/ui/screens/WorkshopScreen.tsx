@@ -20,6 +20,8 @@ import { getServiceType } from '@data/service-types';
 import { useGame } from '@state/gameStore';
 
 import { IconClock, IconServiceResale, IconWarning, IconWorkshop } from '@ui/icons';
+import { Art } from '@ui/Art';
+import { NAV_ART, OUTSIDE_MASTER_ART, SERVICE_ART } from '@ui/assets';
 import { pct, tl } from '@ui/format';
 import type { ServiceJob } from '@domain/types';
 
@@ -102,7 +104,13 @@ export function WorkshopScreen() {
           {active.length === 0 ? (
             <div className="empty">
               <div className="empty__icon">
-                <IconWorkshop size={34} />
+                <Art
+                  art={NAV_ART.workshop}
+                  size={96}
+                  decorative
+                  className="art--hero"
+                  fallback={<IconWorkshop size={34} />}
+                />
               </div>
               <p className="empty__title">Kuyruk boş</p>
               <p className="empty__text">
@@ -124,6 +132,22 @@ export function WorkshopScreen() {
         <div className="group">
           <h2 className="group__title">Dış Usta</h2>
           <div className="group__body">
+            {/*
+              GDD 23.18 Dış Usta ayrı bir alt görünüm. Portre 72 px: işi
+              devrettiğin kişinin bir yüzü olması, "kapasite dışı" soyut
+              bir satırı bir ilişkiye çeviriyor.
+            */}
+            <div className="masterLine">
+              <Art
+                art={OUTSIDE_MASTER_ART}
+                size={72}
+                className="masterLine__portrait art--portrait"
+                fallback={<IconServiceResale size={26} />}
+              />
+              <span className="masterLine__text">
+                Kendi tezgâhın dolduğunda işi devredebileceğin usta.
+              </span>
+            </div>
             <div className="statLine">
               <span className="statLine__label">
                 <IconServiceResale size={15} />
@@ -201,8 +225,24 @@ function JobRow({
 
   return (
     <div className="row">
+      {/*
+        Yuvada işin YAPILDIĞI ekipman durur: polisaj işi polisaj makinesi,
+        zincir tamiri lehim istasyonu. Hangi işin tezgâhta olduğu satırı
+        okumadan görünür. İş bittiyse ekipman yerine "hazır" ikonu — o an
+        okunması gereken şey ekipman değil, teslim edilebilirliktir.
+      */}
       <span className="row__thumb">
-        {isReady ? <IconWorkshop size={20} /> : <IconClock size={20} />}
+        {isReady ? (
+          <IconWorkshop size={20} />
+        ) : (
+          <Art
+            art={SERVICE_ART[job.type]}
+            size={64}
+            decorative
+            className="art--onDark"
+            fallback={<IconClock size={20} />}
+          />
+        )}
       </span>
 
       <div className="row__body">

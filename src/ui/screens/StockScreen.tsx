@@ -23,6 +23,8 @@ import { supplyOffer } from '@domain/wholesaler';
 import { useGame } from '@state/gameStore';
 
 import { IconStock, IconWarning, ProductSilhouette } from '@ui/icons';
+import { Art } from '@ui/Art';
+import { NAV_ART, productArt } from '@ui/assets';
 import { grams, pct, tl, tlBare, tlSigned } from '@ui/format';
 import type { InventoryPosition } from '@domain/types';
 
@@ -137,7 +139,13 @@ export function StockScreen() {
         {visible.length === 0 ? (
           <div className="empty">
             <div className="empty__icon">
-              <IconStock size={34} />
+              <Art
+                art={NAV_ART.stock}
+                size={96}
+                decorative
+                className="art--hero"
+                fallback={<IconStock size={34} />}
+              />
             </div>
             <p className="empty__title">
               {s.inventory.length === 0 ? 'Stok boş' : 'Bu filtrede kalem yok'}
@@ -315,8 +323,20 @@ function StockRow({ position }: { position: InventoryPosition }) {
 
   return (
     <div className="row">
+      {/*
+        Ürün görseli 64 px — 44 px'lik eski silüet yuvası gerçekçi bandın
+        altındaydı. Satırın kendi yüksekliği (başlık + meta + üç rakam)
+        zaten 64 px'i geçiyor, yani yuvayı büyütmek satırı büyütmüyor:
+        stok listesi aynı sayıda kalemi aynı ekranda göstermeye devam eder.
+      */}
       <span className="row__thumb">
-        <ProductSilhouette kind={template.silhouette} size={30} />
+        <Art
+          art={productArt(item.templateId, template.silhouette)}
+          size={64}
+          alt={item.displayName}
+          className="art--onDark"
+          fallback={<ProductSilhouette kind={template.silhouette} size={30} />}
+        />
       </span>
 
       <div className="row__body">

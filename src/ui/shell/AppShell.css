@@ -43,7 +43,7 @@
     height: min(880px, calc(100dvh - 48px));
     border-radius: 34px;
     box-shadow:
-      0 0 0 1px rgba(201, 160, 74, 0.18),
+      0 0 0 1px rgba(196, 141, 43, 0.18),
       0 0 0 10px #12161d,
       0 30px 90px rgba(0, 0, 0, 0.6);
   }
@@ -376,8 +376,8 @@
 
 .customerStrip__avatar {
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: var(--r-pill);
   background: linear-gradient(160deg, var(--ink-600), var(--ink-800));
   color: var(--brass-400);
@@ -944,4 +944,39 @@
   text-underline-offset: 3px;
   cursor: pointer;
   white-space: nowrap;
+}
+
+
+/*
+ * Müşteri portresi yüklenemezse eski baş harf rozeti çizilir. Yuva ölçüsü
+ * <Art> tarafından korunduğu için şerit hangi durumda olursa olsun aynı
+ * yükseklikte kalır — görselin gelip gelmemesi düzeni oynatmaz.
+ */
+.customerStrip__initial {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  color: var(--brass-400);
+}
+
+/*
+ * Dükkan boş ekranı — kimlik görseli başlıkla aynı satırda.
+ * Satır yüksekliği görselin (64 px) ve iki metin satırının büyüğü kadardır;
+ * yani görsel eklemek ekranı UZATMAZ.
+ */
+.idle__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.idle__art {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 72px;
+  height: 64px;
+}
+
+.idle__headText {
+  min-width: 0;
 }
