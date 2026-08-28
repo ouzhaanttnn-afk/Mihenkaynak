@@ -31,9 +31,29 @@ interface Props {
   onChange: (value: Money) => void;
   impacts: OfferImpact[];
   disabled?: boolean;
+  /**
+   * Tutarın BİRİM karşılığı — "3 adet · 16.593 ₺/adet" ya da
+   * "10,0 g · 4.257 ₺/g".
+   *
+   * Toplam tutar tek başına sarrafiyede karar verdirmez: 49.779 ₺'nin iyi
+   * mi kötü mü olduğu ancak gram/adet başına ne ettiğine bakılınca anlaşılır
+   * — sarraf da fiyatı zaten böyle konuşur. Anlamlı bir birim yoksa
+   * (karışık paket, tekil işçilikli ürün) satır hiç çizilmez; uydurulmuş
+   * bir "ortalama birim fiyat" yanlış yönlendirir.
+   */
+  unitLabel?: string | null;
 }
 
-export function OfferControl({ value, min, max, step, onChange, impacts, disabled }: Props) {
+export function OfferControl({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  impacts,
+  disabled,
+  unitLabel,
+}: Props) {
   const clamp = (n: number) => Math.min(max, Math.max(min, Math.round(n)));
 
   return (
@@ -64,6 +84,8 @@ export function OfferControl({ value, min, max, step, onChange, impacts, disable
           +
         </button>
       </div>
+
+      {unitLabel && <div className="offer__unit num">{unitLabel}</div>}
 
       <input
         type="range"

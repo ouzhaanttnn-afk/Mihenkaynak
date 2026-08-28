@@ -87,6 +87,7 @@ import {
   IconWorkshop,
 } from '@ui/icons';
 import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
+import { offerUnitLabel } from '@ui/offer-view';
 import type {
   DealLine,
   ExitChannel,
@@ -1014,6 +1015,10 @@ function ShopDock({
               onChange={setOffer}
               impacts={impacts}
               disabled={isTerminal(session.state)}
+              unitLabel={(() => {
+                const item = s.items[line.itemId];
+                return item ? offerUnitLabel([item], [1], offer) : null;
+              })()}
             />
           )}
         </DecisionDock>
@@ -1179,6 +1184,11 @@ function PurchaseDock({
               step={bounds.step}
               impacts={impacts}
               disabled={isTerminal(session.state)}
+              unitLabel={offerUnitLabel(
+                purchase.lines.map((l) => s.items[l.itemId]).filter(Boolean) as ItemInstance[],
+                purchase.lines.filter((l) => s.items[l.itemId]).map((l) => l.quantity),
+                offer,
+              )}
             />
           )}
         </DecisionDock>

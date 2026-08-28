@@ -1129,6 +1129,18 @@
 }
 
 /* Teklif tutarı Dock'un EN BÜYÜK sayısal değeridir (GDD 23.12). */
+/*
+ * Birim fiyat satırı — tutarın hemen altında, ondan belirgin küçük.
+ * GDD 23.12: "Teklif tutarı Dock'un EN BÜYÜK sayısal değeri olur." Birim
+ * fiyat o hiyerarşiyi bozmadan, kararı doğrulayan ikinci satırdır.
+ */
+.offer__unit {
+  margin-top: 2px;
+  font-size: var(--fs-caption);
+  color: var(--text-light-3);
+  letter-spacing: 0.01em;
+}
+
 .offer__amount {
   flex: 1 1 auto;
   font-family: var(--font-display);
