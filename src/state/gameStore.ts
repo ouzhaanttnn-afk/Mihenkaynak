@@ -105,7 +105,8 @@ import {
   reputationDelta,
   type CustomerRegistry,
 } from '@domain/customer-memory';
-import { flowPolicy, stageUnlocked } from '@domain/transaction-class';
+import { flowPolicy, stageUnlocked, transactionClass } from '@domain/transaction-class';
+import { nextLesson, skipAll, type CoachContext } from '@domain/onboarding';
 import { getTemplate } from '@data/item-templates';
 import { rulesFor } from '@data/product-classes';
 import {
@@ -173,6 +174,12 @@ export interface GameState {
   speed: SpeedStep;
   /** 4x rewarded video ile geçici açılır (GDD 26.2). */
   speed4xUnlocked: boolean;
+
+  /**
+   * GDD 25 — görülmüş öğretim dersleri. Kayıtla taşınır; taşınmasaydı her
+   * yüklemede oyuncuya bildiği şey yeniden anlatılırdı.
+   */
+  seenLessons: string[];
   customerRushUntilMinutes: number | null;
 
   /**
@@ -227,6 +234,11 @@ export interface GameState {
   setTab: (tab: RootTab) => void;
   setSpeed: (speed: SpeedStep) => void;
   unlock4x: () => void;
+
+  /** GDD 25 — dersi kapat; bir daha gösterilmez. */
+  dismissLesson: (id: string) => void;
+  /** GDD 25 — öğretimin tamamını atla. */
+  skipOnboarding: () => void;
   triggerCustomerRush: () => void;
 
   tick: (deltaRealSeconds: number) => void;
@@ -340,6 +352,7 @@ export const useGame = create<GameState>((set, get) => {
     speed: 1,
     speed4xUnlocked: false,
     customerRushUntilMinutes: null,
+    seenLessons: [],
 
     dayCharacter: dayCharacter(seed, 1, market),
     intentTelemetry: emptyTelemetry(),
@@ -377,6 +390,18 @@ export const useGame = create<GameState>((set, get) => {
       set({ speed4xUnlocked: true, speed: 4 });
       pushToast(set, get, '4x hız açıldı.', 'info');
     },
+
+    // --- GDD 25 · öğretim ---
+    // Ders KAPATMAK oyunu hiç değiştirmez; yalnız o dersin bir daha
+    // gösterilmemesini kaydeder. Bu yüzden atlamak da hiçbir şeyi eksik
+    // bırakmaz.
+    dismissLesson: (id) => {
+      const seen = get().seenLessons;
+      if (seen.includes(id)) return;
+      set({ seenLessons: [...seen, id] });
+    },
+
+    skipOnboarding: () => set({ seenLessons: skipAll(get().seenLessons) }),
 
     triggerCustomerRush: () => {
       const { market } = get();
@@ -2371,6 +2396,33 @@ export const selectors = {
     const item = line ? s.items[line.itemId] : undefined;
     return item ? flowPolicy(item) : null;
   },
+
+  /**
+   * GDD 25 — öğretim dersinin karar bağlamı.
+   *
+   * Ders koşulları saf fonksiyonlardır ve YALNIZ bu bağlamı görür; store'un
+   * tamamını görselerdi test edilemez, sırası da denetlenemez olurdu.
+   */
+  coachContext: (s: GameState): CoachContext => {
+    const deal = s.activeDeal;
+    const line = deal ? activeLine(deal) : undefined;
+    const item = line ? s.items[line.itemId] : undefined;
+
+    return {
+      day: s.market.day,
+      hasCustomer: s.activeCustomer !== null,
+      queueLength: s.queue.length,
+      flow: deal?.flow ?? null,
+      stage: deal?.stage ?? null,
+      transactionClass: item ? transactionClass(item) : null,
+      testsRun: line?.testResults.length ?? 0,
+      hasBand: line?.band !== null && line?.band !== undefined,
+      stockUnits: s.inventory.reduce((n, p) => n + p.quantity, 0),
+    };
+  },
+
+  /** GDD 25 — şu an gösterilecek ders; yoksa null. */
+  lesson: (s: GameState) => nextLesson(selectors.coachContext(s), s.seenLessons),
 
   /** §5 — bugünkü pozisyon (gün içinde canlı; kapanışta sabitlenir). */
   position: (s: GameState) =>

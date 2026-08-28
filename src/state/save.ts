@@ -68,6 +68,12 @@ export interface SaveFile {
   customers: CustomerRegistry;
 
   speed4xUnlocked: boolean;
+
+  /**
+   * GDD 25 — görülmüş öğretim dersleri. Taşınmasaydı her yüklemede oyuncuya
+   * bildiği şey yeniden anlatılırdı.
+   */
+  seenLessons?: string[];
 }
 
 /**
@@ -92,6 +98,7 @@ export function serialize(state: GameState): SaveFile {
     network: state.network,
     customers: state.customers,
     speed4xUnlocked: state.speed4xUnlocked,
+    seenLessons: state.seenLessons,
   };
 }
 
@@ -112,6 +119,7 @@ export type LoadedState = Pick<
   | 'dayCharacter'
   | 'intentTelemetry'
   | 'speed4xUnlocked'
+  | 'seenLessons'
   | 'queue'
   | 'activeCustomer'
   | 'activeDeal'
@@ -153,6 +161,9 @@ export function deserialize(file: SaveFile): LoadedState {
     // yeni örneklem penceresi başlar (§3 "uygun örneklem penceresinde").
     intentTelemetry: emptyTelemetry(),
     speed4xUnlocked: save.speed4xUnlocked,
+    // Eski kayıtlarda alan yok; boş liste öğretimi baştan başlatır ki
+    // sürüm atlayan oyuncu sessizce derssiz kalmasın.
+    seenLessons: save.seenLessons ?? [],
     // Yarım işlem taşınmaz.
     queue: [],
     activeCustomer: null,

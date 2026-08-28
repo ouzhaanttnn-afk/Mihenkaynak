@@ -871,3 +871,77 @@
 .customerStrip__tie--good { color: var(--positive-soft); }
 .customerStrip__tie--bad { color: var(--negative-soft); }
 .customerStrip__tie--neutral { color: var(--brass-400); }
+
+/* ------------------------------------------------------------------ */
+/* ÖĞRETİM ŞERİDİ (GDD 25)                                             */
+/*                                                                     */
+/* Overlay DEĞİL: İşlem Masası ile araç rayının arasında kendi yerini   */
+/* tutar. Bu ekranda üste binen katmanlar tekrar tekrar kontrolleri     */
+/* gizledi; ders şeridi o hatayı tekrarlamaz.                          */
+/* ------------------------------------------------------------------ */
+
+.coach {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--gutter);
+  background: var(--ink-700);
+  border-top: 1px solid var(--brass-700);
+  border-bottom: 1px solid var(--ink-900);
+}
+
+.coach__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.coach__title {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--brass-300);
+}
+
+.coach__text {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+  line-height: 1.35;
+}
+
+/* GDD 23.22 — 44 px dokunma hedefi. Tek eylem, komşusu yok. */
+.coach__ok {
+  flex: 0 0 auto;
+  min-height: var(--touch-min);
+  min-width: 72px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-pill);
+  background: var(--surface-brass);
+  border: 0;
+  color: #241a06;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/*
+ * Yıkıcı eylem: AYRI SÜTUNDA ve yalnız ilk derste. "Anladım"ın yanına
+ * konsaydı ıskalanan dokunuş tüm öğretimi silerdi.
+ */
+.coach__skip {
+  min-height: var(--touch-min);
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dark-3);
+  font-size: var(--fs-micro);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}

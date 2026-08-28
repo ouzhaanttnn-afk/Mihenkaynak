@@ -37,6 +37,7 @@ import { CLASS_LABEL, flowPolicy, isToolRelevant } from '@domain/transaction-cla
 import { CustomerStrip } from '@ui/shell/CustomerStrip';
 import { DecisionDock } from '@ui/shell/DecisionDock';
 import { MarketStrip } from '@ui/shell/MarketStrip';
+import { CoachBar } from '@ui/shell/CoachBar';
 import { StageStrip } from '@ui/shell/StageStrip';
 import { StatusStrip } from '@ui/shell/StatusStrip';
 import { ToolRail, type RailItem } from '@ui/shell/ToolRail';
@@ -151,6 +152,9 @@ export function ShopScreen() {
 
   const stage: WorkbenchStage = deal?.stage ?? 'inspect';
 
+  // GDD 25 — gösterilecek ders; tümü görüldüyse null ve şerit hiç çizilmez.
+  const lesson = selectors.lesson(s);
+
   return (
     <>
       <StatusStrip
@@ -202,7 +206,7 @@ export function ShopScreen() {
           )}
 
           {!deal || !line ? (
-            <IdleWorkbench />
+            <IdleWorkbench coaching={lesson !== null} />
           ) : /* --- Müşteri alış akışı (GDD 23.23) --- */
           deal.flow === 'purchase' && deal.purchase ? (
             stage === 'package' ? (
@@ -245,7 +249,7 @@ export function ShopScreen() {
               />
             )
           ) : !item ? (
-            <IdleWorkbench />
+            <IdleWorkbench coaching={lesson !== null} />
           ) : /* --- Ekspertiz / danışma akışı (GDD 23.23 beşinci akış) --- */
           deal.flow === 'appraisal' && deal.appraisal ? (
             stage === 'inspect' ? (
@@ -340,6 +344,20 @@ export function ShopScreen() {
         </div>
       </main>
 
+      {/*
+        GDD 25 — öğretim şeridi. Araç rayının ÜSTÜNDE, İşlem Masası'nın
+        ALTINDA: hiçbir kontrolü örtmez, kapatılınca yerini geri verir.
+      */}
+      {lesson && (
+        <CoachBar
+          lesson={lesson}
+          // Atlama kararı bir kez sorulur: hiç ders görmemiş oyuncuya.
+          showSkip={s.seenLessons.length === 0}
+          onDismiss={() => s.dismissLesson(lesson.id)}
+          onSkipAll={s.skipOnboarding}
+        />
+      )}
+
       <ContextualToolRail liquidity={liquidity} />
 
       <ShopDock offer={offer} setOffer={setOffer} bounds={offerBounds} liquidity={liquidity} />
@@ -356,7 +374,7 @@ export function ShopScreen() {
  * yaklaşan servis teslimi veya düşük likidite gibi. EN FAZLA 3 kompakt uyarı
  * satırı bulunur; ayrı büyük kartlar kullanılmaz."
  */
-function IdleWorkbench() {
+function IdleWorkbench({ coaching }: { coaching: boolean }) {
   const s = useGame();
   const liquidity = selectors.liquidity(s);
   const band = selectors.liquidityBand(s);
@@ -406,7 +424,7 @@ function IdleWorkbench() {
   const stockCount = s.inventory.reduce((n, p) => n + p.quantity, 0);
 
   return (
-    <div className="idle">
+    <div className={`idle ${coaching ? 'idle--coaching' : ''}`}>
       <h2 className="idle__title">{s.store.name}</h2>
       <p className="idle__sub">Gün {s.market.day} · Semt itibarı {Math.round(s.store.reputation)}</p>
 

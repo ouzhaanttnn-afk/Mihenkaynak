@@ -954,6 +954,47 @@
   gap: var(--sp-3);
 }
 
+/*
+ * ÖĞRETİM ŞERİDİ AÇIKKEN YOĞUNLUK — yalnız KISA EKRANDA azalır.
+ *
+ * GDD 23.22: "Workbench içerik taşarsa YOĞUNLUK AZALTILIR." Ders şeridi
+ * 127 px yer alıyor; 560–633 px'lik telefonlarda kalan alana marka başlığı,
+ * pozisyon paneli, uyarı satırları ve rewarded CTA hep birden sığmıyor ve
+ * içerik iki uçtan kırpılıyordu. Kırpmak yoğunluk azaltmak DEĞİLDİR.
+ *
+ * Neden CSS'te ve yüksekliğe bağlı: 844 px'lik bir ekranda hepsi rahat
+ * sığar; orada da gizlemek, ders yüzünden ekranı boşaltmak olurdu. Şeritler
+ * için kurulan kısa-ekran kademesiyle aynı eşik (720 px) kullanılır.
+ *
+ * Düşenlerin hepsi ikincil: marka adı (oyuncu zaten biliyor), semt itibarı
+ * satırı, uyarı satırları (şerit zaten konuşuyor) ve GDD 23.10.1'in
+ * "gösterilebilir" dediği rewarded CTA. Pozisyon paneli KALIR — o veri.
+ */
+.idle--coaching {
+  justify-content: flex-start;
+}
+
+@media (max-height: 720px) {
+  .idle--coaching .idle__title,
+  .idle--coaching .idle__sub,
+  .idle--coaching .alerts,
+  .idle--coaching .rewardedLine {
+    display: none;
+  }
+}
+
+/*
+ * En dar uç (≤620 px, ör. 360×560): şeritten sonra 76 px kalıyor ve
+ * pozisyon paneli tek başına 110 px. Burada da bir şey vermek gerek ve
+ * verilecek olan paneldir: öğretim sürerken okunması gereken şey derstir,
+ * üstelik panel Stok ekranında ve ilk günde zaten sıfır.
+ */
+@media (max-height: 620px) {
+  .idle--coaching .position {
+    display: none;
+  }
+}
+
 .idle__title {
   font-family: var(--font-display);
   font-size: var(--fs-title);
