@@ -91,6 +91,22 @@ describe('§1 — Sarrafiyede birim fiyat görünür', () => {
     expect(view.perGram).toBe(false);
   });
 
+  it('toplam satırı yalnız birim fiyatın toplamı VERMEDİĞİ üründe gerekir', () => {
+    // Teklif ekranındaki "gram × ₺/g = toplam" satırının kuralı budur:
+    // adet bazlı üründe birim fiyat zaten toplamdır, satır tekrar olurdu.
+    const gerekir = (templateId: string) => {
+      const v = unitPriceView(spawnItem(SEED, 1, templateId), 100_000);
+      return v.perGram && v.gramsPerPiece > 1;
+    };
+    expect(gerekir('gram_gold_10')).toBe(true);
+    expect(gerekir('gram_gold_100')).toBe(true);
+    // 1 g'da ₺/g zaten adedin fiyatı; tekrar satır gerekmez.
+    expect(gerekir('gram_gold_1')).toBe(false);
+    // Adet bazlı ürünlerde hiç gerekmez.
+    expect(gerekir('quarter_gold')).toBe(false);
+    expect(gerekir('ata_gold')).toBe(false);
+  });
+
   it('adet × birim fiyat = toplam (§1 toplu işlem kuralı)', () => {
     const ceyrek = spawnItem(SEED, 2, 'quarter_gold');
     const lot = supplyOffer(ceyrek, 6, MARKET, makeStore())!;

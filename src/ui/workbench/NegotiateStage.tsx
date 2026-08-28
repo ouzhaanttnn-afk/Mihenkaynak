@@ -47,7 +47,10 @@ interface Props {
     unitReference: Money;
     unitOffer: Money;
     unit: string;
-    quantity: number;
+    /** Toplam satırı gösterilsin mi — birim fiyat toplamı vermiyorsa evet. */
+    showTotal: boolean;
+    /** "10,0 g × 4.257 ₺/g" gibi okunur çarpım. */
+    totalLabel: string;
     totalReference: Money;
     totalOffer: Money;
   } | null;
@@ -181,11 +184,14 @@ export function NegotiateStage({
               {tlBare(Math.abs(reference.unitReference - reference.unitOffer))} {reference.unit}
             </span>
           </div>
-          {reference.quantity > 1 && (
+          {/*
+            §1 — "adet/gram × birim fiyat = toplam". Gram bazlı üründe birim
+            fiyat ₺/g olduğu için toplam ayrıca yazılmalı: 4.257 ₺/g tek
+            başına 10 g'lık külçenin ne ettiğini söylemez.
+          */}
+          {reference.showTotal && (
             <div className="refPanel__row refPanel__row--total">
-              <span className="refPanel__key">
-                {reference.quantity} × {tlBare(reference.unitOffer)}
-              </span>
+              <span className="refPanel__key">{reference.totalLabel}</span>
               <span className="refPanel__val num">{tlBare(reference.totalOffer)} ₺</span>
             </div>
           )}

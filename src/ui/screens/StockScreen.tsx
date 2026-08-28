@@ -173,14 +173,24 @@ export function StockScreen() {
  */
 function BullionCounter() {
   const s = useGame();
-  const [open, setOpen] = useState(false);
+  // Tezgâhın açık/kapalı durumu ve adet seçimleri sekme değişince
+  // KAYBOLMAMALI. StockScreen sekme değiştiğinde unmount olduğu için yerel
+  // state sıfırlanıyordu: oyuncu 20 adet seçip nakde bakmaya gidince
+  // dönüşünde 1'e düşüyordu. Playtest oturumu boyunca yaşayan küçük bir
+  // modül durumu bunu çözer; oyun durumuna girmesi gerekmiyor çünkü
+  // kaydedilecek bir şey değil, ekranın hafızası.
+  const [open, setOpen] = useState(counterMemory.open);
+  const setOpenPersisted = (next: boolean) => {
+    counterMemory.open = next;
+    setOpen(next);
+  };
 
   return (
     <div className="counter">
       <button
         type="button"
         className="counter__toggle"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpenPersisted(!open)}
         aria-expanded={open}
       >
         <span>Sarrafiye Al</span>
@@ -200,7 +210,11 @@ function BullionCounter() {
 
 function BullionOffer({ templateId }: { templateId: string }) {
   const s = useGame();
-  const [qty, setQty] = useState(1);
+  const [qty, setQtyState] = useState(counterMemory.qty[templateId] ?? 1);
+  const setQty = (next: number) => {
+    counterMemory.qty[templateId] = next;
+    setQtyState(next);
+  };
 
   // Sonda sabit: fiyat ürünün ŞABLONUNA bağlıdır, örneğin kimliğine değil.
   const probe = useMemo(() => spawnItem(s.seed, 990_001, templateId), [s.seed, templateId]);
@@ -234,7 +248,7 @@ function BullionOffer({ templateId }: { templateId: string }) {
           <button
             type="button"
             className="qtyStep__btn"
-            onClick={() => setQty((v) => Math.max(1, v - 1))}
+            onClick={() => setQty(Math.max(1, qty - 1))}
             aria-label="Bir azalt"
           >
             −
@@ -243,7 +257,7 @@ function BullionOffer({ templateId }: { templateId: string }) {
           <button
             type="button"
             className="qtyStep__btn"
-            onClick={() => setQty((v) => Math.min(lot.maxQuantity, v + 1))}
+            onClick={() => setQty(Math.min(lot.maxQuantity, qty + 1))}
             disabled={lot.quantity >= lot.maxQuantity}
             aria-label="Bir artır"
           >
@@ -265,6 +279,16 @@ function BullionOffer({ templateId }: { templateId: string }) {
     </div>
   );
 }
+
+/**
+ * Tezgâhın ekran hafızası. Oyun durumunun parçası DEĞİL: kaydedilmez,
+ * yüklenmez, ekonomiyi etkilemez. Yalnız sekme gidip gelirken oyuncunun
+ * seçimini korur.
+ */
+const counterMemory: { open: boolean; qty: Record<string, number> } = {
+  open: false,
+  qty: {},
+};
 
 /** §4 — playtest havuzu. En az bu on bir ürün bulunmalı. */
 const PLAYTEST_BULLION = [

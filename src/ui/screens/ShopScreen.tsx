@@ -1215,11 +1215,18 @@ function buildReference(item: ItemInstance | undefined, market: MarketState, off
   const view = unitPriceView(item, pieceReference);
   const offerView = unitPriceView(item, offer);
 
+  // Gram bazlı üründe birim fiyat gramadır; toplam ayrıca yazılır.
+  // Adet bazlı üründe birim fiyat zaten toplamdır, satır tekrar olurdu.
+  const showTotal = view.perGram && view.gramsPerPiece > 1;
+
   return {
     unitReference: view.unitPrice,
     unitOffer: offerView.unitPrice,
     unit: view.unit,
-    quantity: 1,
+    showTotal,
+    totalLabel: showTotal
+      ? `${view.gramsPerPiece.toLocaleString('tr-TR')} g × ${offerView.unitPrice.toLocaleString('tr-TR')} ₺/g`
+      : '',
     totalReference: pieceReference,
     totalOffer: offer,
   };
