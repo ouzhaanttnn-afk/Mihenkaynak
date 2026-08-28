@@ -77,11 +77,11 @@ export function StockScreen() {
 
         <div className="summaryRow">
           <div className="summaryRow__item">
-            <span className="summaryRow__label">Stok Maliyeti</span>
+            <span className="summaryRow__label">Maliyet</span>
             <span className="summaryRow__value num">{tl(wealth.stockCost)}</span>
           </div>
           <div className="summaryRow__item">
-            <span className="summaryRow__label">Stok Potansiyeli</span>
+            <span className="summaryRow__label">Potansiyel</span>
             <span
               className={`summaryRow__value num ${
                 wealth.stockPotential >= 0

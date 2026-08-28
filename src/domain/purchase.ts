@@ -26,7 +26,7 @@ import { PURCHASE } from './balance';
 import { costBasisForUnits } from './settlement';
 import { bullionMeta, isBullion } from '@data/bullion';
 import { getArchetype } from '@data/archetypes';
-import { getTemplate } from '@data/item-templates';
+import { FAMILY_LABEL, getTemplate } from '@data/item-templates';
 import { bullionUnitValue, gramsFor, priceForChannel, CHANNEL_LABEL_TR } from './channels';
 import { trueValue } from './valuation';
 import { Rng, deriveSeed } from './rng';
@@ -35,6 +35,7 @@ import type {
   Customer,
   CustomerDemand,
   InventoryPosition,
+  ItemFamily,
   ItemInstance,
   MarketState,
   Money,
@@ -112,7 +113,12 @@ function demandSummary(
     const adet = quantity > 1 ? `${quantity} adet ` : '';
     return isBulk ? `Toplu: ${adet}${name}` : `${adet}${name}`;
   }
-  if (families.length > 0) return `${families.join(' / ')} arıyor`;
+  if (families.length > 0) {
+    // Aileler ekrana İÇ ADIYLA değil, oyuncunun dilinde çıkar (v1.1 §7):
+    // "bullion / classic arıyor" değil, "sarrafiye / klasik takı arıyor".
+    const labels = families.map((f) => FAMILY_LABEL[f as ItemFamily] ?? f);
+    return `${labels.join(' / ')} arıyor`;
+  }
   return 'Vitrine bakıyor';
 }
 

@@ -88,11 +88,19 @@ export function StockPickStage({
         </p>
       )}
 
+      {/*
+        `svc__note--center` bir flex kutusudur: içine DOĞRUDAN konan ikon,
+        <strong> ve metin ayrı birer flex ögesi olur, yan yana sıkışır ve
+        birbirine girerdi — "Stokta sunulacak ürün yok." üç satıra kırılıp
+        yandaki cümleyle çakışıyordu. Tek bir çocuk düğüm bunu keser.
+      */}
       {rows.length === 0 ? (
         <p className="svc__note svc__note--center">
-          <IconWarning size={16} />
-          <strong>Stokta sunulacak ürün yok.</strong> Bu müşteriye verecek malınız
-          bulunmuyor; talebi karşılayamadan gitmesi normaldir.
+          <span>
+            <IconWarning size={16} />
+            <strong>Stokta sunulacak ürün yok.</strong> Bu müşteriye verecek malınız
+            bulunmuyor; talebi karşılayamadan gitmesi normaldir.
+          </span>
         </p>
       ) : (
         <ul className="pickList">

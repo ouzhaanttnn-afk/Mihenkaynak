@@ -151,6 +151,49 @@
   );
 }
 
+/*
+ * ═══════════════════════════════════════════════════════════════════════
+ * KISA EKRAN KADEMESİ — GDD 23.9.2'den BİLİNÇLİ SAPMA
+ *
+ * 23.9.2'nin şerit sözleşmesi 390×844 için yazılmıştır; toplamı 763 px'dir
+ * (52+44+50+32+337+56+128+64). 640 px yüksekliğindeki bir telefonda 123 px
+ * eksiktir ve şeritler SABİT olduğu için eksiğin tamamı İşlem Masası'ndan
+ * kesilir. Ölçüm (360×640): içerik alanı 640 px'in yalnız 246 px'i — %38.
+ * Yani kararın verildiği bölge, onu çevreleyen çerçeveden küçüktü.
+ *
+ * Bu kademe şeritlerden 54 px geri alıp İşlem Masası'na verir.
+ *
+ * SAPMANIN SINIRLARI — nereye DOKUNULMADIĞI, ne kadar daraldığı kadar önemli:
+ *   · Aşama şeridi (32 px) sabit — 23.22'nin 44 px dokunma hedefiyle zaten
+ *     gergin; daraltmak o gerginliği hataya çevirirdi.
+ *   · Araç rayı (56 px) sabit — içindeki test butonları 44 px'e dayanıyor.
+ *   · Alt nav 56 px: öge yüksekliği şerit yüksekliğine eşit olduğu için
+ *     dokunma hedefi hâlâ 44 px'in üstünde.
+ *   · Karar Dock'u 104 px: içeriğin tam ölçüsü (12+18+8+54+12), kırpma yok.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+@media (max-height: 720px) {
+  :root {
+    /*
+     * DURUM ŞERİDİ 52 px'TE KALIR — denendi ve geri alındı.
+     * 46 px'e indirildiğinde "GÜN 1" iki satıra kırılıyor, saat aşağı
+     * kayıyor ve NAKİT rakamının ÜSTÜNE biniyordu. Altı piksel için
+     * ekranın en çok okunan iki sayısını çakıştırmak kötü bir takas.
+     */
+    --h-customer-strip: 44px;
+    --h-decision-dock: 104px;
+    --h-bottom-nav: 56px;
+    /*
+     * PİYASA ŞERİDİ 44 px'TE KALIR — denendi ve geri alındı.
+     *
+     * 34 px'e indirildiğinde içindeki varlık butonları 33 px'e düşüyordu:
+     * GDD 23.22'nin 44 px dokunma hedefinin altı. Yer kazanmak için bir
+     * dokunma hedefini bozmak takas değil, gerilemedir. Şerit sözleşmesinden
+     * sapma yalnız dokunma hedefini AŞAĞI ÇEKMEYEN bölgelerde yapılır.
+     */
+  }
+}
+
 /* ===== Reset ===== */
 *,
 *::before,

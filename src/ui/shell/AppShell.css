@@ -180,7 +180,14 @@
   gap: 1px;
 }
 
+/*
+ * GDD 23.22 — dokunma hedefi 44 px altına inmez.
+ * Görsel yükseklik 22 px kalır (hız kontrolü durum şeridini şişirmesin) ama
+ * dokunma alanı dikey dolguyla 44 px'e çıkar: göze küçük, parmağa doğru.
+ * Aynı çözüm filtre çiplerinde de kullanılıyor (.chip).
+ */
 .speed__step {
+  position: relative;
   min-width: 24px;
   height: 22px;
   padding: 0 5px;
@@ -193,6 +200,19 @@
   justify-content: center;
   gap: 2px;
   transition: background var(--t-fast) var(--ease-standard);
+}
+
+/*
+ * Dokunma alanı görsel pilin dışına taşar ama DÜZENİ ETKİLEMEZ.
+ *
+ * Önce dikey dolguyla denendi: buton 44 px'e çıkınca 52 px'lik durum
+ * şeridini patlattı ve komşu yazıların üstüne bindi. Mutlak konumlu bir
+ * sözde-öge, kutu modelini hiç kıpırdatmadan aynı hedefi verir.
+ */
+.speed__step::after {
+  content: '';
+  position: absolute;
+  inset: -11px -3px;
 }
 
 .speed__step--active {
@@ -210,6 +230,14 @@
 /* ------------------------------------------------------------------ */
 
 .marketStrip {
+  /*
+   * `content-box`: 44 px'lik yükseklik İÇERİĞİN payıdır, alt çizgi onun
+   * dışında kalır. Aksi hâlde 1 px'lik kenarlık içeriden düşülüyor ve
+   * varlık butonları 43 px'te kalıyordu — GDD 23.22'nin 44 px hedefinin
+   * bir piksel altı. 23.9.2'nin 44 px'i kullanılabilir bandı tarif eder,
+   * çizgiyi değil.
+   */
+  box-sizing: content-box;
   flex: 0 0 var(--h-market-strip);
   height: var(--h-market-strip);
   display: flex;
@@ -221,8 +249,25 @@
   overflow-y: hidden;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  /* GDD 23.9.2 "yatay swipe" — kaydırma varlık sınırlarında dursun. */
+  scroll-snap-type: x proximity;
   width: 100%;
   text-align: left;
+  /*
+   * Sağ kenarda solma: şeridin devam ettiğini SÖYLER. Bu işaret olmadan
+   * oyuncu Gümüş ve Dolar'ın var olduğunu bilemiyordu — veri oradaydı,
+   * görünmüyordu.
+   */
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 22px), transparent 100%);
+}
+
+/* Her şey sığıyorsa solmaya gerek yok. */
+@media (min-width: 620px) {
+  .marketStrip {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
 }
 
 .marketStrip::-webkit-scrollbar {
@@ -239,6 +284,16 @@
   gap: 1px;
   border-right: 1px solid var(--ink-600);
   white-space: nowrap;
+  scroll-snap-align: start;
+  /* Artık gerçek bir buton: varsayılan buton görünümü sıfırlanır. */
+  background: transparent;
+  border-top: 0;
+  border-bottom: 0;
+  border-left: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
 }
 
 .marketStrip__label {
@@ -283,6 +338,12 @@
   justify-content: center;
   gap: 2px;
   background: var(--ink-600);
+  scroll-snap-align: start;
+  border: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
 }
 
 .marketStrip__regimeLabel {
@@ -497,7 +558,13 @@
   display: flex;
   align-items: stretch;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
+  /*
+   * Dikey dolgu 8 → 4 px. Ray 56 px'ken 8 px'lik dolgu test butonlarını
+   * 38 px'e düşürüyordu — GDD 23.22'nin 44 px hedefinin altı, üstelik
+   * oyuncunun en çok dokunduğu yüzeyde. 4 px dolgu butonları 46 px'e
+   * çıkarır ve rayın kendi yüksekliğine dokunmaz.
+   */
+  padding: 4px var(--sp-3);
   background: var(--ink-600);
   border-top: 1px solid var(--line-dark);
   border-bottom: 1px solid var(--ink-900);
@@ -528,6 +595,7 @@
 .tool {
   flex: 0 0 auto;
   min-width: 62px;
+  min-height: var(--touch-min);
   padding: 0 var(--sp-2);
   border-radius: var(--r-md);
   background: var(--ink-700);
@@ -750,11 +818,25 @@
 /* Toast — kısa geri bildirim (GDD 3.x "1–5 saniyede okunur")          */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Toast EKRANIN ÜSTÜNDE durur, altında değil.
+ *
+ * Önce alta, "nav + dock + araç rayı" kadar yukarıya konmuştu ve yine
+ * rayın butonlarını örtüyordu. Sebep: `--h-decision-dock` bir MIN-HEIGHT'tir;
+ * pazarlık Dock'u teklif satırı, kaydırıcı ve önizlemeyle birlikte o
+ * sayıdan belirgin biçimde uzundur. Yani alt kenardan yapılan token
+ * aritmetiği gerçeği tutturamaz — her aşamada farklı bir yere düşer.
+ *
+ * Üst kenar ise güvenilir: durum ve piyasa şeritlerinin yüksekliği sabittir
+ * ve her ekranda vardır. Toast artık hiçbir kontrolün üstüne binmez;
+ * en kötü ihtimalle müşteri şeridinin üstünde birkaç saniye durur — o da
+ * etkileşimli değil, okunabilir ve kalıcı bir bilgi.
+ */
 .toastLayer {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(var(--h-bottom-nav) + var(--h-decision-dock) + var(--sp-3) + var(--safe-bottom));
+  top: calc(var(--h-status-strip) + var(--h-market-strip) + 1px + var(--sp-3) + var(--safe-top));
   display: flex;
   flex-direction: column;
   align-items: center;

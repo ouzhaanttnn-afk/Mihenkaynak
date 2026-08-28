@@ -97,6 +97,18 @@ export interface NegotiationContext {
   purchaseCeiling?: Money;
   /** Bilgi durumu — 'gerekçe' hamlesinin geçerliliğini denetler (GDD 11.5). */
   knowledge: FieldKnowledge[];
+
+  /**
+   * Pazarlık payının etrafında sıkıştığı ÇAPA — kalemin adil değeri.
+   * Verilmezse sıkıştırma uygulanmaz ve davranış eskisiyle birebir aynıdır.
+   */
+  fairValue?: Money;
+
+  /**
+   * Ürün sınıfının pazarlık payı (0–1) — product-classes.ts'ten gelir.
+   * Verilmezse 1 sayılır, yani band aynen kalır.
+   */
+  haggleRoom?: number;
 }
 
 /**
@@ -142,7 +154,35 @@ export function effectiveReservation(ctx: NegotiationContext, session: Negotiati
   // tavanı yükseltir. İşaret bu yüzden yöne bağlıdır.
   const sign = dirSign(ctx);
   const base = sign === 1 ? customer.reservationPrice : purchaseThresholdBase(ctx);
-  return Math.round(base * a.closeThreshold * (1 - sign * flex));
+  const raw = base * a.closeThreshold * (1 - sign * flex);
+
+  return Math.round(compressToFair(raw, ctx));
+}
+
+/**
+ * Eşiği ürünün gerçek makasına oturtur (product-classes.ts · haggleRoom).
+ *
+ * Pazarlık modeli rezervasyonu ARKETİPTEN alır ve ürüne kördür. Bu, ikinci
+ * el takıda doğrudur; standart sarrafiyede değildir — çeyreğin fiyatını
+ * herkes bilir. Ölçüm: Ata Lira getiren müşteri gerçek değerin %76'sına
+ * razı olabiliyordu (dükkânın brüt marjı %13,8). Gerçek sektörde gram başı
+ * ~100 ₺, yani ~%2,3'lük tur farkı var.
+ *
+ * NE YAPMAZ: hiçbir hamleyi iptal etmez. Güven, aciliyet, gerekçe ve jest
+ * eşiği aynı YÖNDE aynı ORANDA oynatmaya devam eder — yalnız hepsinin
+ * birlikte açtığı aralık ürüne göre ölçeklenir. Sarrafiyede gram başına
+ * 5–10 ₺ pazarlık edilir, 500 ₺ değil.
+ *
+ * NEDEN BURADA: durum makinesine dokunmadan, tek çıkış noktasında.
+ * Rezervasyonun KENDİSİ hâlâ hiç değişmez (GDD 34.2); değişen yalnız
+ * müşterinin o rezervasyona ne kadar yaklaşılmasını kabul ettiğidir —
+ * `effectiveReservation`ın zaten yaptığı iş budur.
+ */
+function compressToFair(threshold: number, ctx: NegotiationContext): number {
+  const fair = ctx.fairValue;
+  const room = ctx.haggleRoom ?? 1;
+  if (fair === undefined || fair <= 0 || room >= 1) return threshold;
+  return fair + (threshold - fair) * Math.max(0, room);
 }
 
 /**

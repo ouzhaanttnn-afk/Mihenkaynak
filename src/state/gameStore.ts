@@ -106,6 +106,8 @@ import {
   type CustomerRegistry,
 } from '@domain/customer-memory';
 import { flowPolicy, stageUnlocked } from '@domain/transaction-class';
+import { getTemplate } from '@data/item-templates';
+import { rulesFor } from '@data/product-classes';
 import {
   appraisalTransaction,
   feeBounds,
@@ -1055,6 +1057,11 @@ export const useGame = create<GameState>((set, get) => {
 
       // Addendum §3 terminolojisi: alış akışında YÖN terstir — oyuncu satar,
       // müşteri alır. Aynı durum makinesi, farklı eşik yönü.
+      // Pazarlık payı ürün sınıfından gelir (product-classes.ts · haggleRoom):
+      // sarrafiyede eşik kanal makasına sıkışır, işçilikli üründe band aynen
+      // kalır. Çapa, pazarlığın döndüğü kalemin adil değeridir.
+      const haggle = haggleContext(deal, line, s);
+
       const ctx = {
         customer,
         direction: (isPurchase ? 'shopSells' : 'shopBuys') as TradeSide,
@@ -1062,6 +1069,8 @@ export const useGame = create<GameState>((set, get) => {
         buyCeiling: effectiveCeiling(options, line.selectedThesis),
         purchaseCeiling: isPurchase ? effectivePurchaseCeiling(deal, customer, s) : undefined,
         knowledge: line.knowledge,
+        fairValue: haggle.fairValue,
+        haggleRoom: haggle.room,
       };
 
       const { session, response } = applyMove(line.negotiation, ctx, move);
@@ -2111,6 +2120,41 @@ function thesisContext(s: Pick<GameState, 'store' | 'market' | 'inventory'>): Th
 }
 
 /** Bir kalemin band + tez seçeneklerini güncel bilgiye göre tazeler. */
+/**
+ * Pazarlığın çapası ve ürün sınıfının pazarlık payı.
+ *
+ * Ticaret ve ekspertizde kalem tektir. Alış akışında pazarlık bir PAKET
+ * üzerinden döner: çapa paketin toplam adil değeri, pay ise paketteki en
+ * DAR paydır — içinde çeyrek olan bir pakette çeyreğin fiyatı pazarlıkla
+ * uçurulamaz. Pakette hiç kalem yoksa sıkıştırma uygulanmaz.
+ */
+function haggleContext(
+  deal: ActiveDeal,
+  line: DealLine,
+  s: GameState,
+): { fairValue: Money | undefined; room: number } {
+  const pkg = deal.purchase?.lines ?? [];
+
+  if (deal.flow === 'purchase' && pkg.length > 0) {
+    let fair = 0;
+    let room = 1;
+    for (const pl of pkg) {
+      const item = s.items[pl.itemId];
+      if (!item) continue;
+      fair += trueValue(item, s.market) * pl.quantity;
+      room = Math.min(room, rulesFor(getTemplate(item.templateId)).haggleRoom);
+    }
+    return fair > 0 ? { fairValue: fair, room } : { fairValue: undefined, room: 1 };
+  }
+
+  const item = s.items[line.itemId];
+  if (!item) return { fairValue: undefined, room: 1 };
+  return {
+    fairValue: trueValue(item, s.market),
+    room: rulesFor(getTemplate(item.templateId)).haggleRoom,
+  };
+}
+
 function refreshLine(s: GameState, line: DealLine): DealLine {
   const item = s.items[line.itemId];
   if (!item) return line;

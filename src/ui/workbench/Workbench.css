@@ -888,6 +888,83 @@
   margin-top: -6px;
 }
 
+/* ---- Pozisyon paneli — sarrafın "kaç param, kaç malım var" sorusu ---- */
+
+.position {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-card);
+  background: var(--ink-900);
+  border: 1px solid var(--line-dark);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.position__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.position__label {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.position__value {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.position__unit {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-regular);
+  color: var(--text-dark-3);
+}
+
+/* Nakit–altın dengesi: dolu kısım altın, boş kısım nakit. */
+.position__bar {
+  grid-column: 1 / -1;
+  margin-top: var(--sp-2);
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: rgba(242, 236, 222, 0.1);
+  overflow: hidden;
+}
+
+.position__barFill {
+  display: block;
+  height: 100%;
+  background: var(--surface-brass);
+}
+
+.position__legend {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+.position__go {
+  color: var(--brass-400);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
 /* En fazla 3 kompakt uyarı satırı; ayrı büyük kartlar kullanılmaz. */
 .alerts {
   display: flex;
@@ -949,7 +1026,9 @@
   color: var(--brass-400);
   border: 1px solid var(--brass-700);
   border-radius: var(--r-pill);
-  padding: 5px var(--sp-3);
+  /* GDD 23.22 — 44 px dokunma hedefi. Ölçüm 27 px'ti. */
+  min-height: var(--touch-min);
+  padding: 5px var(--sp-4);
   background: transparent;
 }
 
@@ -991,10 +1070,15 @@
 }
 
 /* +/− ince ayar (GDD 23.12). */
+/*
+ * GDD 23.22 — 44 px dokunma hedefi. 38 px'ti ve bu ekranın EN ÇOK
+ * dokunulan kontrolü: fiyat bu iki butonla ayarlanıyor. Pazarlıkta
+ * ıskalanan dokunuş doğrudan yanlış teklife dönüşür.
+ */
 .offer__nudge {
   flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
+  width: var(--touch-min);
+  height: var(--touch-min);
   border-radius: var(--r-sm);
   border: 1px solid var(--line-light-strong);
   background: var(--stone-100);

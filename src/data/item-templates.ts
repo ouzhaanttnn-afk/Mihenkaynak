@@ -42,6 +42,23 @@ export interface ItemTemplate {
   silhouette: 'bar' | 'coin' | 'chain' | 'ring' | 'bracelet' | 'necklace' | 'earring' | 'object' | 'brooch';
 }
 
+/**
+ * Ürün ailelerinin OYUNCUYA GÖRÜNEN adları (v1.1 §7 dil ilkesi).
+ *
+ * NEDEN VAR: talep özeti aileleri doğrudan enum değeriyle yazıyordu ve
+ * oyuncu ekranda "bullion / classic arıyor" görüyordu. İç isim ekrana
+ * çıkarsa oyuncu onu okumak zorunda kalır; iç isimler bizim içindir.
+ * §9 gereği domain adları (`bullion`, `classic`) kodda AYNEN kalır.
+ */
+export const FAMILY_LABEL: Record<ItemFamily, string> = {
+  bullion: 'sarrafiye',
+  classic: 'klasik takı',
+  stoneSet: 'taşlı ürün',
+  silver: 'gümüş',
+  collectible: 'koleksiyon',
+  service: 'servis',
+};
+
 export const ITEM_TEMPLATES: ItemTemplate[] = [
   // --- Yatırım altını: düşük risk, düşük marj, yüksek likidite (GDD 5.1) ---
   {

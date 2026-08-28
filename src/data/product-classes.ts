@@ -74,6 +74,28 @@ export interface ProductClassRules {
    * Boş liste = bu ürün atölye işi almaz.
    */
   services: string[];
+  /**
+   * PAZARLIK PAYI (0–1) — kapanış eşiğinin adil değerden ne kadar
+   * sapabileceğinin çarpanı.
+   *
+   *   1    = tam band. Pazarlık bugünkü genişliğinde kalır.
+   *   0,15 = eşiğin adil değerden sapması %15'ine iner.
+   *
+   * NEDEN VAR: pazarlık modeli rezervasyon oranını ARKETİPTEN alıyor ve
+   * ürüne kör. İkinci el bir bilezikte %15'lik makas gerçektir — sahibi de
+   * alıcı da tam değerini bilmez. Standart sarrafiyede DEĞİLDİR: çeyreğin
+   * fiyatını herkes kuruşu kuruşuna bilir. Ölçüm bunu doğruladı — Ata Lira
+   * getiren müşteri gerçek değerinin %76'sına razı olabiliyordu, yani
+   * dükkânın brüt marjı %13,8 çıkıyordu. Gerçek sektörde gram başı ~100 ₺,
+   * yani ~%2,3'lük TUR farkı var.
+   *
+   * DİKKAT — bu bir "pazarlığı kapat" anahtarı DEĞİLDİR. Güven, aciliyet,
+   * gerekçe ve jest hamlelerinin hepsi aynen çalışmaya devam eder; yalnız
+   * hepsinin birlikte açabildiği aralık ürünün gerçek makasına oturur.
+   * Sarrafiyede gram başına 5–10 ₺ için pazarlık edilir, 500 ₺ için değil.
+   */
+  haggleRoom: number;
+
   /** Sınıfın neden bu sınırlara sahip olduğunu anlatan tasarım notu. */
   note: string;
 }
@@ -97,6 +119,8 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     // Standart külçe atölye işi almaz: temizlenmez, ölçülendirilmez,
     // gravürlenmez. Ambalajı bozulursa değeri düşer, artmaz.
     services: [],
+    // Külçe sarrafiyede fiyat kamuya açık; pazarlık kanal makasına sıkışır.
+    haggleRoom: 0.12,
     note: 'Gram altın ve külçe. Ağırlık + ayar dışında ölçülecek bir şey yok.',
   },
 
@@ -106,6 +130,9 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     attributes: BULLION_ATTRIBUTES,
     tests: BULLION_TESTS,
     services: [],
+    // Çeyreğin fiyatını herkes bilir. Ölçüm: eski hâlde dükkânın marjı
+    // %2–14 arası oynuyordu; artık kanal makasının etrafında kalır.
+    haggleRoom: 0.12,
     note: 'Çeyrek/yarım/tam/Cumhuriyet/Ata. Gramajı ve tipi standarttır.',
   },
 
@@ -116,6 +143,8 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     // "Yüzük ölçüsü" YALNIZ burada. Zincir/kilit tamiri yüzükte yok.
     services: ['clean', 'ringSize', 'engraving', 'stoneSet', 'restoration', 'appraisalReport'],
+    // İkinci el takı: alıcı da satıcı da tam değerini bilmez. Band aynen kalır.
+    haggleRoom: 1,
     note: 'Ölçü servisinin tek geçerli olduğu sınıf; taşlıysa taş testleri açılır.',
   },
 
@@ -127,6 +156,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     attributes: ['weight', 'purity', 'coreIntegrity', 'condition'],
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     services: ['clean', 'chainRepair', 'engraving', 'restoration', 'appraisalReport'],
+    haggleRoom: 1,
     note: 'Ağırlık, ayar, kondisyon. Kilidi olduğu için tamir alır; ölçü servisi almaz.',
   },
 
@@ -136,6 +166,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     attributes: ['weight', 'purity', 'coreIntegrity', 'stone', 'condition'],
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     services: ['clean', 'chainRepair', 'engraving', 'stoneSet', 'restoration', 'appraisalReport'],
+    haggleRoom: 1,
     note: 'Kilit ve halka taşır; uzunluk/kilit tamiri burada anlamlı, yüzük ölçüsü değil.',
   },
 
@@ -146,6 +177,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     // Takı değil: ne ölçüsü ne kilidi var.
     services: ['clean', 'engraving', 'restoration', 'appraisalReport'],
+    haggleRoom: 1,
     note: 'Dekoratif gümüş/obje. Takı servisleri uygulanmaz.',
   },
 
@@ -157,6 +189,8 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     // Koleksiyon parçasında değer özgünlükte: gravür ve ölçü değiştirmek
     // değeri düşürür. Kalanlar belgeleme ve kurtarma işleridir.
     services: ['clean', 'stoneSet', 'restoration', 'appraisalReport'],
+    // Tek parça, referans fiyat yok — pazarlık en geniş burada anlamlı.
+    haggleRoom: 1,
     note: 'Vintage/koleksiyon. Özgünlüğü bozan servisler kapalı.',
   },
 };

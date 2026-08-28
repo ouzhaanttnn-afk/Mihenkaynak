@@ -62,6 +62,12 @@
   min-width: 0;
 }
 
+/*
+ * Etiket kutusuna sığmalı. `white-space: nowrap` + taşma denetimi olmayınca
+ * "STOK POTANSİYELİ" komşu sütunun "NAKİT DURUMU" etiketine giriyordu ve
+ * ikisi tek bir yazı gibi okunuyordu (360 px'te ölçüldü: 111 px > 99 px).
+ * Kısaltma, iki etiketin birbirine değmesinden yeğdir.
+ */
 .summaryRow__label {
   display: block;
   font-size: var(--fs-micro);
@@ -69,6 +75,8 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .summaryRow__value {
@@ -96,6 +104,20 @@
   background: var(--stone-100);
   overflow-x: auto;
   scrollbar-width: none;
+  /*
+   * Altı filtre 360 px'e sığmaz; ray kaydırılır. Solma olmadan son çipler
+   * sessizce kesiliyor ve oyuncu "Bekleyen"/"Ölü Stok" filtrelerinin
+   * varlığını hiç öğrenemiyordu — piyasa şeridindeki hatanın aynısı.
+   */
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 20px), transparent 100%);
+}
+
+@media (min-width: 620px) {
+  .filterRail {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
 }
 
 .filterRail::-webkit-scrollbar { display: none; }

@@ -382,10 +382,52 @@ function IdleWorkbench() {
     });
   }
 
+  const position = selectors.position(s);
+  const metalShare = Math.round(position.metalShare * 100);
+  const stockCount = s.inventory.reduce((n, p) => n + p.quantity, 0);
+
   return (
     <div className="idle">
       <h2 className="idle__title">{s.store.name}</h2>
       <p className="idle__sub">Gün {s.market.day} · Semt itibarı {Math.round(s.store.reputation)}</p>
+
+      {/*
+        POZİSYON PANELİ.
+
+        Ana ekranda yalnız NAKİT yazıyordu. Sarrafın müşteri tezgâhtayken
+        sorduğu soru ise "kaç param, kaç malım var, hangisi ağır" — kararın
+        yarısı budur ve oyuncu bunu görmek için ekranı terk etmek zorundaydı.
+        Panel boş bekleme alanında yaşar (zaten oranın çoğu boştu) ve tek
+        dokunuşla Stok ekranına götürür.
+
+        Gizli gerçek sızmaz (GDD 6.6): buradaki hiçbir sayı tek bir ürünün
+        gerçeğini açmaz; hepsi zaten oyuncunun kendi stoğunun toplamıdır.
+      */}
+      <button type="button" className="position" onClick={() => s.setTab('stock')}>
+        <span className="position__cell">
+          <span className="position__label">Nakit</span>
+          <span className="position__value num">{tl(s.store.cash)}</span>
+        </span>
+        <span className="position__cell">
+          <span className="position__label">Malda</span>
+          <span className="position__value num">{tl(position.metalValue)}</span>
+        </span>
+        <span className="position__cell">
+          <span className="position__label">Stok</span>
+          <span className="position__value num">
+            {stockCount} <span className="position__unit">adet</span>
+          </span>
+        </span>
+
+        {/* Nakit–altın dengesi tek çubukta; sarrafın asıl gerilimi bu. */}
+        <span className="position__bar" aria-hidden="true">
+          <span className="position__barFill" style={{ width: `${metalShare}%` }} />
+        </span>
+        <span className="position__legend">
+          Altın %{metalShare} · Nakit %{100 - metalShare}
+          <span className="position__go">Stok ›</span>
+        </span>
+      </button>
 
       <div className="alerts">
         {alerts.slice(0, 3).map(({ key, title, detail, tone, Icon }) => (
