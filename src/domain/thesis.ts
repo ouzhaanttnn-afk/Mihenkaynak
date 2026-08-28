@@ -16,7 +16,14 @@
  * değiştirilebilir. Sistem oyuncuyu menü seçimine değil gerçek sonuçlara bağlar.
  */
 
-import { BUY_CEILING, CONDITION_DEDUCTION, CONDITION_ORDER, EXIT_CHANNEL } from './balance';
+import {
+  BUY_CEILING,
+  CONDITION_DEDUCTION,
+  CONDITION_ORDER,
+  EXIT_CHANNEL,
+  TARGET_MARGIN,
+} from './balance';
+import { isBullion } from '@data/bullion';
 import { trueBreakdown } from './valuation';
 import type {
   ConditionGrade,
@@ -77,6 +84,8 @@ export function buildThesisOptions(
   // Beklenen gelir hesabı gerçek değere değil bu tahmine dayanır — oyuncu
   // bilmediği bir şeyden kâr planlayamaz (GDD 6.6).
   const est = band.mid;
+  // Hedef marj bandı ürüne göre seçilir (GDD 14.1) — bkz. targetMarginFor.
+  const bullion = isBullion(item.templateId);
   const estMetal = band.breakdown.metal;
   const estStone = band.breakdown.stone;
   const estCraft = band.breakdown.craftsmanship;
@@ -100,6 +109,7 @@ export function buildThesisOptions(
             ? 'İşçilik ve taş değeri kaybolur.'
             : 'Yeniden satış değeri düşük; metal en güvenli çıkış.',
         ctx,
+        isBullion: bullion,
       }),
     );
   }
@@ -124,6 +134,7 @@ export function buildThesisOptions(
             ? 'Nakit sıkışıkken hızlı çıkış rasyonel.'
             : 'Düşük marj karşılığında anlık nakit.',
         ctx,
+        isBullion: bullion,
       }),
     );
   }
@@ -154,6 +165,7 @@ export function buildThesisOptions(
             ? 'Talep etiketi güçlü; vitrin dönüşü hızlı olabilir.'
             : 'Sermaye bağlanır; doğru müşteri beklenir.',
         ctx,
+        isBullion: bullion,
       }),
     );
   }
@@ -192,6 +204,7 @@ export function buildThesisOptions(
             ? 'Atölye dolu: süre uzar, hata riski yükselir.'
             : 'Kondisyon düzeltilebilir; yeniden satış değeri artar.',
         ctx,
+        isBullion: bullion,
       }),
     );
   }
@@ -216,6 +229,7 @@ export function buildThesisOptions(
         liquidity: 'low',
         rationale: 'Doğru koleksiyoner gelene kadar değer korunabilir; sermaye uzun bağlanır.',
         ctx,
+        isBullion: bullion,
       }),
     );
   }
@@ -240,9 +254,11 @@ function finish(input: {
   liquidity: LiquidityLevel;
   rationale: string;
   ctx: ThesisContext;
+  /** Ürün standart sarrafiye mi — hedef marj bandını belirler (GDD 14.1). */
+  isBullion: boolean;
 }): ThesisOption {
   const combinedRisk = worstRisk(input.marketRisk, input.demandRisk);
-  const targetMargin = BUY_CEILING.targetMarginByRisk[combinedRisk];
+  const targetMargin = targetMarginFor(input.isBullion, combinedRisk);
   const avgDays = (input.daysToCash[0] + input.daysToCash[1]) / 2;
   const opCost = BUY_CEILING.opCostPerDay * avgDays;
 
@@ -268,6 +284,32 @@ function finish(input: {
     buyCeiling,
     rationale: input.rationale,
   };
+}
+
+/**
+ * GDD 14.1 — HEDEF MARJ ÜRÜNE GÖRE DEĞİŞİR.
+ *
+ *   sarrafiye              %1,5 – 4
+ *   ikinci el işçilikli    %8 – 20
+ *
+ * Alış tavanı bu bandı hiç okumuyor, ürün ne olursa olsun düz bir
+ * %5/11/19 uyguluyordu. Sonuç ölçüldü: tam ölçülmüş bir sarrafiyede bile
+ * müşterinin kabul eşiği tavanın %109'una düşüyor, yani çeyrek almak
+ * yapısal olarak zarardı — oyuncuya müşteri "uçuk fiyat istiyor" gibi
+ * görünüyordu. Oysa uçuk olan müşteri değil, dükkânın kendinden istediği
+ * marjdı: bir çeyrekten %11 marj beklemek sarraflık değil.
+ *
+ * İşçilikli tarafta mevcut band KORUNUYOR: ölçüm orada eşiği tavanın
+ * %97'sinde gösteriyor, yani çalışıyor. GDD'nin %8–20 bandına çekmek
+ * tavanı daha da indirip çalışan tarafı bozardı — bu, bilinen ve
+ * kayıtlı bir sapmadır.
+ */
+function targetMarginFor(bullion: boolean, risk: RiskLevel): number {
+  if (!bullion) return BUY_CEILING.targetMarginByRisk[risk];
+
+  const [lo, hi] = TARGET_MARGIN.bullion;
+  const t = risk === 'low' ? 0 : risk === 'medium' ? 0.5 : 1;
+  return lo + (hi - lo) * t;
 }
 
 function riskReserveFor(risk: RiskLevel): number {

@@ -106,7 +106,21 @@ export function spawnDemand(
    * sunabilir. Somut ad yalnız müşterinin ağzındaki cümleyi belirler ve
    * `exact` eşleşmeyi mümkün kılar.
    */
-  let families = wantsBullion ? [] : archetype.preferredFamilies.slice(0, 2);
+  /*
+   * İŞÇİLİKLİ TALEPTE SARRAFİYE KABUL EDİLMEZ.
+   *
+   * Arketiplerin tercih listesi `bullion` ile `classic`i birlikte taşıyor
+   * ("Yatırımcı: bullion + classic"). `wantsBullion` bu müşterinin bugün
+   * hangi tarafa geldiğini zaten seçmişken aileleri karıştırmak, ekranda
+   * "14 Ayar Kolye istiyorum" diyen müşterinin çeyrek altına razı olması
+   * demekti — kendi cümlesiyle çelişen bir talep.
+   *
+   * `wantsBullion` true iken `families` zaten boştur; orada her sarrafiye
+   * kabul edilir ve bu doğrudur.
+   */
+  let families: string[] = wantsBullion
+    ? []
+    : archetype.preferredFamilies.filter((f) => f !== 'bullion').slice(0, 2);
 
   if (!wantsBullion) {
     const available = templatesForTier(storeTier).filter((t) => t.family !== 'bullion');

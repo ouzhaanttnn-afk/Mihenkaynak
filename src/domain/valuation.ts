@@ -24,7 +24,8 @@ import {
 } from './balance';
 import { spotFor } from './market';
 import { isValueDeductingFlaw } from './item-spawn';
-import { isFieldRelevant, relevantFields } from './transaction-class';
+import { isBullion } from '@data/bullion';
+import { hasSuspicionSignal, isFieldRelevant, relevantFields } from './transaction-class';
 import type {
   ConfidenceLevel,
   FieldKnowledge,
@@ -111,11 +112,34 @@ export function initialKnowledge(item: ItemInstance): FieldKnowledge[] {
   // Filtre yalnız GÖRÜNÜRLÜĞÜ değiştirir: değerleme formülü elenen alanı
   // zaten belirsiz saymaz (taşsız üründe taş belirsizliği yoktur), bu yüzden
   // hesaplanan değer aynı kalır (§8 "değerleme formülleri değişmez").
+  /*
+   * STANDART SARRAFİYE ZATEN BİLİNİR.
+   *
+   * Çeyreğin gramajı 1,75 g ve ayarı 22'dir — bu ölçülerek ÖĞRENİLEN değil,
+   * ürünün TANIMINDA olan bir bilgidir. Damgalıdır, darphane çıkışlıdır,
+   * fiyatı her sarrafın ekranında yazar.
+   *
+   * Eskiden çeyrek de ikinci el bir bilezik gibi işleniyordu: test edilmemiş
+   * bir çeyreğin değer bandı %53 genişlikte çıkıyordu. Alış tavanı band
+   * genişliğinden türediği için tavan çöküyor, müşterinin gayet makul isteği
+   * oyuncuya "uçuk fiyat" gibi görünüyordu. Uçuk olan müşteri değil, dükkânın
+   * kendi ürününü tanımamasıydı.
+   *
+   * Bu aynı zamanda v1.1 §2'nin sözünü tutar: standart sarrafiyede "zorunlu
+   * test zinciri uygulanmaz". Tavan test etmemeyi cezalandırıyorsa hızlı akış
+   * bir yalandır — oyuncu yine de test etmek zorunda kalır.
+   *
+   * ŞÜPHE SİNYALİ VARSA GEÇERLİ DEĞİL: ambalajı bozuk, damgası şüpheli ya da
+   * gözle görülür sinyal taşıyan sarrafiye bu güveni ALMAZ; orada ölçüm
+   * gerçekten bilgi üretir ve karar yeniden anlamlı olur (GDD 7).
+   */
+  const standardBullion = isBullion(item.templateId) && !hasSuspicionSignal(item);
+
   return relevantFields(item).map((field) => {
     // Beyan edilen gramaj kaba bir başlangıç verir; taşsız ürün net oranı bilinir.
     let certainty = 0;
-    if (field === 'weight') certainty = 0.35;
-    if (field === 'purity') certainty = 0.15; // Damga var ama doğrulanmadı.
+    if (field === 'weight') certainty = standardBullion ? 0.92 : 0.35;
+    if (field === 'purity') certainty = standardBullion ? 0.88 : 0.15; // Damga var ama doğrulanmadı.
     if (field === 'condition') certainty = 0.45; // Gözle görülebilir.
     if (field === 'stone') certainty = item.truth.stoneData.kind === 'none' ? 1 : 0.1;
     if (field === 'coreIntegrity') certainty = 0.2;
