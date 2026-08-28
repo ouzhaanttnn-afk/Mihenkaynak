@@ -32,7 +32,7 @@ import {
   unitPriceView,
 } from '@domain/channels';
 import { isBullion } from '@data/bullion';
-import { CLASS_LABEL, flowPolicy, isToolRelevant } from '@domain/transaction-class';
+import { CLASS_LABEL, flowPolicy, isToolRelevant, transactionClass } from '@domain/transaction-class';
 
 import { CustomerStrip } from '@ui/shell/CustomerStrip';
 import { DecisionDock } from '@ui/shell/DecisionDock';
@@ -175,6 +175,9 @@ export function ShopScreen() {
         record={s.activeCustomer ? (s.customers[s.activeCustomer.id] ?? null) : null}
         queueLength={s.queue.length}
         lineCount={deal?.lines.length ?? 0}
+        broughtItems={
+          deal ? deal.lines.map((l) => s.items[l.itemId]).filter((i): i is ItemInstance => !!i) : []
+        }
       />
 
       {deal && (
@@ -183,6 +186,20 @@ export function ShopScreen() {
           current={stage}
           canEnter={(target) => canEnterStage(useGame.getState(), target)}
           onSelect={s.setStage}
+          /*
+            Standart sarrafiyede (Gram / Çeyrek / Yarım / Tam / Ata) rasyonel
+            bir çıkış planı SEÇİMİ yoktur — çeyreğin nereye gideceği bellidir.
+
+            ÖLÇÜT `transactionClass === 'fast'`, `requiresExitPlan` DEĞİL.
+            Önce ikincisini kullanmıştım ve tarayıcıda "22 Ayar İnce Bilezik"
+            de üç aşamaya düştü: `controlled` sınıfı (düşük işçilikli takı)
+            da çıkış planını ZORUNLU tutmuyor. Ama "zorunlu değil" ile
+            "anlamsız" aynı şey değil — bilezik işçilikli bir üründür ve
+            vitrin / toptan / erit seçimi orada gerçekten fark yaratır.
+            'fast' tam olarak standart sarrafiyedir; şüphe işareti taşıyan
+            bir çeyrek bile 'controlled'a düşer ve aşamasını geri alır.
+          */
+          skipStages={item && transactionClass(item) === 'fast' ? ['thesis'] : []}
         />
       )}
 
@@ -217,6 +234,7 @@ export function ShopScreen() {
               <NegotiateStage
                 session={line.negotiation}
                 message={s.customerMessage}
+                offer={line.negotiation.finalOffer ?? offer}
                 customerName={s.activeCustomer?.displayName}
                 selectedThesis={null}
                 thesisOptions={[]}
@@ -330,6 +348,7 @@ export function ShopScreen() {
             <NegotiateStage
               session={line.negotiation}
               message={s.customerMessage}
+              offer={line.negotiation.finalOffer ?? offer}
               customerName={s.activeCustomer?.displayName}
               selectedThesis={line.selectedThesis}
               thesisOptions={line.thesisOptions}
@@ -951,8 +970,23 @@ function ShopDock({
     // --- DEĞERLE: değer bandı + güven ---
     case 'appraise': {
       const band = line.band;
-      // GDD 23.10.2 — basit üründe Tez atlanabilir; riskli üründe görünür olmalı.
-      const skipThesis = line.thesisOptions.length < 2;
+      /*
+        GDD 23.10.2 — basit üründe Tez atlanabilir; riskli üründe görünür olmalı.
+
+        Standart sarrafiye ('fast') doğrudan pazarlığa geçer: çeyreğin nereye
+        satılacağı bellidir, araya bir seçim ekranı koymak boş bir adımdır.
+        Diğer her üründe eski davranış korunur — tek kanal varsa seçtirecek
+        bir şey zaten yoktur.
+
+        ÖLÇÜT ŞERİTLE AYNI OLMAK ZORUNDA (bkz. `skipStages`, yukarıda):
+        dock "Pazarlığa Geç" derken şeridin hâlâ "Çıkış Planı" adımını
+        göstermesi oyuncuyu çelişkiye sokardı.
+
+        Atlanan aşama KAPANMAZ: aşağıdaki ikincil eylemden hâlâ açılabilir.
+        Zorunlu olmaktan çıkmak ile erişilemez olmak ayrı şeyler.
+      */
+      const skipThesis =
+        policy?.transactionClass === 'fast' || line.thesisOptions.length < 2;
 
       return (
         <DecisionDock
@@ -962,7 +996,12 @@ function ShopDock({
             label: skipThesis ? 'Pazarlığa Geç' : `${TERM.thesis} Seç`,
             onPress: () => s.setStage(skipThesis ? 'negotiate' : 'thesis'),
           }}
-          secondary={[{ label: 'Ek test', onPress: () => s.setStage('inspect') }]}
+          secondary={[
+            { label: 'Ek test', onPress: () => s.setStage('inspect') },
+            ...(skipThesis && line.thesisOptions.length > 0
+              ? [{ label: `Yine de ${TERM.thesis.toLocaleLowerCase('tr')}`, onPress: () => s.setStage('thesis') }]
+              : []),
+          ]}
         />
       );
     }

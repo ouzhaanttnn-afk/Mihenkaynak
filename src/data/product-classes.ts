@@ -100,6 +100,34 @@ export interface ProductClassRules {
   note: string;
 }
 
+/**
+ * İŞÇİLİKLİ ÜRÜNLERDE PAZARLIK PAYI — ölçülerek seçildi.
+ *
+ * `haggleRoom` adil değerden sapmayı ölçekler: <1 daraltır, 1 nötr, >1 genişletir.
+ *
+ * Ölçüm (30 gün × 80 müşteri, aynı tohum, pasif oyuncu ile tüm gerekçe/jestini
+ * harcamış oyuncu karşılaştırıldı — "beceri farkı" ikisinin ödediği fiyat
+ * arasındaki puan farkı):
+ *
+ *     pay      sarrafiye      işçilikli
+ *     0,06     0,5 puan       —
+ *     0,12     1,0 puan       —            ← eski sarrafiye
+ *     1,0      —              7,6 puan     ← eski işçilikli (nötr)
+ *     1,4      —             10,6 puan
+ *     1,5      —             11,3 puan     ← seçilen
+ *     1,8      —             13,6 puan
+ *     2,2      —             16,7 puan
+ *
+ * 1,5 seçildi, 1,8+ değil: 1,8'de agresif oyuncunun alt kuyruğu adil değerin
+ * %48,6'sına iniyordu — ikinci el takıyı yarı fiyatına almak pazarlık değil,
+ * ekonomiyi delmek olurdu. 1,5'te o kuyruk %57,2'de kalıyor.
+ *
+ * Sonuç: işçilikli ürünün pazarlık alanı sarrafiyenin ~23 KATI. İkisi de aynı
+ * durum makinesini, aynı ağırlıkları ve aynı hamleleri kullanır — değişen
+ * yalnız o hamlelerin birlikte açtığı aralığın ürüne göre ölçeği.
+ */
+const CRAFTED_HAGGLE_ROOM = 1.5;
+
 /** Sarrafiyede ölçülen tek şey ağırlık ve ayardır; gerisi ürünün tanımında sabittir. */
 const BULLION_ATTRIBUTES: InfoField[] = ['weight', 'purity', 'coreIntegrity', 'condition'];
 
@@ -120,7 +148,10 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     // gravürlenmez. Ambalajı bozulursa değeri düşer, artmaz.
     services: [],
     // Külçe sarrafiyede fiyat kamuya açık; pazarlık kanal makasına sıkışır.
-    haggleRoom: 0.12,
+    // 0,12 → 0,06: ölçülen beceri farkı 1,0 puandan 0,5 puana indi.
+    // Sıfır YAPILMADI — sıfır, gerekçeyi ve jesti anlamsız kılardı; sarrafta
+    // da pazarlık vardır, sadece dardır.
+    haggleRoom: 0.06,
     note: 'Gram altın ve külçe. Ağırlık + ayar dışında ölçülecek bir şey yok.',
   },
 
@@ -132,7 +163,8 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     services: [],
     // Çeyreğin fiyatını herkes bilir. Ölçüm: eski hâlde dükkânın marjı
     // %2–14 arası oynuyordu; artık kanal makasının etrafında kalır.
-    haggleRoom: 0.12,
+    // 0,12 → 0,06 (bkz. bullionBar).
+    haggleRoom: 0.06,
     note: 'Çeyrek/yarım/tam/Cumhuriyet/Ata. Gramajı ve tipi standarttır.',
   },
 
@@ -143,8 +175,8 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     // "Yüzük ölçüsü" YALNIZ burada. Zincir/kilit tamiri yüzükte yok.
     services: ['clean', 'ringSize', 'engraving', 'stoneSet', 'restoration', 'appraisalReport'],
-    // İkinci el takı: alıcı da satıcı da tam değerini bilmez. Band aynen kalır.
-    haggleRoom: 1,
+    // İkinci el takı: alıcı da satıcı da tam değerini bilmez → GENİŞ pay.
+    haggleRoom: CRAFTED_HAGGLE_ROOM,
     note: 'Ölçü servisinin tek geçerli olduğu sınıf; taşlıysa taş testleri açılır.',
   },
 
@@ -156,7 +188,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     attributes: ['weight', 'purity', 'coreIntegrity', 'condition'],
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     services: ['clean', 'chainRepair', 'engraving', 'restoration', 'appraisalReport'],
-    haggleRoom: 1,
+    haggleRoom: CRAFTED_HAGGLE_ROOM,
     note: 'Ağırlık, ayar, kondisyon. Kilidi olduğu için tamir alır; ölçü servisi almaz.',
   },
 
@@ -166,7 +198,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     attributes: ['weight', 'purity', 'coreIntegrity', 'stone', 'condition'],
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     services: ['clean', 'chainRepair', 'engraving', 'stoneSet', 'restoration', 'appraisalReport'],
-    haggleRoom: 1,
+    haggleRoom: CRAFTED_HAGGLE_ROOM,
     note: 'Kilit ve halka taşır; uzunluk/kilit tamiri burada anlamlı, yüzük ölçüsü değil.',
   },
 
@@ -177,7 +209,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     // Takı değil: ne ölçüsü ne kilidi var.
     services: ['clean', 'engraving', 'restoration', 'appraisalReport'],
-    haggleRoom: 1,
+    haggleRoom: CRAFTED_HAGGLE_ROOM,
     note: 'Dekoratif gümüş/obje. Takı servisleri uygulanmaz.',
   },
 
@@ -190,7 +222,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     // değeri düşürür. Kalanlar belgeleme ve kurtarma işleridir.
     services: ['clean', 'stoneSet', 'restoration', 'appraisalReport'],
     // Tek parça, referans fiyat yok — pazarlık en geniş burada anlamlı.
-    haggleRoom: 1,
+    haggleRoom: CRAFTED_HAGGLE_ROOM,
     note: 'Vintage/koleksiyon. Özgünlüğü bozan servisler kapalı.',
   },
 };

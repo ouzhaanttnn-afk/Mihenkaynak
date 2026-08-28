@@ -156,11 +156,18 @@ export function effectiveReservation(ctx: NegotiationContext, session: Negotiati
   const base = sign === 1 ? customer.reservationPrice : purchaseThresholdBase(ctx);
   const raw = base * a.closeThreshold * (1 - sign * flex);
 
-  return Math.round(compressToFair(raw, ctx));
+  return Math.round(scaleToFair(raw, ctx));
 }
 
 /**
  * Eşiği ürünün gerçek makasına oturtur (product-classes.ts · haggleRoom).
+ *
+ * TEK YÖNLÜ DEĞİL — İKİ YÖNLÜ ÖLÇEK:
+ *   room < 1  → adil değerden sapma DARALIR (sarrafiye: fiyat kamuya açık)
+ *   room = 1  → nötr, hiçbir şey değişmez
+ *   room > 1  → sapma GENİŞLER (ikinci el işçilikli: fiyatı kimse tam bilmez)
+ * Önce yalnız daraltma yapıyordu ve `room >= 1` erken çıkışı genişletmeyi
+ * imkânsız kılıyordu. Formül aynı; kapı artık iki yöne de açık.
  *
  * Pazarlık modeli rezervasyonu ARKETİPTEN alır ve ürüne kördür. Bu, ikinci
  * el takıda doğrudur; standart sarrafiyede değildir — çeyreğin fiyatını
@@ -178,10 +185,11 @@ export function effectiveReservation(ctx: NegotiationContext, session: Negotiati
  * müşterinin o rezervasyona ne kadar yaklaşılmasını kabul ettiğidir —
  * `effectiveReservation`ın zaten yaptığı iş budur.
  */
-function compressToFair(threshold: number, ctx: NegotiationContext): number {
+function scaleToFair(threshold: number, ctx: NegotiationContext): number {
   const fair = ctx.fairValue;
   const room = ctx.haggleRoom ?? 1;
-  if (fair === undefined || fair <= 0 || room >= 1) return threshold;
+  // room === 1 nötr: adil değerden sapma olduğu gibi kalır.
+  if (fair === undefined || fair <= 0 || room === 1) return threshold;
   return fair + (threshold - fair) * Math.max(0, room);
 }
 

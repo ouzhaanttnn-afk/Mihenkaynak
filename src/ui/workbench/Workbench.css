@@ -766,39 +766,9 @@
  * ne değişecek?'" Pazarlık aşamasında birinci soru bu panelle cevaplanır —
  * oyuncu değer bandını görmek için Değerle aşamasına dönmek zorunda kalmaz.
  */
-.knownPanel {
-  padding: var(--sp-3);
-  border-radius: var(--r-md);
-  background: rgba(8, 11, 15, 0.5);
-  border: 1px solid var(--line-dark);
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
 
-.knownPanel__label {
-  font-size: var(--fs-micro);
-  color: var(--text-dark-3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
 
-.knownPanel__band {
-  font-family: var(--font-display);
-  font-size: var(--fs-title);
-  font-weight: var(--fw-bold);
-  color: var(--brass-300);
-  line-height: var(--lh-tight);
-}
 
-.knownPanel__foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  font-size: var(--fs-micro);
-  color: var(--text-dark-2);
-}
 
 /* FINAL OFFER sonuç önizlemesi (GDD 23.12 "Final Offer" satırı). */
 .preview {
@@ -1306,8 +1276,14 @@
  * Kademeli yoğunluk azaltma. Kaldırılan her blok, bilgisi başka bir yerde
  * zaten görünen ikincil bloktur — karar için gereken hiçbir şey kaybolmaz:
  *   contextRow  → "Alış tavanı" Karar Dock'u özet satırında da var.
- *   knownPanel  → değer bandı Değerle aşamasında tek dokunuş uzakta.
  *   history     → anti-spam geri bildirimi müşteri mesajında zaten veriliyor.
+ *
+ * KARAR PANELİ (.refPanel) HİÇBİR KADEMEDE GİZLENMEZ.
+ * Eskiden değer bandı `knownPanel` içindeydi ve dar ekranda "Değerle
+ * aşamasında tek dokunuş uzakta" gerekçesiyle küçültülüyordu. O gerekçe
+ * artık geçerli değil: band, piyasa referansı ve teklif AYNI panelde ve
+ * pazarlık boyunca kalıcı olmak zorunda. Karar için gereken şey, kararın
+ * verildiği ekranda durur.
  */
 @media (max-height: 760px) {
   .wb {
@@ -1323,13 +1299,6 @@
   .contextRow {
     display: none;
   }
-  .knownPanel {
-    padding: var(--sp-2) var(--sp-3);
-    gap: var(--sp-1);
-  }
-  .knownPanel__band {
-    font-size: var(--fs-subtitle);
-  }
   .stateBadge {
     width: 84px;
   }
@@ -1344,22 +1313,6 @@
     display: none;
   }
 
-  /*
-   * "Ne biliyorum?" paneli KALIR — SCREEN NORTH STAR'ın birinci sorusudur ve
-   * yerini alacak başka bir yüzey yoktur. Yalnız tek satıra sıkışır.
-   */
-  .knownPanel {
-    flex-direction: row;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: var(--sp-2) var(--sp-3);
-  }
-  .knownPanel__band {
-    font-size: var(--fs-body);
-  }
-  .knownPanel__foot {
-    flex: 1 1 100%;
-  }
   .speech {
     padding: var(--sp-2) var(--sp-3);
   }
@@ -2049,6 +2002,132 @@
 
 .refPanel__val--positive { color: var(--positive-soft); }
 .refPanel__val--negative { color: var(--negative-soft); }
+.refPanel__val--neutral { color: var(--text-dark-2); }
+
+/*
+ * "Senin Analizin" panelin ÇAPASIDIR: altındaki her satır ona göre okunur.
+ * Pirinç kenar ve biraz nefes onu bir liste kalemi olmaktan çıkarır.
+ */
+.refPanel__row--analysis {
+  margin-bottom: 3px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-dark);
+}
+
+.refPanel__row--analysis .refPanel__val {
+  color: var(--brass-300);
+}
+
+/* Güven etiketi anahtarın devamıdır; ayrı satıra düşmez. */
+.refPanel__conf {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════
+ * KARAR PANELİ · KISA EKRAN — İKİ SÜTUN
+ *
+ * NEDEN BURADA, YUKARIDAKİ KISA EKRAN BLOĞUNDA DEĞİL:
+ * ilk denemede bu kurallar dosyanın yukarısındaki @media bloğuna yazılmıştı
+ * ve HİÇ UYGULANMADI — medya sorgusu özgüllük eklemez, `.refPanel`ın temel
+ * kuralı dosyada daha AŞAĞIDA olduğu için kazanıyordu. Ölçüm bunu açıkça
+ * gösterdi: 360×640'ta panel hâlâ 119 px ve tek sütundu. Override, ezmek
+ * istediği kuralın ardında durmak zorunda.
+ *
+ * ÖLÇÜM (360×640): tek sütunda panel 119 px yer istiyordu, pazarlık
+ * kolonunun ise 155 px'i vardı ve panelin üstünde konuşma balonu da var.
+ * "Senin Teklifin" ve "Analize Göre Fark" — yani slider oynatıldıkça
+ * DEĞİŞEN iki satır — katlanın altında kalıyordu.
+ *
+ * Çözüm satır silmek değil, satırları yan yana koymak: anahtar değerin
+ * ÜSTÜNE geçer, dört zorunlu bilgi iki satıra sığar.
+ *
+ * Tek feda edilen "Referansa Göre Fark": o zaten üstünde duran iki satırın
+ * (referans ve teklif) çıkarması. Bilgi kaybolmuyor, yalnız hazır
+ * hesaplanmış hâli gidiyor.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+@media (max-height: 700px) {
+  .refPanel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px var(--sp-3);
+    padding: var(--sp-1) var(--sp-3);
+  }
+
+  .refPanel__row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+  }
+
+  .refPanel__row--analysis {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  /*
+   * KISA EKRANDA GİZLENEN İKİ SATIR — ikisi de başka bir yerde zaten var:
+   *
+   *   Referansa Göre Fark → üstündeki iki satırın (referans ve teklif)
+   *                         çıkarması; sayılar duruyor, hazır fark gidiyor.
+   *   Toplam (g × ₺/g)    → Karar Dock'undaki teklif tutarı zaten ekranın
+   *                         EN BÜYÜK sayısı (GDD 23.12). Aynı rakamı iki
+   *                         kez yazmak için "Analize Göre Fark"ı katlanın
+   *                         altına itmek kötü bir takas olurdu.
+   *
+   * Ölçüm (390×664): altı satırlı sarrafiye panelinde 110 px → 78 px;
+   * "Analize Göre Fark" katlanın altından yukarı çıkıyor.
+   */
+  .refPanel__row--refGap,
+  .refPanel__row--total {
+    display: none;
+  }
+
+  .refPanel__key {
+    line-height: 1.05;
+  }
+
+  .refPanel__val {
+    font-size: var(--fs-micro);
+  }
+}
+
+/*
+ * ÇOK KISA EKRAN (≤660 px) — hücreler tek satıra iner.
+ *
+ * 360×640'ta pazarlık kolonu yalnız 133 px; iki satırlı hücrelerle panel
+ * 88 px istiyordu ve konuşma balonuyla birlikte taşıyordu. Anahtar ile
+ * değeri yan yana koymak panelin yüksekliğini yarıya indirir.
+ *
+ * Anahtarlar kısaltılMADI: "Piyasa Referans Alış" ne demek olduğunu
+ * söyleyen tek şey; kırpılmış bir etiket, görünmeyen bir satır kadar
+ * işe yaramaz. Bunun yerine anahtar gerekirse tek satırda üç nokta ile
+ * kısalır, değer ise asla kısalmaz — okunması gereken sayıdır.
+ */
+@media (max-height: 660px) {
+  .refPanel__row {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-1);
+  }
+
+  .refPanel__key {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .refPanel__val {
+    flex: 0 0 auto;
+  }
+}
+
 
 /* ------------------------------------------------------------------ */
 /* EKSPERTİZ / DANIŞMA AKIŞI (GDD 23.23 beşinci akış)                  */
@@ -2483,13 +2562,29 @@
  * mesajıdır; hamle şeridi bunların yanında bilgilendirici bir eklentidir.
  * 620 px'in altında şerit kapanır, portre küçülür — kırpmak yerine.
  */
-@media (max-height: 620px) {
+/*
+ * KISA EKRANDA ÖNCELİK SIRASI — ölçülerek belirlendi.
+ *
+ * 360×640'ta pazarlık kolonu 133 px. Oraya sığması GEREKEN şey Karar
+ * Paneli'dir: analiz, referans, teklif ve fark. Onunla yer için yarışan iki
+ * öge var ve ikisi de ikincil:
+ *
+ *   moveStrip (74 px) → az önce KENDİ bastığın düğmenin hatırlatması.
+ *                       Eşik 620'den 700'e çekildi: 640 px'lik telefonda
+ *                       teklif verilir verilmez açılıyor ve paneli katlanın
+ *                       altına itiyordu.
+ *   portre    (72 px) → müşteri kimliği; aynı bilgi müşteri şeridinde
+ *                       zaten var. 700 px altında 52 px'e iner.
+ *
+ * İkisinden de kısmak, kararın girdisini ekrandan atmaktan iyidir.
+ */
+@media (max-height: 700px) {
   .moveStrip {
     display: none;
   }
 
   .speech__portrait {
-    width: 56px;
-    height: 56px;
+    width: 52px;
+    height: 52px;
   }
 }

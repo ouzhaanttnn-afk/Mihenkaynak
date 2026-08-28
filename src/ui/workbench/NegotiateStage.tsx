@@ -48,6 +48,12 @@ const MOVE_ICON: Record<string, typeof IconReason> = {
 interface Props {
   session: NegotiationSession;
   message: string;
+  /**
+   * Oyuncunun masadaki TOPLAM teklifi. `reference` yalnız sarrafiyede dolu
+   * olduğu için, işçilikli üründe teklifi buradan okuruz — analiz satırı
+   * her iki üründe de çalışmak zorunda.
+   */
+  offer: Money;
   /** Konuşan müşterinin görünen adı — portre bunun üzerinden eşlenir. */
   customerName?: string;
   selectedThesis: ExitChannel | null;
@@ -86,6 +92,7 @@ interface Props {
 export function NegotiateStage({
   session,
   message,
+  offer,
   customerName,
   selectedThesis,
   thesisOptions,
@@ -102,8 +109,48 @@ export function NegotiateStage({
   const isFinal = session.state === 'FINAL_OFFER';
   const counter = session.finalOffer ?? session.activeCounter;
 
-  // Ara bölgede gösterilecek bir şey var mı: sonuç önizlemesi ya da band.
-  const hasSpacerContent = (isFinal && counter !== null && active !== undefined) || band !== null;
+  /*
+    Ara bölge artık YALNIZ final teklif önizlemesini taşır.
+    Değer bandı buradan alındı ve aşağıdaki kalıcı Karar Paneli'ne taşındı:
+    band spacer'da yaşarken, FINAL_OFFER'a geçilince önizleme onun yerini
+    alıyordu — yani oyuncu tam da geri dönüşü olmayan kararı verirken kendi
+    analizini kaybediyordu.
+  */
+  const hasSpacerContent = isFinal && counter !== null && active !== undefined;
+
+  /*
+    Teklifin oyuncunun KENDİ analizine göre nerede durduğu.
+
+    Bandın ORTASINA göre işaretli fark + bandın neresinde olduğunu söyleyen
+    tek kelime. Neden ikisi birden: yalnız rakam "1.204 ₺ aşağıdayım" der ama
+    bandın içinde mi dışında mı olduğunu söylemez; yalnız kelime ise ne kadar
+    aşağıda olduğunu gizler.
+
+    TON, YÖNE BAĞLIDIR. Dükkân ALIRKEN bandın altında kalmak iyidir; dükkân
+    SATARKEN bandın üstüne çıkmak iyidir. Tek yönlü yazılsaydı alış akışında
+    kârlı teklif kırmızı görünürdü — bu hata bu ekranda daha önce yapılmıştı.
+
+    GDD 6.6: burada müşterinin kabul eşiği YOKTUR. Karşılaştırma yalnız
+    oyuncunun kendi ürettiği bandadır.
+  */
+  const shopSells = reference?.direction === 'shopSells';
+  const analysisGap = (() => {
+    if (!band) return { text: '—', tone: 'neutral' as const };
+    const mid = (band.min + band.max) / 2;
+    const diff = offer - mid;
+    const inside = offer >= band.min && offer <= band.max;
+    const below = offer < band.min;
+
+    const where = inside ? 'band içi' : below ? 'band altı' : 'band üstü';
+    // Alırken aşağısı, satarken yukarısı oyuncunun lehine.
+    const favourable = inside ? null : shopSells ? !below : below;
+    const tone = favourable === null ? 'neutral' : favourable ? 'positive' : 'negative';
+
+    return {
+      text: `${diff >= 0 ? '+' : '−'}${tlBare(Math.abs(Math.round(diff)))} ₺ · ${where}`,
+      tone,
+    };
+  })();
 
   /*
     HAMLE ŞERİDİ — pazarlığın "az önce ne oldu" satırı.
@@ -198,81 +245,104 @@ export function NegotiateStage({
               <span className="preview__val preview__val--negative">Yok — kabul veya red</span>
             </div>
           </div>
-        ) : (
-          band && (
-            /* "Ne biliyorum?" — oyuncu bandı görmek için geri dönmek zorunda kalmaz. */
-            <div className="knownPanel">
-              <span className="knownPanel__label">Tahmini değer aralığı</span>
-              <span className="knownPanel__band num">
-                {tlBare(band.min)} – {tlBare(band.max)} ₺
-              </span>
-              <span className="knownPanel__foot">
-                <span>
-                  Güven:{' '}
-                  <strong className={`confidence__value--${band.confidence}`}>
-                    {CONFIDENCE_LABEL[band.confidence]}
-                  </strong>
-                </span>
-                <span className="num">
-                  {verifiedFields}/{totalFields} alan doğrulandı
-                </span>
-              </span>
-            </div>
-          )
-        )}
+        ) : null}
       </div>
 
       {/*
-        §2 — TEKLİF EKRANINDA PİYASA REFERANSI.
-        Referans bir hedef değil bir ÇAPA: oyuncu kendi teklifini piyasanın
-        tipik alışına göre konumlandırır. Müşterinin kabul edeceği fiyat
-        burada YOKTUR ve olmamalıdır (GDD 6.6).
+        KARAR PANELİ — pazarlık boyunca KALICI.
+
+        Dört bilgi aynı yüzeyde durur:
+          · Senin Analizin        → testler ve değerleme sonucu ulaştığın band
+          · Piyasa Referans Alış  → piyasanın tipik alışı (yalnız sarrafiyede)
+          · Senin Teklifin        → masadaki rakamın
+          · Analize Göre Fark     → teklifin kendi analizine göre nerede durduğu
+
+        NEDEN BİRLİKTE: analiz Değerle aşamasında yapılıyor, teklif Pazarlık
+        aşamasında veriliyordu. İkisi ayrı ekranlarda kalınca oyuncu kendi
+        vardığı sonucu hatırlamak için geri dönmek zorundaydı — kararın
+        girdisi kararın verildiği yerde değildi.
+
+        BURADA OLMAYAN ŞEY (GDD 6.6): müşterinin gizli kabul fiyatı ve
+        rezervasyonu. Band oyuncunun KENDİ bilgisidir, müşterinin değil;
+        "Analize Göre Fark" da teklifi o kendi bilgisine göre konumlar,
+        müşterinin kabul edeceği rakama göre değil.
       */}
-      {reference && (
+      {(band || reference) && (
         <div className="refPanel">
+          {band && (
+            <div className="refPanel__row refPanel__row--analysis">
+              <span className="refPanel__key">
+                Senin Analizin
+                <span className={`refPanel__conf confidence__value--${band.confidence}`}>
+                  {' '}
+                  · {CONFIDENCE_LABEL[band.confidence]} ({verifiedFields}/{totalFields})
+                </span>
+              </span>
+              <span className="refPanel__val num">
+                {tlBare(band.min)} – {tlBare(band.max)} ₺
+              </span>
+            </div>
+          )}
+
+          {reference && (
+            <div className="refPanel__row">
+              <span className="refPanel__key">
+                {reference.direction === 'shopBuys'
+                  ? 'Piyasa Referans Alış'
+                  : 'Piyasa Referans Satış'}
+              </span>
+              <span className="refPanel__val num">
+                {tlBare(reference.unitReference)} {reference.unit}
+              </span>
+            </div>
+          )}
+
           <div className="refPanel__row">
             <span className="refPanel__key">
-              {reference.direction === 'shopBuys'
-                ? 'Piyasa Referans Alış'
-                : 'Piyasa Referans Satış'}
+              {reference && reference.direction === 'shopSells' ? 'İstediğin Fiyat' : 'Senin Teklifin'}
             </span>
             <span className="refPanel__val num">
-              {tlBare(reference.unitReference)} {reference.unit}
+              {reference
+                ? `${tlBare(reference.unitOffer)} ${reference.unit}`
+                : `${tlBare(offer)} ₺`}
             </span>
           </div>
-          <div className="refPanel__row">
-            <span className="refPanel__key">
-              {reference.direction === 'shopBuys' ? 'Senin Teklifin' : 'İstediğin Fiyat'}
-            </span>
-            <span className="refPanel__val num">
-              {tlBare(reference.unitOffer)} {reference.unit}
-            </span>
-          </div>
-          <div className="refPanel__row">
-            <span className="refPanel__key">Referansa Göre Fark</span>
-            <span
-              className={`refPanel__val num refPanel__val--${
-                (
-                  reference.direction === 'shopBuys'
-                    ? reference.unitOffer <= reference.unitReference
-                    : reference.unitOffer >= reference.unitReference
-                )
-                  ? 'positive'
-                  : 'negative'
-              }`}
-            >
-              {/* tlSigned zaten ₺ ekliyor; birim de ₺ taşıdığı için burada
-                  yalnız işaretli sayı ve birim yazılır. */}
-              {reference.unitOffer > reference.unitReference ? '+' : '−'}
-              {tlBare(Math.abs(reference.unitReference - reference.unitOffer))} {reference.unit}
-            </span>
-          </div>
+
+          {band && (
+            <div className="refPanel__row">
+              <span className="refPanel__key">Analize Göre Fark</span>
+              <span className={`refPanel__val num refPanel__val--${analysisGap.tone}`}>
+                {analysisGap.text}
+              </span>
+            </div>
+          )}
+
+          {reference && (
+            <div className="refPanel__row refPanel__row--refGap">
+              <span className="refPanel__key">Referansa Göre Fark</span>
+              <span
+                className={`refPanel__val num refPanel__val--${
+                  (
+                    reference.direction === 'shopBuys'
+                      ? reference.unitOffer <= reference.unitReference
+                      : reference.unitOffer >= reference.unitReference
+                  )
+                    ? 'positive'
+                    : 'negative'
+                }`}
+              >
+                {reference.unitOffer > reference.unitReference ? '+' : '−'}
+                {tlBare(Math.abs(reference.unitReference - reference.unitOffer))} {reference.unit}
+              </span>
+            </div>
+          )}
+
           {/*
             §1 — "adet/gram × birim fiyat = toplam". Gram bazlı üründe birim
             fiyat ₺/g olduğu için toplam ayrıca yazılmalı: 4.257 ₺/g tek
             başına 10 g'lık külçenin ne ettiğini söylemez.
           */}
-          {reference.showTotal && (
+          {reference?.showTotal && (
             <div className="refPanel__row refPanel__row--total">
               <span className="refPanel__key">{reference.totalLabel}</span>
               <span className="refPanel__val num">{tlBare(reference.totalOffer)} ₺</span>

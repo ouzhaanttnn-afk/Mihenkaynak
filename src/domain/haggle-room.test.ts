@@ -6,7 +6,7 @@
  * Ata Lira getiren müşteri gerçek değerin %76'sına razı olabiliyordu, yani
  * dükkânın brüt marjı %13,8'e çıkıyordu. Gerçek sektörde gram başı ~100 ₺.
  *
- * Bu testler İKİ ŞEYİ birden korur: sarrafiyenin dar kalmasını VE işçikli
+ * Bu testler İKİ ŞEYİ birden korur: sarrafiyenin dar kalmasını VE işçilikli
  * ürünün daralmamasını. Tek yönlü bir test, ikinci el takıyı da yanlışlıkla
  * sıkıştıran bir değişikliği yakalayamazdı.
  */
@@ -130,9 +130,18 @@ describe('Sarrafiyede pazarlık payı gerçek makasa oturur', () => {
       expect(caps.length, id).toBeGreaterThan(3);
 
       const perGram = ((mean(caps) - buy) * fair) / meta.unitWeightGrams;
-      // Gerçek sektör ~100 ₺/gram; oyun bunun ~2 katında oturuyor (oynanabilirlik).
-      expect(perGram, `${id}: ${perGram.toFixed(0)} ₺/gram`).toBeGreaterThan(100);
-      expect(perGram, `${id}: ${perGram.toFixed(0)} ₺/gram`).toBeLessThan(260);
+      /*
+        SINIRLAR GÜNCELLENDİ — pay 0,12'den 0,06'ya inince tur farkı da indi.
+        Eski sınır (100–260 ₺/g) oyunun sektörün ~2 katında oturduğu döneme
+        aitti. Ölçüm: 1 g altında tur farkı 99 ₺/gram, yani playtest'te
+        istenen "gram başı ~100 ₺" mertebesinin ta kendisi. Alt sınırı
+        düşürmek testi gevşetmek değil, hedefi tutturmuş olmayı kabul etmek.
+
+        Test HÂLÂ İKİ YÖNLÜ: 60'ın altı tur farkının çöktüğü (dükkân para
+        kazanamaz), 160'ın üstü sarrafiyenin yeniden şiştiği anlamına gelir.
+      */
+      expect(perGram, `${id}: ${perGram.toFixed(0)} ₺/gram`).toBeGreaterThan(60);
+      expect(perGram, `${id}: ${perGram.toFixed(0)} ₺/gram`).toBeLessThan(160);
     }
   });
 });
@@ -150,11 +159,29 @@ describe('İşçilikli ve ikinci el üründe pazarlık DARALMAZ', () => {
   });
 
   it('her sarrafiye sınıfının payı, her işçilikli sınıfınkinden dardır', () => {
+    /*
+      İLİŞKİYİ bağlar, SAYIYI değil. Önce `toBe(1)` yazılmıştı; işçilikli payı
+      1'den 1,5'e çıkarıldığında test kırıldı — oysa korumaya çalıştığı şey
+      ("sarrafiye dar, işçilikli geniş") bozulmamıştı, aksine güçlenmişti.
+      Bir sabiti çakmak, o sabitin var olma sebebini korumakla aynı şey değil.
+    */
+    const bullionRooms: number[] = [];
+    const craftedRooms: number[] = [];
     for (const t of ITEM_TEMPLATES) {
       const room = rulesFor(t).haggleRoom;
-      if (isBullion(t.id)) expect(room, t.id).toBeLessThan(0.5);
-      else expect(room, t.id).toBe(1);
+      if (isBullion(t.id)) bullionRooms.push(room);
+      else craftedRooms.push(room);
     }
+    expect(bullionRooms.length).toBeGreaterThan(0);
+    expect(craftedRooms.length).toBeGreaterThan(0);
+
+    // Sarrafiye daraltılır (<1), işçilikli genişletilir (>1).
+    for (const r of bullionRooms) expect(r).toBeLessThan(0.5);
+    for (const r of craftedRooms) expect(r).toBeGreaterThan(1);
+
+    // Ve aradaki fark tesadüfi değil: en geniş sarrafiye bile en dar
+    // işçiliklinin onda birinden dar olmalı.
+    expect(Math.max(...bullionRooms) * 10).toBeLessThan(Math.min(...craftedRooms));
   });
 });
 
@@ -200,5 +227,64 @@ describe('Sıkıştırma pazarlığı öldürmez', () => {
     // fairValue/haggleRoom yoksa ve room=1 ise sonuç değişmemeli.
     expect(effectiveReservation({ ...base, fairValue: fair, haggleRoom: 1 }, session))
       .toBe(effectiveReservation(base, session));
+  });
+});
+
+describe('Pazarlık alanı: işçilikli GENİŞ, sarrafiye DAR', () => {
+  /**
+   * "Beceri farkı": aynı müşteriye karşı, tüm gerekçe ve jestini harcamış bir
+   * oyuncunun ödediği fiyat ile hiçbir hamle yapmamış oyuncunun ödediği fiyat
+   * arasındaki puan farkı. Pazarlığın oyuncuya AÇTIĞI alan tam olarak budur.
+   *
+   * Bu test sabitleri değil, sabitlerin ÜRETTİĞİ davranışı ölçer: biri
+   * `haggleRoom`u değiştirir de niyeti bozarsa burada yakalanır.
+   */
+  function skillGap(bullion: boolean): number {
+    const store = makeStore();
+    const gaps: number[] = [];
+    for (let day = 1; day <= 20; day++) {
+      const market = createMarketForDay(SEED, day);
+      const character = dayCharacter(SEED, day, market);
+      for (let i = 0; i < 60; i++) {
+        const c = spawnCustomer(SEED + day, i, market, store, character);
+        if (c.customer.intent !== 'sell') continue;
+        for (const item of c.items) {
+          if (isBullion(item.templateId) !== bullion) continue;
+          const fair = trueValue(item, market);
+          if (fair <= 0) continue;
+          const base = {
+            customer: c.customer, direction: 'shopBuys' as TradeSide, reputation: store.reputation,
+            buyCeiling: 0, knowledge: [],
+            fairValue: fair, haggleRoom: rulesFor(getTemplate(item.templateId)).haggleRoom,
+          };
+          const lazy = effectiveReservation(base, createSession('l', 'i')) / fair;
+          const sharp = effectiveReservation(base, aggressiveSession()) / fair;
+          gaps.push(lazy - sharp);
+        }
+      }
+    }
+    gaps.sort((a, b) => a - b);
+    return gaps[Math.floor(gaps.length / 2)]!; // medyan
+  }
+
+  it('sarrafiyede pazarlık alanı dardır ama SIFIR DEĞİLDİR', () => {
+    const gap = skillGap(true);
+    // Sıfır olsaydı gerekçe ve jest düğmeleri sarrafiyede yalan söylerdi.
+    expect(gap, `sarrafiye beceri farkı ${(gap * 100).toFixed(1)} puan`).toBeGreaterThan(0.001);
+    expect(gap, `sarrafiye beceri farkı ${(gap * 100).toFixed(1)} puan`).toBeLessThan(0.02);
+  });
+
+  it('işçilikli üründe pazarlık alanı belirgin biçimde geniştir', () => {
+    const gap = skillGap(false);
+    expect(gap, `işçilikli beceri farkı ${(gap * 100).toFixed(1)} puan`).toBeGreaterThan(0.08);
+  });
+
+  it('işçilikli alan, sarrafiye alanının en az 10 katıdır', () => {
+    const bullionGap = skillGap(true);
+    const craftedGap = skillGap(false);
+    expect(
+      craftedGap / bullionGap,
+      `işçilikli ${(craftedGap * 100).toFixed(1)} puan / sarrafiye ${(bullionGap * 100).toFixed(1)} puan`,
+    ).toBeGreaterThan(10);
   });
 });

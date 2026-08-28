@@ -72,10 +72,23 @@ interface Props {
   current: WorkbenchStage;
   canEnter: (stage: WorkbenchStage) => boolean;
   onSelect: (stage: WorkbenchStage) => void;
+  /**
+   * Bu üründe GEREKSİZ olan aşamalar — şeritte gösterilmez.
+   *
+   * NEDEN GİZLEME, KAPATMA DEĞİL: standart sarrafiyede rasyonel bir çıkış
+   * planı seçimi yoktur (çeyreğin nereye satılacağı zaten bellidir), ama
+   * aşamanın KENDİSİ silinmez — Karar Dock'undan hâlâ açılabilir. Şeritte
+   * dördüncü bir adım göstermek, olmayan bir zorunluluğu varmış gibi
+   * okutuyordu: oyuncu "önce buraya girmem gerekiyor" diye duruyordu.
+   *
+   * Şu an açık olan aşama listede olsa bile GİZLENMEZ; oyuncu bir aşamanın
+   * içindeyken o aşamanın şeritten kaybolması, bulunduğu yeri kaybetmek olur.
+   */
+  skipStages?: WorkbenchStage[];
 }
 
-export function StageStrip({ flow, current, canEnter, onSelect }: Props) {
-  const STEPS =
+export function StageStrip({ flow, current, canEnter, onSelect, skipStages = [] }: Props) {
+  const ALL_STEPS =
     flow === 'service'
       ? SERVICE_STEPS
       : flow === 'purchase'
@@ -83,6 +96,9 @@ export function StageStrip({ flow, current, canEnter, onSelect }: Props) {
         : flow === 'appraisal'
           ? APPRAISAL_STEPS
           : TRADE_STEPS;
+  const STEPS = ALL_STEPS.filter(
+    (step) => step.stage === current || !skipStages.includes(step.stage),
+  );
   const ORDER =
     flow === 'service'
       ? SERVICE_ORDER

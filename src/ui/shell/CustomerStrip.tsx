@@ -13,7 +13,8 @@ import { getArchetype } from '@data/archetypes';
 import { IconQueue } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { customerArt } from '@ui/assets';
-import type { Customer } from '@domain/types';
+import { customerIntentLine } from '@ui/intent-line';
+import type { Customer, ItemInstance } from '@domain/types';
 
 interface Props {
   customer: Customer | null;
@@ -21,6 +22,11 @@ interface Props {
   record?: CustomerRecord | null;
   queueLength: number;
   lineCount: number;
+  /**
+   * Müşterinin GETİRDİĞİ kalemler. Niyet cümlesi ürünü adıyla anmak için
+   * bunlara ihtiyaç duyar: "1 adet 14 Ayar Yüzük satmak istiyor".
+   */
+  broughtItems: ItemInstance[];
 }
 
 /** Etiket tonu: sadık yeşil, küsmüş kırmızı, arası nötr. */
@@ -30,14 +36,7 @@ function tieTone(record: CustomerRecord): 'good' | 'bad' | 'neutral' {
   return 'neutral';
 }
 
-const INTENT_TEXT: Record<Customer['intent'], string> = {
-  sell: 'Ürün satmak / bozdurmak istiyor',
-  buy: 'Dükkandan ürün almak istiyor',
-  service: 'Servis / tamir istiyor',
-  appraisal: 'Ekspertiz danışıyor',
-};
-
-export function CustomerStrip({ customer, record, queueLength, lineCount }: Props) {
+export function CustomerStrip({ customer, record, queueLength, lineCount, broughtItems }: Props) {
   if (!customer) {
     return (
       <div className="customerStrip">
@@ -86,7 +85,11 @@ export function CustomerStrip({ customer, record, queueLength, lineCount }: Prop
           )}
         </div>
         <div className="customerStrip__intent">
-          {INTENT_TEXT[customer.intent]}
+          {/*
+            Ne istediği TAHMİN ETTİRİLMEZ: ürün adı, adedi ve müşterinin
+            eylemi açık yazılır (bkz. @ui/intent-line).
+          */}
+          {customerIntentLine(customer, broughtItems)}
           {/*
             GDD 10.3 — tanıdık müşteri tanınmalı. Oyuncu karşısındakinin
             geçmişini görmeden "uzun vadeli değeri korumak" diye bir karar
