@@ -1192,6 +1192,34 @@
   color: var(--negative);
 }
 
+/* Kuyruk varken aşırı kısa ekran: boş ray ve özet yerine tam müşteri kartı. */
+@media (max-height: 560px) {
+  .toolRail--idle {
+    display: none;
+  }
+
+  .coach--queuePriority {
+    padding-block: 4px;
+  }
+
+  .coach--queuePriority .coach__text,
+  .coach--queuePriority .coach__skip {
+    display: none;
+  }
+}
+
+@media (max-height: 450px) {
+  .dock--idle {
+    min-height: 60px;
+    padding-block: 4px;
+  }
+
+  .dock--idle .dock__summary,
+  .coach--queuePriority {
+    display: none;
+  }
+}
+
 .stageNotice {
   flex: 0 0 auto;
   padding: 5px var(--sp-3);

@@ -26,11 +26,13 @@ interface Props {
   showSkip: boolean;
   onDismiss: () => void;
   onSkipAll: () => void;
+  /** Bekleyen müşteri varsa kısa ekranda öğretim kompaktlaşır. */
+  queuePriority?: boolean;
 }
 
-export function CoachBar({ lesson, showSkip, onDismiss, onSkipAll }: Props) {
+export function CoachBar({ lesson, showSkip, onDismiss, onSkipAll, queuePriority = false }: Props) {
   return (
-    <aside className="coach" role="note" aria-label="Öğretim ipucu">
+    <aside className={`coach ${queuePriority ? 'coach--queuePriority' : ''}`} role="note" aria-label="Öğretim ipucu">
       <div className="coach__body">
         <span className="coach__title">{lesson.title}</span>
         <span className="coach__text">{lesson.body}</span>

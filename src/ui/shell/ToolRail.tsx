@@ -43,12 +43,14 @@ interface Props {
   /** Sonuç aşamasında ray gizli/disabled olur (GDD 23.10.2). */
   disabled?: boolean;
   emptyLabel?: string;
+  /** Müşteri yokkenki boş ray; aşırı kısa ekranda kuyruğa yer bırakabilir. */
+  idle?: boolean;
 }
 
-export function ToolRail({ items, disabled = false, emptyLabel = 'Bu aşamada araç yok' }: Props) {
+export function ToolRail({ items, disabled = false, emptyLabel = 'Bu aşamada araç yok', idle = false }: Props) {
   return (
     <div
-      className={`toolRail ${disabled ? 'toolRail--disabled' : ''}`}
+      className={`toolRail ${disabled ? 'toolRail--disabled' : ''} ${idle ? 'toolRail--idle' : ''}`}
       role="toolbar"
       aria-label="Bağlamsal araç rayı"
     >

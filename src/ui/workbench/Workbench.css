@@ -1056,10 +1056,16 @@
   white-space: nowrap;
 }
 
+/* Kuyruk varken boş durum dekoru değil, müşteri listesi ana içeriktir. */
+.idle--hasQueue {
+  justify-content: flex-start;
+}
+
 /* ---- Bekleyen müşteri kuyruğu — FIFO sırasını görünür kılan kompakt liste ---- */
 
 .waitingQueue {
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: 96px; /* başlık + en az bir okunabilir müşteri kartı */
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
@@ -1084,13 +1090,18 @@
 }
 
 .waitingQueue__list {
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+}
+
+.waitingQueue__list::-webkit-scrollbar {
+  display: none;
 }
 
 .waitingCustomer {
@@ -1195,9 +1206,31 @@
     display: none;
   }
 
-  .idle--coaching.idle--hasQueue .idle__head,
-  .idle--coaching.idle--hasQueue .position {
+  /*
+   * Ekran kısa olduğunda öğretim açık olsun veya olmasın müşteriyi koru.
+   * Önceki seçici yalnız `idle--coaching` durumunu kapsadığı için kullanıcının
+   * ekran görüntüsündeki gibi ders kapalıyken liste birkaç piksele çöküyordu.
+   */
+  .idle--hasQueue .idle__head,
+  .idle--hasQueue .position,
+  .idle--hasQueue .alerts,
+  .idle--hasQueue .rewardedLine {
     display: none;
+  }
+}
+
+@media (max-height: 450px) {
+  .waitingCustomer {
+    box-sizing: border-box;
+    height: 56px;
+    min-height: 56px;
+    padding: 4px 6px;
+  }
+
+  .waitingCustomer__avatar {
+    flex-basis: 36px;
+    width: 36px;
+    height: 36px;
   }
 }
 

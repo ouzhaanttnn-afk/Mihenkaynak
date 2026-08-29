@@ -404,6 +404,7 @@ export function ShopScreen() {
           lesson={lesson}
           // Atlama kararı bir kez sorulur: hiç ders görmemiş oyuncuya.
           showSkip={s.seenLessons.length === 0}
+          queuePriority={!deal && s.queue.length > 0}
           onDismiss={() => s.dismissLesson(lesson.id)}
           onSkipAll={s.skipOnboarding}
         />
@@ -635,7 +636,7 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
   const line = deal ? activeLine(deal) : undefined;
 
   if (!deal || !line) {
-    return <ToolRail items={[]} emptyLabel="Müşteri karşılandığında araçlar burada" />;
+    return <ToolRail items={[]} idle emptyLabel="Müşteri karşılandığında araçlar burada" />;
   }
 
   const railItem = s.items[line.itemId];
@@ -984,6 +985,7 @@ function ShopDock({
       ].filter(Boolean);
       return (
         <DecisionDock
+          idle
           summaryLabel="Günü kapat"
           summaryValue={warnings.join(' · ')}
           primary={{
@@ -1000,6 +1002,7 @@ function ShopDock({
 
     return (
       <DecisionDock
+        idle
         summaryLabel="Kuyruk"
         summaryValue={hasQueue ? `${s.queue.length} müşteri bekliyor` : 'Müşteri bekleniyor'}
         primary={{
