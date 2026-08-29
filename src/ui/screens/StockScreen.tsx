@@ -19,6 +19,7 @@ import { liquidityBand, liquidityRatio, summarizeWealth } from '@domain/settleme
 import { getTemplate } from '@data/item-templates';
 import { spawnItem } from '@domain/item-spawn';
 import { unitPriceView } from '@domain/channels';
+import { RETAIL_BULLION_CATALOG } from '@data/bullion';
 import { supplyOffer } from '@domain/wholesaler';
 import { useGame } from '@state/gameStore';
 
@@ -207,7 +208,7 @@ function BullionCounter() {
 
       {open && (
         <div className="counter__list">
-          {PLAYTEST_BULLION.map((templateId) => (
+          {RETAIL_BULLION_CATALOG.map((templateId) => (
             <BullionOffer key={templateId} templateId={templateId} />
           ))}
         </div>
@@ -302,21 +303,6 @@ const counterMemory: { open: boolean; qty: Record<string, number> } = {
   open: false,
   qty: {},
 };
-
-/** §4 — playtest havuzu. En az bu on bir ürün bulunmalı. */
-const PLAYTEST_BULLION = [
-  'gram_gold_1',
-  'gram_gold_2_5',
-  'gram_gold_5',
-  'gram_gold_10',
-  'gram_gold_20',
-  'gram_gold_50',
-  'gram_gold_100',
-  'quarter_gold',
-  'half_gold',
-  'full_gold',
-  'ata_gold',
-];
 
 function StockRow({ position }: { position: InventoryPosition }) {
   const item = useGame((s) => s.items[position.itemId]);

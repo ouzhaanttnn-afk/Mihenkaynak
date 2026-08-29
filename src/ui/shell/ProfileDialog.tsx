@@ -27,7 +27,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 
-import { AVATAR_IDS, NAME_MAX, checkJewelerName, type PlayerProfile } from '@domain/profile';
+import { AVATAR_IDS, NAME_MAX, SHOP_SUFFIX, checkJewelerName, type PlayerProfile } from '@domain/profile';
 import { avatarArt } from '@ui/assets';
 import { Art } from '@ui/Art';
 import { IconTrust } from '@ui/icons';
@@ -123,7 +123,7 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
         </h2>
 
         <label className="profileDialog__label" htmlFor={nameId}>
-          Kuyumcu Adı
+          Dükkan Adı
         </label>
         <input
           id={nameId}
@@ -135,7 +135,8 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
             arayüzü bozmasını daha yazılırken engeller. Sınırın kendisi yine
             checkJewelerName'de — tek doğruluk kaynağı orası.
           */
-          maxLength={NAME_MAX}
+          maxLength={NAME_MAX + SHOP_SUFFIX.length + 1}
+          placeholder="İsim koyunuz — örn. Alvera Kuyumculuk"
           autoComplete="off"
           spellCheck={false}
           aria-invalid={error ? true : undefined}
@@ -151,6 +152,7 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
             }
           }}
         />
+        <p className="profileDialog__hint">İsim koyunuz — örn. Alvera Kuyumculuk</p>
         {error && (
           <p className="profileDialog__error" id={errorId} role="alert">
             {error}

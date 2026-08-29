@@ -14,6 +14,7 @@ import { TERM } from '@ui/terms';
 import { useState } from 'react';
 
 import { MARKET_REGIME } from '@domain/balance';
+import { shopDisplayName } from '@domain/profile';
 import {
   LIQUIDITY_BAND_LABEL,
   channelMetrics,
@@ -111,7 +112,7 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
         />
         <h1 className="pageHead__title">İşletme</h1>
         <p className="pageHead__sub">
-          {s.store.name} · Kademe {s.store.storeTier} · Seviye {s.store.level}
+          {shopDisplayName(s.profile.jewelerName)} · Kademe {s.store.storeTier} · Seviye {s.store.level}
         </p>
       </header>
 

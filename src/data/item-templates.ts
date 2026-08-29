@@ -11,6 +11,7 @@
  */
 
 import type { ConditionGrade, ItemFamily, Karat, MetalKind } from '@domain/types';
+import { INVESTMENT_BANGLE_WEIGHTS, investmentBangleTemplateId } from './bullion';
 
 export interface ItemTemplate {
   id: string;
@@ -297,6 +298,24 @@ export const ITEM_TEMPLATES: ItemTemplate[] = [
     designNote: 'Tek işlemde likiditeyi kırmızıya çekebilen ölçek testi.',
     silhouette: 'bar',
   },
+  ...INVESTMENT_BANGLE_WEIGHTS.map((weight): ItemTemplate => ({
+    id: investmentBangleTemplateId(weight),
+    displayName: `22 Ayar İşçiliksiz Bilezik (${weight} g)`,
+    family: 'bullion',
+    metal: 'gold',
+    nominalKarat: '22K',
+    weightBand: [weight, weight],
+    netRatioBand: [1, 1],
+    craftsmanshipRatioBand: [0, 0],
+    conditionWeights: { pristine: 10 },
+    hasStone: false,
+    rarityBand: [0, 0],
+    flawChance: 0,
+    demandTags: ['yatırım', 'likit', 'sarrafiye', 'işçiliksiz bilezik'],
+    minTier: 1,
+    designNote: 'UPDATEv3 standart yatırım bileziği; fiyatı 22 ayar saf metal ve kanal makasından gelir.',
+    silhouette: 'bracelet',
+  })),
 
   // --- Klasik takı: metal + işçilik + kondisyon (GDD 5.1) ---
   {

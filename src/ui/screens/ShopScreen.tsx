@@ -17,6 +17,7 @@ import { TERM } from '@ui/terms';
 import { useEffect, useMemo, useState } from 'react';
 
 import { DAY, NEGOTIATION } from '@domain/balance';
+import { shopDisplayName } from '@domain/profile';
 import { effectiveCeiling, suggestedChannel } from '@domain/thesis';
 import { isTerminal } from '@domain/negotiation';
 import { liquidityRatio } from '@domain/settlement';
@@ -465,7 +466,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
           fallback={null}
         />
         <div className="idle__headText">
-          <h2 className="idle__title">{s.store.name}</h2>
+          <h2 className="idle__title">{shopDisplayName(s.profile.jewelerName)}</h2>
           <p className="idle__sub">
             Gün {s.market.day} · Semt itibarı {Math.round(s.store.reputation)}
           </p>

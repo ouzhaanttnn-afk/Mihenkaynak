@@ -61,6 +61,13 @@ export interface BullionMeta {
   premiumRatio: number;
 }
 
+/** UPDATEv3 — satılabilir yatırım bileziği gramajlarının tek kaynağı. */
+export const INVESTMENT_BANGLE_WEIGHTS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
+
+export function investmentBangleTemplateId(weight: number): string {
+  return `investment_bangle_22k_${weight}`;
+}
+
 /**
  * §4: "Sarrafiye ürün havuzu en az gram altın, çeyrek, yarım, tam ve
  * Ata/Cumhuriyet tipi ürünleri destekleyecek biçimde genişletilir."
@@ -214,7 +221,27 @@ export const BULLION_META: BullionMeta[] = [
     marketSensitivity: 1,
     premiumRatio: 0.005,
   },
+  ...INVESTMENT_BANGLE_WEIGHTS.map((weight): BullionMeta => ({
+    templateId: investmentBangleTemplateId(weight),
+    unitWeightGrams: weight,
+    unitPurity: 0.916,
+    liquidityClass: 'high',
+    volumeBand: [1, 2],
+    bulkVolumeBand: [2, 8],
+    channelFit: ['retailCustomer', 'bulkCustomer', 'wholesaler', 'tradeNetwork'],
+    marketSensitivity: 1,
+    // İşçilik ve tasarım primi yok; fiyat yalnız metal + mevcut kanal makasıdır.
+    premiumRatio: 0,
+  })),
 ];
+
+/**
+ * UPDATEv2/v3 tek doğruluk kaynağı: oyuncunun tedarik edip müşteriye
+ * satabildiği katalog. Talep üretimi ve Stok > Sarrafiye Al bunu paylaşır.
+ */
+export const RETAIL_BULLION_CATALOG = BULLION_META
+  .filter((meta) => meta.channelFit.includes('retailCustomer'))
+  .map((meta) => meta.templateId);
 
 export const BULLION_BY_TEMPLATE = new Map(BULLION_META.map((m) => [m.templateId, m]));
 

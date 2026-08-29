@@ -213,8 +213,8 @@ describe('Müşteri isteği dükkânın tavanıyla aynı dünyada', () => {
   });
 });
 
-describe('İşçilikli talep sarrafiyeyle karşılanmaz', () => {
-  it('"kolye istiyorum" diyen müşteri çeyreğe razı olmaz', () => {
+describe('UPDATEv2 müşteri satın alma kataloğu', () => {
+  it('işçilikli ürün satın alma talebi üretilmez', () => {
     const store = makeStore();
     let checked = 0;
     for (let day = 1; day <= 20; day++) {
@@ -223,12 +223,12 @@ describe('İşçilikli talep sarrafiyeyle karşılanmaz', () => {
       for (let i = 0; i < 60; i++) {
         const c = spawnCustomer(SEED + day, i, market, store, character);
         const d = c.customer.demand;
-        if (!d || d.wantsBullion) continue;
-        expect(d.families, d.summary).not.toContain('bullion');
-        expect(d.alternativesLabel, d.summary).not.toContain('sarrafiye');
+        if (!d) continue;
+        expect(d.wantsBullion, d.summary).toBe(true);
+        expect(d.families, d.summary).toEqual([]);
         checked++;
       }
     }
-    expect(checked).toBeGreaterThan(10);
+    expect(checked).toBeGreaterThan(30);
   });
 });

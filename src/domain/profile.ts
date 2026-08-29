@@ -45,6 +45,21 @@ export function defaultProfile(): PlayerProfile {
 
 export const NAME_MIN = 2;
 export const NAME_MAX = 24;
+export const SHOP_SUFFIX = 'Kuyumculuk';
+
+/** Profilde yalnız temel ad saklanır; sistem eki sondan temizlenir. */
+export function normalizeShopBaseName(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/(?:\s+kuyumculuk)+\s*$/giu, '')
+    .trim();
+}
+
+export function shopDisplayName(baseName: string): string {
+  const normalized = normalizeShopBaseName(baseName) || DEFAULT_JEWELER_NAME;
+  return `${normalized} ${SHOP_SUFFIX}`;
+}
 
 export type NameCheck =
   | { ok: true; value: string }
@@ -61,7 +76,7 @@ export type NameCheck =
  * yalnız uçlardan yapılsaydı sınır anlamını yitirirdi.
  */
 export function checkJewelerName(raw: string): NameCheck {
-  const value = raw.trim().replace(/\s+/g, ' ');
+  const value = normalizeShopBaseName(raw);
 
   if (value.length === 0) {
     return { ok: false, error: 'Kuyumcu adı boş bırakılamaz.' };

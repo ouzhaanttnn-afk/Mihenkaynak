@@ -67,6 +67,11 @@ function sellVerb(items: ItemInstance[]): string {
 
 /** Müşterinin ağzındaki doğal ürün adı; katalog etiketini birebir okumaz. */
 function requestedPhrase(templateId: string, name: string, quantity: number): string {
+  const bangle = /^investment_bangle_22k_(\d+)$/.exec(templateId);
+  if (bangle) {
+    const product = `${bangle[1]} gram 22 ayar işçiliksiz bilezik`;
+    return quantity > 1 ? `${quantity} adet ${product}` : product;
+  }
   const gram = /^gram_gold_(.+)$/.exec(templateId);
   if (gram) {
     const weight = gram[1]!.replace('_', ',');

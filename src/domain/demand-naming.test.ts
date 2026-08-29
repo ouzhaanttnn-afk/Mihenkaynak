@@ -14,13 +14,14 @@ import { describe, expect, it } from 'vitest';
 
 import { START } from './balance';
 import { getTemplate, ITEM_TEMPLATES } from '@data/item-templates';
+import { RETAIL_BULLION_CATALOG, INVESTMENT_BANGLE_WEIGHTS, bullionMeta } from '@data/bullion';
 import { spawnCustomer } from './customer-spawn';
 import { dayCharacter } from './intent';
 import { spawnItem } from './item-spawn';
 import { createMarketForDay } from './market';
 import { matchDemand } from './purchase';
 import { daDe } from '@ui/format';
-import type { StoreState } from './types';
+import type { CustomerDemand, StoreState } from './types';
 
 const SEED = 20260828;
 
@@ -83,32 +84,20 @@ describe('Talep somut bir ürün adı taşır', () => {
     }
   });
 
-  it('işçilikli talepte de somut ad var ve kaç çeşit ürün adı geçtiği bir sabit değil', () => {
-    const crafted = all.filter((d) => !d.wantsBullion);
-    expect(crafted.length).toBeGreaterThan(5);
-    const distinct = new Set(crafted.map((d) => d.templateId));
-    // Tek bir ürüne saplanmış olsaydı "somut" değil "sabit" olurdu.
-    expect(distinct.size).toBeGreaterThan(1);
+  it('UPDATEv2 — bütün satın alma talepleri ortak perakende kataloğundan gelir', () => {
+    for (const d of all) {
+      expect(d.wantsBullion).toBe(true);
+      expect(RETAIL_BULLION_CATALOG).toContain(d.templateId);
+    }
   });
 });
 
 describe('Somut ad talebi kesin ürüne daralır', () => {
-  it('istenen ürünün ailesinden başka bir ürün önerilmez', () => {
-    const crafted = demands().filter((d) => !d.wantsBullion && d.families.length > 0);
-    expect(crafted.length).toBeGreaterThan(5);
-
-    let checked = 0;
-    for (const d of crafted) {
-      // Aynı aileden AMA farklı bir şablon bul.
-      const sibling = ITEM_TEMPLATES.find(
-        (t) => d.families.includes(t.family) && t.id !== d.templateId,
-      );
-      if (!sibling) continue;
-      const item = spawnItem(SEED, 1, sibling.id);
-      expect(matchDemand(d, item), `${d.summary} ← ${sibling.displayName}`).toBe('off');
-      checked++;
+  it('istenen SKU dışında başka sarrafiye önerilmez', () => {
+    for (const d of demands()) {
+      const otherId = RETAIL_BULLION_CATALOG.find((id) => id !== d.templateId)!;
+      expect(matchDemand(d, spawnItem(SEED, 1, otherId))).toBe('off');
     }
-    expect(checked).toBeGreaterThan(3);
   });
 
   it('tam istenen ürün hâlâ en iyi eşleşmedir', () => {
@@ -126,6 +115,37 @@ describe('Somut ad talebi kesin ürüne daralır', () => {
       const expected = d.templateId === 'gram_gold_5' ? 'exact' : 'off';
       expect(matchDemand(d, other)).toBe(expected);
     }
+  });
+});
+
+describe('UPDATEv3 yatırım bileziği kataloğu', () => {
+  it('yalnız 10 gramın katı 10–100 g SKU üretir', () => {
+    const ids = RETAIL_BULLION_CATALOG.filter((id) => id.startsWith('investment_bangle_22k_'));
+    expect(ids).toHaveLength(INVESTMENT_BANGLE_WEIGHTS.length);
+    expect(ids.map((id) => Number(id.split('_').at(-1)))).toEqual([...INVESTMENT_BANGLE_WEIGHTS]);
+  });
+
+  it('işçiliksiz, taşsız ve yalnız 22 ayardır', () => {
+    for (const weight of INVESTMENT_BANGLE_WEIGHTS) {
+      const t = getTemplate(`investment_bangle_22k_${weight}`);
+      expect(t.nominalKarat).toBe('22K');
+      expect(t.weightBand).toEqual([weight, weight]);
+      expect(t.craftsmanshipRatioBand).toEqual([0, 0]);
+      expect(t.hasStone).toBe(false);
+      expect(bullionMeta(t.id)?.unitPurity).toBe(0.916);
+      expect(bullionMeta(t.id)?.premiumRatio).toBe(0);
+    }
+  });
+
+  it('20 g talebi 10 g ve 30 g bileziği kesin biçimde reddeder', () => {
+    const demand: CustomerDemand = {
+      families: [], wantsBullion: true, templateId: 'investment_bangle_22k_20',
+      quantity: 1, isBulk: false, acceptsPartial: false, minQuantity: 1,
+      summary: '20 g bilezik', alternativesLabel: '',
+    };
+    expect(matchDemand(demand, spawnItem(SEED, 20, 'investment_bangle_22k_20'))).toBe('exact');
+    expect(matchDemand(demand, spawnItem(SEED, 10, 'investment_bangle_22k_10'))).toBe('off');
+    expect(matchDemand(demand, spawnItem(SEED, 30, 'investment_bangle_22k_30'))).toBe('off');
   });
 });
 

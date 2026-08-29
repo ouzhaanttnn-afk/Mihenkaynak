@@ -17,6 +17,7 @@ import { spawnCustomer } from '@domain/customer-spawn';
 import { dayCharacter } from '@domain/intent';
 import { createMarketForDay } from '@domain/market';
 import { START } from '@domain/balance';
+import { bullionMeta } from '@data/bullion';
 import type { Customer, ItemInstance, StoreState } from '@domain/types';
 
 const SEED = 20260828;
@@ -172,6 +173,10 @@ describe('niyet cümlesi gizli gerçeği sızdırmaz (GDD 6.6)', () => {
       let rest = items.reduce((acc, i) => acc.split(i.displayName).join(''), line);
       const demandQty = c.demand?.quantity;
       if (demandQty !== undefined) rest = rest.split(String(demandQty)).join('');
+      const meta = c.demand?.templateId ? bullionMeta(c.demand.templateId) : null;
+      if (meta) rest = rest.split(String(meta.unitWeightGrams).replace('.', ',')).join('');
+      const bangleWeight = c.demand?.templateId?.match(/^investment_bangle_22k_(\d+)$/)?.[1];
+      if (bangleWeight) rest = rest.split(bangleWeight).join('').replace('22 ayar', 'ayar');
       expect(rest, `${line} ← fiyat benzeri sayı`).not.toMatch(/\d{3,}/);
     });
   });
