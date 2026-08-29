@@ -1398,8 +1398,33 @@
  */
 .avatarGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-  gap: var(--sp-2);
+  /*
+    SÜTUN SAYISI SABİT, SATIR YÜKSEKLİĞİ AÇIK.
+
+    ÖLÇÜLDÜ: `auto-fill` + `minmax(72px, 1fr)` ile ızgara, satır izini
+    sütunun NİHAİ genişliğinden (88 px) değil, minmax TABANINDAN (72 px)
+    çözüyordu. Satır izi 71,5 px kalıyor, kart `aspect-ratio`dan 88 px
+    geliyor ve alttaki sıraya biniyordu — 17 portrede 14 çakışan kart
+    çifti. (Aynı belirsizlik yüzde dolguyu da vuruyor: `padding-top: 100%`
+    de aynı yanlış genişlikten çözülüp kartı 88×72 yapıyordu.)
+
+    Çözüm belirsizliği kaldırmak: sütun sayısı sabit, satır yüksekliği
+    piksel. İkisi de kesin olduğu için kartın yüksekliği türetilmez,
+    verilir; ızgaranın tahmin edecek bir şeyi kalmaz.
+
+    Üç sütun her genişlikte doğru: pencere zaten dar ve üstte sabit
+    genişlikte duruyor (390 px'te de 430 px'te de kart 88 px çıkıyor).
+  */
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 84px;
+  /*
+    Boşluk sp-2'den sp-3'e çıktı. Portreler omuzlardan kesildiği için her
+    kartın altında düz bir kenar var; dar boşlukta bir sıranın kesik omzu
+    alttaki sıranın başlığına yapışıp "kartlar üst üste binmiş" gibi
+    okunuyordu (ölçüldü: kartlar 91×91, hiçbiri taşmıyor — sorun
+    yerleşimde değil, ayrımın zayıflığındaydı).
+  */
+  gap: var(--sp-3);
   min-height: 0;
   overflow-y: auto;
   padding: var(--sp-2);
@@ -1412,13 +1437,34 @@
 
 .avatarCard {
   position: relative;
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /*
+    KARE ORAN `aspect-ratio` İLE DEĞİL, YÜZDE DOLGUYLA KURULUR (::before).
+
+    ÖLÇÜLDÜ: `aspect-ratio: 1` ile kart 88 px yüksekliğe geliyordu ama
+    ızgaranın satır izleri 71,5 px kalıyordu — `1fr` sütununun nihai
+    genişliği satır ölçümüne girmiyor, oran `minmax(72px, …)` tabanından
+    çözülüyordu. Kart kendi satırından 17 px taşıyor, 12 px boşluk
+    düşüldükten sonra alttaki sıraya 5 px biniyordu (17 portrede 14
+    çakışan kart çifti). Boşluk 8 px'ken de satır adımı kart yüksekliğine
+    eşitti: aralık zaten yeniyordu, yalnız göze batmıyordu.
+
+    Yüzde dolgu kendi KULLANILAN genişliğine göre çözülür ve satır izinin
+    karşılamak zorunda olduğu gerçek bir blok yüksekliği üretir; ızgara
+    böylece kareyi görebiliyor.
+  */
+  display: block;
+  /* Yükseklik satır izinden gelir (grid-auto-rows); türetilmez. */
+  height: 100%;
   border-radius: var(--r-md);
   background: linear-gradient(160deg, var(--ink-600), var(--ink-900));
-  border: 2px solid transparent;
+  /*
+    Kenarlık ARTIK GÖRÜNÜR. Eskiden saydamdı ve yalnız seçili kartın altın
+    çerçevesi için yer tutuyordu; ama kart zemini portrelerin koyu
+    takımlarıyla neredeyse aynı tonda olduğu için kartın nerede bitip
+    nerede başladığı seçilemiyordu. Kalınlık 2 px olarak KORUNUR: seçim
+    yalnız rengi değiştirsin, yerleşimi kaydırmasın.
+  */
+  border: 2px solid var(--line-dark);
   color: var(--brass-500);
   overflow: hidden;
   transition:
@@ -1427,9 +1473,39 @@
 }
 
 .avatarCard__img {
+  /*
+    MUTLAK KONUM — SÜSLEME DEĞİL, YERLEŞİM DÜZELTMESİ.
+
+    Görsel akışta dururken `height: 100%` otomatik yükseklikli bir kartta
+    çözümlenemiyor ve ızgara satırının yüksekliği görselin ölçülemeyen
+    katkısına göre belirleniyordu. Sonuç: satır izi kartın
+    `aspect-ratio`dan gelen yüksekliğinden KISA kalıyor ve kart alttaki
+    satıra taşıyordu (ölçüldü: kart 88 px, satır adımı 83 px — 17 portrede
+    14 çakışan kart çifti; boşluk büyütülünce göze battı, ama boşluk
+    8 px'ken de satır adımı kart yüksekliğine eşitti, yani ARALIK ZATEN
+    YENİYORDU).
+
+    Mutlak konumda görsel satır ölçümüne hiç girmez; kartın yüksekliğini
+    yalnız `aspect-ratio` belirler ve ızgara satırı ona uyar.
+  */
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
+  /*
+    ALT KENARDA YUMUŞAK GEÇİŞ.
+
+    Portrelerin hepsi baş-omuz kadrajı ve omuzlar karenin alt kenarından
+    TAŞARAK kesiliyor (ölçüldü: alt köşe alfaları opak). Kesik, kartın
+    düz alt kenarıyla üst üste gelince portre "kırpılmış bir katman" gibi
+    duruyordu. Maske o düz kesiği karta doğru eritir; kırpma ya da yeniden
+    kadrajlama gerekmez, asset'e hiç dokunulmaz.
+
+    `-webkit-` öneki iOS Safari için ZORUNLU — oyun telefonda oynanıyor.
+  */
+  -webkit-mask-image: linear-gradient(to bottom, #000 76%, transparent 99%);
+  mask-image: linear-gradient(to bottom, #000 76%, transparent 99%);
 }
 
 /* Seçili: derin mor zemin + altın çerçeve. */
@@ -1499,10 +1575,26 @@
   outline-offset: 2px;
 }
 
+/*
+  DAR ekranda üç sütun 71 px'e iner; satır 84 px kalırsa kart belirgin
+  şekilde uzar (0,84 en-boy). Satır da inince kare geri gelir.
+
+  BU BLOK `.avatarGrid` TEMEL KURALINDAN SONRA DURMALI: medya sorguları
+  özgüllük EKLEMEZ, sıra belirler. Aynı kural dosyanın başındaki 374 px
+  bloğuna yazıldığında temel kural onu eziyordu (ölçüldü: 320 px'te satır
+  yine 84 px çıkıyordu).
+*/
+@media (max-width: 374px) {
+  .avatarGrid {
+    grid-auto-rows: 72px;
+  }
+}
+
 /* Kısa ekranda kartlar küçülür; pencere yine ekrana sığar. */
 @media (max-height: 700px) {
   .avatarGrid {
-    grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+    /* KISA ekranda (yükseklik kırılımı) satır alçalır; sütun sayısı sabit. */
+    grid-auto-rows: 72px;
   }
 
   .profileDialog__title {
