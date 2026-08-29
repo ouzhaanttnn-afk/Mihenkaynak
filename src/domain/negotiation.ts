@@ -109,6 +109,12 @@ export interface NegotiationContext {
    * Verilmezse 1 sayılır, yani band aynen kalır.
    */
   haggleRoom?: number;
+  /**
+   * Dükkânın perakende makası (product-classes.ts · retailSpread). Yalnız
+   * SATIŞ yönünde kullanılır: kabul eşiğinin çıpası adil değer değil,
+   * dükkânın meşru satış fiyatıdır.
+   */
+  retailSpread?: number;
 }
 
 /**
@@ -188,9 +194,34 @@ export function effectiveReservation(ctx: NegotiationContext, session: Negotiati
 function scaleToFair(threshold: number, ctx: NegotiationContext): number {
   const fair = ctx.fairValue;
   const room = ctx.haggleRoom ?? 1;
-  // room === 1 nötr: adil değerden sapma olduğu gibi kalır.
+  // room === 1 nötr: çıpadan sapma olduğu gibi kalır.
   if (fair === undefined || fair <= 0 || room === 1) return threshold;
-  return fair + (threshold - fair) * Math.max(0, room);
+
+  /*
+   * ÇIPA YÖNE GÖRE DEĞİŞİR — ölçülmüş bir hatanın düzeltmesi.
+   *
+   * ALIŞTA çıpa adil değerdir ve bu doğrudur: çeyreğin fiyatı kamuya açık,
+   * dükkân onu gerçek değerinin çok altına alamamalı.
+   *
+   * SATIŞTA adil değere sıkıştırmak, pazarlık payını değil DÜKKÂNIN
+   * PERAKENDE KÂRINI siliyordu. Sarrafiyede room 0,06 olduğu için müşterinin
+   * 1,235 × adil olan tavanı kabul anında 1,014 × adil'e iniyor, toptancıdan
+   * alış ise 1,017 × adil — yani kabul eşiği MALİYETİN ALTINDA kalıyordu.
+   * Ölçüldü: adil değerin 1,00 katı istenince %63 kabul (zararına), 1,05
+   * katı istenince %0. Toptancıdan alıp satmak imkânsızdı.
+   *
+   * Pazarlık payı DARALMAYA DEVAM EDER — değişen tek şey, pazarlığın
+   * etrafında döndüğü merkez.
+   */
+  const anchor = dirSign(ctx) === -1 ? fair * (1 + (ctx.retailSpread ?? 0)) : fair;
+  const scaled = anchor + (threshold - anchor) * Math.max(0, room);
+
+  /*
+   * Ölçekleme müşterinin GERÇEK tavanını aşamaz. Bütçesi perakende fiyatına
+   * yetmeyen müşteri, çıpa yükseldi diye ödeyebilir hâle GELMEZ; o satış
+   * gerçekleşmez ve gerçekleşmemelidir (GDD 34.2 — tavan spawn'da sabittir).
+   */
+  return dirSign(ctx) === -1 ? Math.min(scaled, threshold) : scaled;
 }
 
 /**

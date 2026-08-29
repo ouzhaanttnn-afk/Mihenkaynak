@@ -31,6 +31,7 @@
  * süzgeci onu genişletemez.
  */
 
+import { TARGET_MARGIN } from '@domain/balance';
 import type { InfoField, ItemFamily } from '@domain/types';
 import type { ItemTemplate } from './item-templates';
 
@@ -96,6 +97,28 @@ export interface ProductClassRules {
    */
   haggleRoom: number;
 
+  /*
+   * DÜKKÂNIN PERAKENDE MAKASI — pazarlık payından AYRI bir şeydir.
+   *
+   * ÖLÇÜLMÜŞ HATA: `haggleRoom` satış yönünde de kabul eşiğini adil değere
+   * sıkıştırıyordu. Sarrafiyede room 0,06 olduğu için eşik `adil × 1,014`e
+   * iniyor, toptancıdan alış ise `adil × 1,017` — yani kabul eşiği
+   * MALİYETİN ALTINDA kalıyordu. Ölçüm: oyuncu adil değerin 1,00 katını
+   * isterse %63 kabul (zararına), 1,05 katını isterse %0. Toptancıdan alıp
+   * müşteriye satmak matematiksel olarak imkânsızdı.
+   *
+   * İki kavram karıştırılmıştı:
+   *   haggleRoom   — müşteriyle oynanan aralık. Sarrafta gerçekten dar,
+   *                  çünkü çeyreğin fiyatını herkes bilir. DOĞRUYDU.
+   *   retailSpread — sarrafın yapısal alış/satış farkı. Pazarlık konusu
+   *                  değil, tabelada yazar. EKSİKTİ.
+   *
+   * Değerler `TARGET_MARGIN`in üst sınırlarıdır: kod zaten sarrafiyede
+   * %1,5–4, ikinci el işçilikte %8–20 marj hedefliyordu; pazarlık katmanı
+   * bunu %0'a indiriyordu. Burası o hedefi geri getirir, yenisini uydurmaz.
+   */
+  retailSpread: number;
+
   /** Sınıfın neden bu sınırlara sahip olduğunu anlatan tasarım notu. */
   note: string;
 }
@@ -152,6 +175,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     // Sıfır YAPILMADI — sıfır, gerekçeyi ve jesti anlamsız kılardı; sarrafta
     // da pazarlık vardır, sadece dardır.
     haggleRoom: 0.06,
+    retailSpread: TARGET_MARGIN.bullion[1],
     note: 'Gram altın ve külçe. Ağırlık + ayar dışında ölçülecek bir şey yok.',
   },
 
@@ -165,6 +189,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     // %2–14 arası oynuyordu; artık kanal makasının etrafında kalır.
     // 0,12 → 0,06 (bkz. bullionBar).
     haggleRoom: 0.06,
+    retailSpread: TARGET_MARGIN.bullion[1],
     note: 'Çeyrek/yarım/tam/Cumhuriyet/Ata. Gramajı ve tipi standarttır.',
   },
 
@@ -177,6 +202,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     services: ['clean', 'ringSize', 'engraving', 'stoneSet', 'restoration', 'appraisalReport'],
     // İkinci el takı: alıcı da satıcı da tam değerini bilmez → GENİŞ pay.
     haggleRoom: CRAFTED_HAGGLE_ROOM,
+    retailSpread: TARGET_MARGIN.secondHandJewellery[1],
     note: 'Ölçü servisinin tek geçerli olduğu sınıf; taşlıysa taş testleri açılır.',
   },
 
@@ -189,6 +215,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     services: ['clean', 'chainRepair', 'engraving', 'restoration', 'appraisalReport'],
     haggleRoom: CRAFTED_HAGGLE_ROOM,
+    retailSpread: TARGET_MARGIN.secondHandJewellery[1],
     note: 'Ağırlık, ayar, kondisyon. Kilidi olduğu için tamir alır; ölçü servisi almaz.',
   },
 
@@ -199,6 +226,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     services: ['clean', 'chainRepair', 'engraving', 'stoneSet', 'restoration', 'appraisalReport'],
     haggleRoom: CRAFTED_HAGGLE_ROOM,
+    retailSpread: TARGET_MARGIN.secondHandJewellery[1],
     note: 'Kilit ve halka taşır; uzunluk/kilit tamiri burada anlamlı, yüzük ölçüsü değil.',
   },
 
@@ -210,6 +238,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     // Takı değil: ne ölçüsü ne kilidi var.
     services: ['clean', 'engraving', 'restoration', 'appraisalReport'],
     haggleRoom: CRAFTED_HAGGLE_ROOM,
+    retailSpread: TARGET_MARGIN.secondHandJewellery[1],
     note: 'Dekoratif gümüş/obje. Takı servisleri uygulanmaz.',
   },
 
@@ -223,6 +252,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     services: ['clean', 'stoneSet', 'restoration', 'appraisalReport'],
     // Tek parça, referans fiyat yok — pazarlık en geniş burada anlamlı.
     haggleRoom: CRAFTED_HAGGLE_ROOM,
+    retailSpread: TARGET_MARGIN.secondHandJewellery[1],
     note: 'Vintage/koleksiyon. Özgünlüğü bozan servisler kapalı.',
   },
 };
