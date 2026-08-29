@@ -25,8 +25,9 @@ import { useGame } from '@state/gameStore';
 import { IconStock, IconWarning, ProductSilhouette } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { NAV_ART, productArt } from '@ui/assets';
+import { supplierCounterIds } from '@domain/sales-catalog';
 import { grams, pct, tl, tlBare, tlSigned } from '@ui/format';
-import type { InventoryPosition } from '@domain/types';
+import type { ExitChannel, InventoryPosition } from '@domain/types';
 
 type Filter = 'all' | 'display' | 'backStock' | 'workshop' | 'dead';
 
@@ -44,6 +45,20 @@ const DEAD_STOCK_AGE = 6;
 export function StockScreen() {
   const s = useGame();
   const [filter, setFilter] = useState<Filter>('all');
+  /*
+    UPDATEv2 §8 — "İç içe iki kaydırma alanını kaldır. Katalog tek bir
+    kaydırma yüzeyinde veya AYRI TAM EKRAN ALT ROTADA açılmalı."
+
+    Alt rota seçildi. Katalog listenin içinde açıldığında `.counter__list`
+    kendi `max-height: 46vh` + `overflow-y: auto` yüzeyini kuruyor ve sayfa
+    kaydırmasının içinde ikinci bir kaydırma oluyordu: parmak nereye
+    değdiğine göre farklı listeyi kaydırıyor, ürün ararken oyuncu kayboluyor.
+    Tam ekran rota hem o iç yüzeyi kaldırır hem de nakdin yapışkan başlıkta
+    kalmasına yer açar.
+  */
+  const [route, setRoute] = useState<'list' | 'buy'>('list');
+
+  if (route === 'buy') return <BullionRoute onBack={() => setRoute('list')} />;
 
   const wealth = summarizeWealth({
     store: s.store,
@@ -119,8 +134,11 @@ export function StockScreen() {
       </header>
 
       <div className="page__scroll">
-        {/* Playtest revizyonu §4 — sarrafiye stoklama tezgâhı. */}
-        <BullionCounter />
+        {/* Playtest revizyonu §4 · UPDATEv2 §8 — katalog artık ayrı rotada. */}
+        <button type="button" className="counter__toggle counter" onClick={() => setRoute('buy')}>
+          <span>Sarrafiye Al</span>
+          <span className="counter__hint num">Nakit {tl(s.store.cash)} ›</span>
+        </button>
 
         <div className="filterRail">
           {FILTERS.map((f) => (
@@ -179,39 +197,32 @@ export function StockScreen() {
  * Fiyat hardcode DEĞİL: mevcut toptancı kanalından (`supplyOffer`) türer,
  * yani piyasa, ürün tipi ve makas kuralları aynen işler.
  */
-function BullionCounter() {
+function BullionRoute({ onBack }: { onBack: () => void }) {
   const s = useGame();
-  // Tezgâhın açık/kapalı durumu ve adet seçimleri sekme değişince
-  // KAYBOLMAMALI. StockScreen sekme değiştiğinde unmount olduğu için yerel
-  // state sıfırlanıyordu: oyuncu 20 adet seçip nakde bakmaya gidince
-  // dönüşünde 1'e düşüyordu. Playtest oturumu boyunca yaşayan küçük bir
-  // modül durumu bunu çözer; oyun durumuna girmesi gerekmiyor çünkü
-  // kaydedilecek bir şey değil, ekranın hafızası.
-  const [open, setOpen] = useState(counterMemory.open);
-  const setOpenPersisted = (next: boolean) => {
-    counterMemory.open = next;
-    setOpen(next);
-  };
 
   return (
-    <div className="counter">
-      <button
-        type="button"
-        className="counter__toggle"
-        onClick={() => setOpenPersisted(!open)}
-        aria-expanded={open}
-      >
-        <span>Sarrafiye Al</span>
-        <span className="counter__hint num">{tl(s.store.cash)}</span>
-      </button>
+    <div className="page">
+      {/*
+        §8 — "Mevcut nakit YAPIŞKAN BAŞLIKTA görülsün." `.pageHead` zaten
+        sticky; nakit oraya taşındı ve katalog boyunca ekranda kalıyor.
+      */}
+      <header className="pageHead">
+        <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
+          ← Stok
+        </button>
+        <h1 className="pageHead__title">Sarrafiye Al</h1>
+        <p className="pageHead__sub">
+          Nakit <span className="num">{tl(s.store.cash)}</span> · fiyatlar toptancı kanalından
+          gelir
+        </p>
+      </header>
 
-      {open && (
-        <div className="counter__list">
-          {PLAYTEST_BULLION.map((templateId) => (
-            <BullionOffer key={templateId} templateId={templateId} />
-          ))}
-        </div>
-      )}
+      {/* TEK kaydırma yüzeyi: iç `max-height` / `overflow` YOK. */}
+      <div className="page__scroll">
+        {supplierCounterIds(s.store.storeTier).map((templateId) => (
+          <BullionOffer key={templateId} templateId={templateId} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -236,6 +247,7 @@ function BullionOffer({ templateId }: { templateId: string }) {
     .reduce((sum, p) => sum + p.quantity, 0);
 
   const affordable = lot.total <= s.store.cash;
+  const shortfall = Math.max(0, lot.total - s.store.cash);
 
   return (
     <div className="offerRow">
@@ -280,41 +292,40 @@ function BullionOffer({ templateId }: { templateId: string }) {
           className="offerRow__buy"
           onClick={() => s.buyFromWholesaler(templateId, lot.quantity)}
           disabled={!affordable}
+          /* §12 — pasif düğmenin nedeni erişilebilir adda da yazılı. */
+          aria-label={affordable ? undefined : `Al — nakit yetersiz, ${tl(shortfall)} eksik`}
+          title={affordable ? undefined : `Nakit yetersiz · ${tl(shortfall)} eksik`}
         >
           {affordable ? 'Al' : 'Nakit yok'}
         </button>
       </div>
+
+      {/* §8 — "Nakit yetersizliği açıkça yazsın." */}
+      {!affordable && (
+        <div className="offerRow__short">
+          Nakit yetersiz · {tl(shortfall)} eksik. Adedi azaltabilir ya da stok satıp nakde
+          geçebilirsin.
+        </div>
+      )}
     </div>
   );
 }
 
 /**
  * Tezgâhın ekran hafızası. Oyun durumunun parçası DEĞİL: kaydedilmez,
- * yüklenmez, ekonomiyi etkilemez. Yalnız sekme gidip gelirken oyuncunun
- * seçimini korur.
+ * yüklenmez, ekonomiyi etkilemez. Yalnız sekme ya da rota gidip gelirken
+ * oyuncunun adet seçimini korur.
+ *
+ * §8 sonrası `open` alanı düştü: katalog artık açılır panel değil, kendi
+ * rotası. Rotanın açık olup olmadığını ekranın kendi state'i tutuyor.
  */
-const counterMemory: { open: boolean; qty: Record<string, number> } = {
-  open: false,
+const counterMemory: { qty: Record<string, number> } = {
   qty: {},
 };
 
-/** §4 — playtest havuzu. En az bu on bir ürün bulunmalı. */
-const PLAYTEST_BULLION = [
-  'gram_gold_1',
-  'gram_gold_2_5',
-  'gram_gold_5',
-  'gram_gold_10',
-  'gram_gold_20',
-  'gram_gold_50',
-  'gram_gold_100',
-  'quarter_gold',
-  'half_gold',
-  'full_gold',
-  'ata_gold',
-];
-
 function StockRow({ position }: { position: InventoryPosition }) {
   const item = useGame((s) => s.items[position.itemId]);
+  const [open, setOpen] = useState(false);
   if (!item) return null;
 
   const template = getTemplate(item.templateId);
@@ -322,7 +333,7 @@ function StockRow({ position }: { position: InventoryPosition }) {
   const isDead = position.age >= DEAD_STOCK_AGE;
 
   return (
-    <div className="row">
+    <div className={`row ${open ? 'row--open' : ''}`}>
       {/*
         Ürün görseli 64 px — 44 px'lik eski silüet yuvası gerçekçi bandın
         altındaydı. Satırın kendi yüksekliği (başlık + meta + üç rakam)
@@ -385,7 +396,178 @@ function StockRow({ position }: { position: InventoryPosition }) {
             Ölü stok riski · {position.age} gündür bekliyor
           </div>
         )}
+
+        {/*
+          UPDATEv2 §8 — "Stok kartları yalnız bilgi kartı olarak kalmamalı."
+          Eylemler satırı şişirmesin diye açılır panelde; kapalıyken liste
+          eskisi kadar kalem gösterir.
+        */}
+        <button
+          type="button"
+          className="row__disclosure"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+        >
+          {open ? 'Eylemleri gizle' : 'Eylemler ve çıkış planı'}
+          <span aria-hidden="true">{open ? ' ▾' : ' ›'}</span>
+        </button>
+
+        {open && <StockActions position={position} />}
       </div>
     </div>
   );
 }
+
+/**
+ * UPDATEv2 §8 — KALEM EYLEM PANELİ.
+ *
+ * §8'in koşulu net: "Bu işlemler mevcut mekanikte yoksa YENİ EKONOMİ SİSTEMİ
+ * OLUŞTURMA; en azından `Çıkış Planı yok` etiketini eylemsiz göstermemek için
+ * açıklayıcı detay paneli aç."
+ *
+ * Bu panelde bu ayrım AÇIKÇA yapılır:
+ *
+ *   Vitrine / Arka stoğa taşı  → GERÇEK eylem. `location` alanı zaten var,
+ *                                taşımak nakde ve maliyete dokunmaz.
+ *   Çıkış planı seç / değiştir → GERÇEK eylem. `thesis` alanı zaten var;
+ *                                değişince yalnız MARK güncellenir.
+ *   Satış rotasına git         → GERÇEK eylem, ama yalnız GEZİNME: satışı
+ *                                yine İşletme'deki mevcut kanal ekranı yapar.
+ *   Servise gönder             → YOK. Kendi stoğunu servise vermek iş kaydı,
+ *                                süre ve maliyet ister; uydurmak yerine
+ *                                neden olmadığı yazılır.
+ */
+function StockActions({ position }: { position: InventoryPosition }) {
+  const s = useGame();
+
+  const displayUsed = s.inventory.filter((p) => p.location === 'display').length;
+  const backUsed = s.inventory.filter((p) => p.location === 'backStock').length;
+  const inWorkshop = position.location === 'workshop';
+
+  const target: 'display' | 'backStock' = position.location === 'display' ? 'backStock' : 'display';
+  const targetFull =
+    target === 'display'
+      ? displayUsed >= s.store.displaySlots
+      : backUsed >= s.store.backStockSlots;
+
+  const moveReason = inWorkshop
+    ? 'Kalem atölyede; iş teslim edilince stoğa döner.'
+    : targetFull
+      ? target === 'display'
+        ? `Vitrin dolu (${displayUsed}/${s.store.displaySlots}).`
+        : `Arka stok dolu (${backUsed}/${s.store.backStockSlots}).`
+      : null;
+
+  /*
+    Kanal seçenekleri UYDURULMAZ: pozisyonun kendi `expectedExitValues`
+    alanından gelir. O alan her gün `revalueInventory` tarafından yazılır,
+    yani buradaki rakamlar ekrandaki "Bugünkü Değer" ile aynı hesabın
+    çıktısıdır.
+  */
+  const channels = Object.entries(position.expectedExitValues) as [ExitChannel, number][];
+  const sorted = [...channels].sort((a, b) => b[1] - a[1]);
+
+  /* Satış rotası: hangi kanalın nerede gerçekleştiğine göre. */
+  const plan = position.thesis;
+  const routeTo: 'wholesaler' | 'network' | null =
+    plan === 'wholesale' || plan === 'melt' ? 'wholesaler' : plan === 'collection' ? null : null;
+
+  return (
+    <div className="rowActions">
+      {/* --- Konum --- */}
+      <div className="rowActions__group">
+        <span className="rowActions__label">
+          Konum · {LOCATION_LABEL[position.location]}
+        </span>
+        <button
+          type="button"
+          className="miniBtn"
+          disabled={!!moveReason}
+          title={moveReason ?? undefined}
+          aria-label={
+            moveReason
+              ? `${target === 'display' ? 'Vitrine taşı' : 'Arka stoğa taşı'} — ${moveReason}`
+              : undefined
+          }
+          onClick={() => s.moveStock(position.itemId, target)}
+        >
+          {target === 'display' ? 'Vitrine taşı' : 'Arka stoğa taşı'}
+        </button>
+        {moveReason && <span className="rowActions__note">{moveReason}</span>}
+      </div>
+
+      {/* --- Çıkış planı --- */}
+      <div className="rowActions__group">
+        <span className="rowActions__label">{TERM.thesis}</span>
+        {sorted.length === 0 ? (
+          <span className="rowActions__note">
+            Bu kalem için kanal hesabı henüz oluşmadı; gün devrinde yeniden değerlenince
+            seçenekler burada listelenir.
+          </span>
+        ) : (
+          <>
+            <div className="rowActions__chips">
+              {sorted.map(([channel, net]) => (
+                <button
+                  key={channel}
+                  type="button"
+                  className={`planChip ${position.thesis === channel ? 'planChip--active' : ''}`}
+                  onClick={() => s.setStockThesis(position.itemId, channel)}
+                  aria-pressed={position.thesis === channel}
+                >
+                  {CHANNEL_SHORT[channel]}
+                  <span className="planChip__net num">{tlBare(net * position.quantity)}</span>
+                </button>
+              ))}
+            </div>
+            <span className="rowActions__note">
+              Plan yalnız bugünkü değeri (mark) belirler; kâr satışta gerçekleşir.
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* --- Satış rotası --- */}
+      <div className="rowActions__group">
+        <span className="rowActions__label">Satış rotası</span>
+        <div className="rowActions__chips">
+          <button
+            type="button"
+            className="miniBtn"
+            onClick={() => s.openBusinessRoute('wholesaler')}
+          >
+            Toptancıya git
+          </button>
+          <button
+            type="button"
+            className="miniBtn"
+            onClick={() => s.openBusinessRoute('network')}
+          >
+            Esnaf ağına git
+          </button>
+        </div>
+        <span className="rowActions__note">
+          {routeTo
+            ? 'Bu plan toptancıda kapanır; satış İşletme ekranındaki kanaldan yapılır.'
+            : 'Vitrin ve beklet planlarında satış tezgâhta olur: ürünü isteyen müşteri geldiğinde Dükkan ekranında satarsın.'}
+        </span>
+      </div>
+
+      {/* --- Servise gönder: mekanik YOK --- */}
+      <div className="rowActions__group">
+        <span className="rowActions__label">Servise gönder</span>
+        <span className="rowActions__note">
+          Bu sürümde yalnız MÜŞTERİ ürünü servise alınır: atölye kuyruğu bir müşteri işine,
+          teslim sözüne ve ücretine bağlıdır. Kendi stoğun için böyle bir iş kaydı yok; olmayan
+          bir eylemi düğme gibi göstermemek için burada yazıyor.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const LOCATION_LABEL: Record<InventoryPosition['location'], string> = {
+  display: 'Vitrin',
+  backStock: 'Arka stok',
+  workshop: 'Atölyede',
+};

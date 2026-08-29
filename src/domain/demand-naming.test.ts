@@ -17,6 +17,7 @@ import { getTemplate, ITEM_TEMPLATES } from '@data/item-templates';
 import { spawnCustomer } from './customer-spawn';
 import { dayCharacter } from './intent';
 import { spawnItem } from './item-spawn';
+import { isBullion } from '@data/bullion';
 import { createMarketForDay } from './market';
 import { matchDemand } from './purchase';
 import { daDe } from '@ui/format';
@@ -83,30 +84,51 @@ describe('Talep somut bir ürün adı taşır', () => {
     }
   });
 
-  it('işçilikli talepte de somut ad var ve kaç çeşit ürün adı geçtiği bir sabit değil', () => {
+  /*
+   * UPDATEv2 §18 — BU TEST TERSİNE ÇEVRİLDİ.
+   *
+   * Eskiden "işçilikli talepte de somut ad var" diye bağlanıyordu ve
+   * doğruydu: satın alma müşterisi kolye/bilezik isteyebiliyordu. Ama o
+   * talep hiçbir zaman karşılanamıyordu — dükkânın kolye tedarik yolu yok.
+   * Artık talep havuzu satış kataloğundan türüyor, dolayısıyla satın alma
+   * niyetinde işçilikli talep HİÇ üretilmemeli.
+   *
+   * Testin koruduğu asıl şey değişmedi: talep somut bir üründür ve tek bir
+   * ürüne saplanmaz. Yalnız hangi küme üzerinde ölçüldüğü değişti.
+   */
+  it('satın alma talebi işçilikli ürün İSTEMEZ', () => {
     const crafted = all.filter((d) => !d.wantsBullion);
-    expect(crafted.length).toBeGreaterThan(5);
-    const distinct = new Set(crafted.map((d) => d.templateId));
-    // Tek bir ürüne saplanmış olsaydı "somut" değil "sabit" olurdu.
+    expect(crafted.length, `karşılanamaz talep üretildi: ${crafted.map((d) => d.summary).join(', ')}`).toBe(0);
+  });
+
+  it('sarrafiye talebi tek ürüne saplanmaz', () => {
+    const distinct = new Set(all.map((d) => d.templateId));
     expect(distinct.size).toBeGreaterThan(1);
   });
 });
 
-describe('Somut ad talebi DARALTMAZ', () => {
-  it('istenen ürünün ailesinden başka bir ürün de talebi karşılar', () => {
-    const crafted = demands().filter((d) => !d.wantsBullion && d.families.length > 0);
-    expect(crafted.length).toBeGreaterThan(5);
+describe('Somut ad talebi İKAMEYE İZİN VERMEZ', () => {
+  /*
+   * UPDATEv1 §2 — BU BLOK TERSİNE ÇEVRİLDİ.
+   *
+   * Eski adı "Somut ad talebi DARALTMAZ" idi ve istenen ürün yerine aynı
+   * aileden başkasının sunulabilmesini ('family') koruyordu. §2 bunu açıkça
+   * kapatıyor (`allowSubstitution: false`) ve kabul kriteri olarak yazıyor:
+   * "5 gram altın talebinde 1 g ve 10 g ürünler görünmüyor."
+   *
+   * Yani korunan şey artık tersi: müşteri somut bir ürün istediyse BAŞKA
+   * hiçbir ürün o talebi karşılamaz.
+   */
+  it('istenen sarrafiye dışındaki sarrafiye talebi KARŞILAMAZ', () => {
+    const bullionDemands = demands().filter((d) => d.wantsBullion);
+    expect(bullionDemands.length).toBeGreaterThan(5);
 
     let checked = 0;
-    for (const d of crafted) {
-      // Aynı aileden AMA farklı bir şablon bul.
-      const sibling = ITEM_TEMPLATES.find(
-        (t) => d.families.includes(t.family) && t.id !== d.templateId,
-      );
+    for (const d of bullionDemands) {
+      const sibling = ITEM_TEMPLATES.find((t) => isBullion(t.id) && t.id !== d.templateId);
       if (!sibling) continue;
       const item = spawnItem(SEED, 1, sibling.id);
-      // 'off' olsaydı oyuncu yakın ürünü sunamazdı.
-      expect(matchDemand(d, item), `${d.summary} ← ${sibling.displayName}`).toBe('family');
+      expect(matchDemand(d, item), `${d.summary} ← ${sibling.displayName}`).toBe('off');
       checked++;
     }
     expect(checked).toBeGreaterThan(3);
@@ -119,12 +141,13 @@ describe('Somut ad talebi DARALTMAZ', () => {
     }
   });
 
-  it('sarrafiye talebinde her sarrafiye kabul edilir', () => {
+  it('yalnız TAM istenen ürün kabul edilir', () => {
     const bullion = demands().filter((d) => d.wantsBullion);
     expect(bullion.length).toBeGreaterThan(5);
-    const other = spawnItem(SEED, 3, 'gram_gold_5');
+    const gram5 = spawnItem(SEED, 3, 'gram_gold_5');
     for (const d of bullion) {
-      expect(['exact', 'family']).toContain(matchDemand(d, other));
+      const expected = d.templateId === 'gram_gold_5' ? 'exact' : 'off';
+      expect(matchDemand(d, gram5), `${d.summary} ← 5 g`).toBe(expected);
     }
   });
 });

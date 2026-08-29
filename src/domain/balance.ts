@@ -265,17 +265,14 @@ export const INTENT_MIX = {
  * §9: "Denge ayarları veri odaklıdır: sabit kod yerine konfigürasyon."
  */
 export const PURCHASE = {
-  /** Sarrafiye talebinde havuz — §4'ün ürün havuzuyla aynı kümedir. */
-  bullionDemandPool: [
-    'gram_gold_1',
-    'gram_gold_5',
-    'gram_gold_10',
-    'quarter_gold',
-    'half_gold',
-    'full_gold',
-    'republic_gold',
-    'ata_gold',
-  ] as const,
+  /*
+   * NOT: `bullionDemandPool` BURADAN KALDIRILDI (UPDATEv2 §18).
+   *
+   * Müşterinin ne isteyebileceği artık bir denge ayarı değil, oyuncunun ne
+   * satabildiğinin SONUCU: domain/sales-catalog.ts. Burada ikinci bir liste
+   * tutmak, tedarik tezgâhıyla talep havuzunun ayrışmasına yol açıyordu
+   * (republic_gold talep havuzundaydı ama tezgâhta yoktu).
+   */
 
   /** Bu adetten itibaren toplu müşteri kanal profili kullanılır (§4.1). */
   bulkChannelThreshold: 8,

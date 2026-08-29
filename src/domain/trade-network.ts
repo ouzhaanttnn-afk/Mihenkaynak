@@ -66,6 +66,21 @@ export function craftLabel(craft: TradeNetworkMember['craft']): string {
  * yeniden çekmez (GDD 11.4 / 28.3).
  */
 export function spawnNetwork(rootSeed: number, reputation: number): TradeNetworkMember[] {
+  /*
+   * UPDATEv1 §10 — BENZERSİZ KİŞİ.
+   *
+   * Denetimde iki ayrı "Kemal Ödünççü" kaydı çıktı. Sebep: ad
+   * `pick(FIRST_NAMES) + CRAFT_LABEL` idi; aynı ad aynı meslekle iki kez
+   * çekilince iki üye ayırt edilemez oluyordu. Oyuncu için bu, borcunu
+   * kime verdiğini bilememek demek.
+   *
+   * Çözüm ada rakam eklemek DEĞİL ("Kemal Ödünççü 2" sahte bir kişi olurdu):
+   * kullanılmış ad+meslek çifti bir daha seçilmez, havuzdan sıradaki
+   * serbest ad alınır. Havuz üye sayısından büyük olduğu için bu her zaman
+   * mümkün; yine de tükenirse deterministik bir yedek ada düşülür.
+   */
+  const usedNames = new Set<string>();
+
   return Array.from({ length: NETWORK.memberCount }, (_, i) => {
     const rng = new Rng(deriveSeed(rootSeed, 'network/member', i));
     const craft = rng.pickWeighted([
@@ -85,9 +100,19 @@ export function spawnNetwork(rootSeed: number, reputation: number): TradeNetwork
           ? rng.range(0.25, 0.5)
           : rng.range(0, 0.2);
 
+    // Serbest ilk adı bul: çekilen ad kullanılmışsa havuzda ilerlenir.
+    const first = rng.pick(FIRST_NAMES);
+    const startAt = FIRST_NAMES.indexOf(first);
+    let displayName = `${first} ${CRAFT_LABEL[craft]}`;
+    for (let step = 1; usedNames.has(displayName) && step <= FIRST_NAMES.length; step += 1) {
+      const candidate = FIRST_NAMES[(startAt + step) % FIRST_NAMES.length]!;
+      displayName = `${candidate} ${CRAFT_LABEL[craft]}`;
+    }
+    usedNames.add(displayName);
+
     return {
       id: `esnaf_${i}`,
-      displayName: `${rng.pick(FIRST_NAMES)} ${CRAFT_LABEL[craft]}`,
+      displayName,
       craft,
       // Yerel ilişki semt itibarından türer ama kişiseldir.
       trust: clamp(Math.round(reputation * 0.5 + rng.range(-10, 18)), 5, 80),

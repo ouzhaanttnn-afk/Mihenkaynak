@@ -19,7 +19,7 @@ import { demandOutcome, matchDemand, type DemandMatch, type DemandOutcome } from
 import { CHANNEL_LABEL_TR } from '@domain/channels';
 import { getTemplate } from '@data/item-templates';
 import { IconPackage, IconWarning, ProductSilhouette } from '@ui/icons';
-import { daDe, tl } from '@ui/format';
+import { tl } from '@ui/format';
 import type {
   CustomerDemand,
   InventoryPosition,
@@ -27,6 +27,12 @@ import type {
   PurchaseSession,
 } from '@domain/types';
 
+/*
+ * UPDATEv1 §2 sonrası `off` BU LİSTEDE GÖRÜNEMEZ: uyumsuz ürün artık
+ * `offerableStock`ta eleniyor (katman 1). Etiket yine de duruyor çünkü
+ * `DemandMatch` tipinin üç değeri var ve eksik bırakmak derleyiciyi
+ * susturmak olurdu; bir gün liste yeniden açılırsa metin hazır.
+ */
 const MATCH_LABEL: Record<DemandMatch, string> = {
   exact: 'Tam istediği',
   family: 'İlgili ürün',
@@ -70,17 +76,13 @@ export function StockPickStage({
             )}
             {demand.isBulk && <> · toplu müşteri</>}
             {/*
-              Başlık artık somut bir ürün adı ("14 Ayar Bilezik"). Talep ise
-              hâlâ aile düzeyinde karşılanabilir (matchDemand). Esnekliği
-              söylemezsek oyuncu tam o ürünü bulamayınca müşteriyi boşuna
-              geri çevirir.
+              İKAME METNİ KALDIRILDI (§2).
+              Burada "… da olur" yazıyordu ve talebin yakın bir ürünle
+              karşılanabileceğini söylüyordu. §2 `allowSubstitution: false`
+              diyor: müşteri somut bir ürün istiyor ve başkasını almıyor.
+              Esneklik vaat eden bir cümle bırakmak, artık var olmayan bir
+              seçeneği ekranda göstermek olurdu.
             */}
-            {demand.alternativesLabel && (
-              <>
-                {' · '}
-                {demand.alternativesLabel} {daDe(demand.alternativesLabel)} olur
-              </>
-            )}
           </p>
         </div>
       </div>
@@ -107,11 +109,19 @@ export function StockPickStage({
         yandaki cümleyle çakışıyordu. Tek bir çocuk düğüm bunu keser.
       */}
       {rows.length === 0 ? (
+        /*
+          §2 — UYGUN STOK YOKSA YALNIZ AÇIKLAYICI BOŞ DURUM.
+          İlgisiz ürün önerilmez; oyuncuya ne eksik olduğu ADIYLA söylenir
+          ve tek anlamlı eylem (Karar Dock'undaki "Müşteriyi Gönder")
+          serbest bırakılır.
+        */
         <p className="svc__note svc__note--center">
           <span>
             <IconWarning size={16} />
-            <strong>Stokta sunulacak ürün yok.</strong> Bu müşteriye verecek malınız
-            bulunmuyor; talebi karşılayamadan gitmesi normaldir.
+            <strong>{demand.summary} stokta yok.</strong> Müşterinin istediği ürün
+            elinizde bulunmuyor; başka bir ürün önerilemez. Stok almak için
+            Stok ekranındaki tezgâhı kullanabilir ya da müşteriyi
+            gönderebilirsiniz.
           </span>
         </p>
       ) : (

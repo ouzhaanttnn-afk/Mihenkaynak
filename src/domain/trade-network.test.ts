@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { merchantArt } from '@ui/assets';
 
 import { CHANNEL, NETWORK, WHOLESALE } from './balance';
 import { createMarketForDay } from './market';
@@ -415,5 +416,45 @@ describe('§8 — Gecikme ve düzenli ödemenin sonuçları', () => {
     // Ama tavanı aşmaz.
     const dolu = replenishNetwork([member({ cashOnHand: NETWORK.cashBand[1] })]);
     expect(dolu[0]!.cashOnHand).toBe(NETWORK.cashBand[1]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UPDATEv1 §10 — BENZERSİZ ESNAF KİMLİĞİ
+// ---------------------------------------------------------------------------
+
+describe('§10 — her esnaf benzersizdir', () => {
+  /*
+    Denetimde iki ayrı "Kemal Ödünççü" görüldü. Test bunu ÇOK TOHUMDA
+    arar: tek tohumla bakmak, çakışmanın olmadığı şanslı bir tohuma
+    denk gelip sorunu yeşil geçirebilirdi.
+  */
+  it('hiçbir tohumda ad tekrar etmez', () => {
+    for (let seed = 1; seed <= 300; seed += 1) {
+      const net = spawnNetwork(seed * 7919, 50);
+      const names = net.map((m) => m.displayName);
+      expect(new Set(names).size, `tohum ${seed}: ${names.join(', ')}`).toBe(names.length);
+    }
+  });
+
+  it('kimlikler de benzersiz ve deterministik', () => {
+    const a = spawnNetwork(4242, 50);
+    const b = spawnNetwork(4242, 50);
+    expect(new Set(a.map((m) => m.id)).size).toBe(a.length);
+    // Aynı tohum aynı ağı verir (GDD 11.4 / 28.3) — isim düzeltmesi
+    // determinizmi bozmadı.
+    expect(b.map((m) => m.displayName)).toEqual(a.map((m) => m.displayName));
+  });
+
+  it('her üyenin kendi ilişki puanı ve portresi vardır', () => {
+    const net = spawnNetwork(9001, 50);
+    for (const m of net) {
+      expect(m.displayName.trim().length).toBeGreaterThan(3);
+      expect(m.trust).toBeGreaterThanOrEqual(0);
+      expect(m.trust).toBeLessThanOrEqual(100);
+    }
+    // Portre kimliğe bağlı: farklı kimlikler farklı portrelere dağılır.
+    const portraits = new Set(net.map((m) => merchantArt(m.id, m.displayName).src));
+    expect(portraits.size).toBeGreaterThan(1);
   });
 });

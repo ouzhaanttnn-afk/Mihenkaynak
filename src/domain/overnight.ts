@@ -204,7 +204,14 @@ export function marketSignals(
       label: 'Pozisyon',
       detail:
         share >= 65
-          ? `Varlığın %${share}'i altında; fiyat düşüşüne açıksınız.`
+          /*
+            §10 — CÜMLE DÜZELTİLDİ.
+            Eskiden "Varlığın %96'i altında" yazıyordu: hem ek yanlıştı
+            ("%96'i" değil "%96'sı"), hem de "altında" burada METAL demek
+            olduğu hâlde "%96'nın altında" gibi okunuyordu — yani tam tersi
+            bir anlam. Belgede istenen biçim kullanılıyor.
+          */
+          ? `Servetinin %${share}'sı altına bağlı; fiyat düşüşüne açıksın.`
           : share <= 35
             ? `Varlığın %${100 - share}'i nakitte; yükselişte fırsat maliyeti taşırsınız.`
             : `Altın %${share} / nakit %${100 - share} — dengeli duruyorsunuz.`,

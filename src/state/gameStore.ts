@@ -32,6 +32,7 @@ import {
 } from '@domain/intent';
 import {
   createPurchaseSession,
+  isProductCompatible,
   maxPackageLines,
   packageFitPenalty,
   packageGrams,
@@ -66,6 +67,7 @@ import {
 import { applyMove, createSession, effectiveReservation, isTerminal } from '@domain/negotiation';
 import { applyTest, estimateBand, initialKnowledge, trueValue } from '@domain/valuation';
 import {
+  CHANNEL_SHORT,
   effectiveCeiling,
   revalueInventory,
   thesisFor,
@@ -77,6 +79,7 @@ import {
   createLedger,
   liquidityBand,
   liquidityRatio,
+  stackKey,
   realizeProfit,
   recordDeal,
   summarizeWealth,
@@ -106,7 +109,13 @@ import {
   type CustomerRegistry,
 } from '@domain/customer-memory';
 import { flowPolicy, stageUnlocked, transactionClass } from '@domain/transaction-class';
-import { nextLesson, skipAll, type CoachContext } from '@domain/onboarding';
+import {
+  nextLesson,
+  skipAll,
+  type CoachContext,
+  type ProductKind,
+} from '@domain/onboarding';
+import { isBullion } from '@data/bullion';
 import {
   checkJewelerName,
   defaultProfile,
@@ -122,6 +131,9 @@ import {
   suggestedFee,
 } from '@domain/appraisal';
 import { applyTierGrants, evaluateUpgrade, growthSnapshot } from '@domain/store-growth';
+import { demandIsSellable } from '@domain/sales-catalog';
+import { getServiceType } from '@data/service-types';
+import { customerRequestLine } from '@ui/intent-line';
 import { clearSave, persistProfile, readSave, writeSave } from './save';
 import type {
   ActiveDeal,
@@ -154,7 +166,13 @@ import type {
 // Durum şekli
 // ---------------------------------------------------------------------------
 
-export type RootTab = 'shop' | 'stock' | 'workshop' | 'business';
+/**
+ * UPDATEv1 §13 — 'market' EKLENDİ.
+ * Sıra alt navigasyondaki sıradır: Dükkan / Stok / Atölye / Market / İşletme.
+ * Bu sürümde Market yalnız boş bir rota; katalog, ürün modeli ve satın alma
+ * sistemi BİLEREK yok (§13 "kesinlikle yapılmayacaklar").
+ */
+export type RootTab = 'shop' | 'stock' | 'workshop' | 'market' | 'business';
 
 export interface ToastMessage {
   id: string;
@@ -192,8 +210,44 @@ export interface GameState {
    * Hiçbir ilerleme, ekonomi veya karar değeri taşımaz.
    */
   profile: PlayerProfile;
+  /**
+   * UPDATEv1 §9 — SON TESLİM SONUCU (kalıcı özet).
+   *
+   * Teslim sonucu yalnız 4 saniyelik bir toast'la gösteriliyordu; oyuncu
+   * ücreti mi aldığını, tazmin mi ödediğini okuyamadan kayboluyordu.
+   * Burada tutulur ve oyuncu "Devam Et" diyene kadar ekranda kalır.
+   * Kaydedilmez: bir bildirimdir, oyun durumu değil.
+   */
+  lastDelivery: {
+    jobId: string;
+    itemName: string;
+    typeLabel: string;
+    succeeded: boolean;
+    fee: Money;
+    compensation: Money;
+    cashDelta: Money;
+    netContribution: Money;
+    trustDelta: number;
+    reputationDelta: number;
+    errorRisk: number;
+    lateDays: number;
+  } | null;
+
   /** Profil düzenleme penceresi açık mı (yalnız arayüz durumu). */
   profileOpen: boolean;
+
+  /**
+   * UPDATEv1 §4 — YÖNETİM MODALI SAYACI (ortak pause mekanizması).
+   *
+   * Sıfırdan büyükken oyun zamanı tamamen durur: saat ilerlemez, gün
+   * değişmez, gider kesilmez, sabır erimez, müşteri/olay üretilmez.
+   *
+   * Neden boolean değil SAYAÇ: iki modal üst üste açılıp biri kapandığında
+   * boolean "devam et" derdi ve altındaki modal açıkken zaman akmaya
+   * başlardı. Sayaç, açan her modalın kendi kapanışını dengelemesini şart
+   * koşar; en dıştaki kapanana kadar oyun durur.
+   */
+  pauseDepth: number;
   customerRushUntilMinutes: number | null;
 
   /**
@@ -261,6 +315,11 @@ export interface GameState {
   updateProfile: (next: { jewelerName: string; avatarId: string }) => boolean;
   openProfile: () => void;
   closeProfile: () => void;
+  /** §9 — teslim sonucu panelini kapatır. */
+  dismissDelivery: () => void;
+  /** §4 — yönetim modalı açılırken/kapanırken zamanı durdurur/sürdürür. */
+  pushPause: () => void;
+  popPause: () => void;
   triggerCustomerRush: () => void;
 
   tick: (deltaRealSeconds: number) => void;
@@ -298,6 +357,32 @@ export interface GameState {
   liquidateToWholesaler: (itemId: string, quantity: number, sliceCount: number) => void;
   buyFromWholesaler: (templateId: string, quantity: number) => void;
   repaySupplier: (invoiceId: string) => void;
+
+  /*
+   * UPDATEv2 §8 — STOK KALEMİ EYLEMLERİ.
+   *
+   * İKİSİ DE EKONOMİK DEĞİLDİR ve bilerek öyledir. §8: "Bu işlemler mevcut
+   * mekanikte yoksa YENİ EKONOMİ SİSTEMİ OLUŞTURMA." Buradaki iki eylem
+   * zaten var olan iki alanı (`location`, `thesis`) oyuncuya açar:
+   *
+   *   moveStock      — kalemi vitrin ile arka stok arasında taşır. Nakde,
+   *                    maliyet tabanına, defterlere DOKUNMAZ; `applyTransaction`
+   *                    çağrılmaz çünkü ortada işlem yoktur.
+   *   setStockThesis — kalemin çıkış planını değiştirir. Planı değiştirmek
+   *                    yalnız MARK'ı (bugünkü değer) değiştirir; gerçekleşmiş
+   *                    kâr GDD 34.5 gereği satışta doğar ve buradan
+   *                    etkilenmez.
+   *
+   * Atölye ('workshop') hedefi YOKTUR: kendi stoğunu servise vermek gerçek
+   * bir iş kaydı, süre ve maliyet ister — o yeni bir ekonomi olurdu.
+   */
+  moveStock: (itemId: string, to: 'display' | 'backStock') => void;
+  setStockThesis: (itemId: string, channel: ExitChannel) => void;
+
+  /** §8 — Stok'tan satış rotasına geçiş; yalnız gezinme durumu. */
+  pendingBusinessRoute: 'wholesaler' | 'network' | null;
+  openBusinessRoute: (route: 'wholesaler' | 'network') => void;
+  consumeBusinessRoute: () => void;
 
   // --- Esnaf ağı (Addendum §8) ---
   liquidateToNetwork: (memberId: string, itemId: string, quantity: number) => void;
@@ -376,7 +461,10 @@ export const useGame = create<GameState>((set, get) => {
     customerRushUntilMinutes: null,
     seenLessons: [],
     profile: defaultProfile(),
+    lastDelivery: null,
     profileOpen: false,
+    pauseDepth: 0,
+    pendingBusinessRoute: null,
 
     dayCharacter: dayCharacter(seed, 1, market),
     intentTelemetry: emptyTelemetry(),
@@ -437,15 +525,22 @@ export const useGame = create<GameState>((set, get) => {
      * Geçersiz ad sessizce yutulmaz: çağıran taraf zaten doğrulamış olmalı,
      * yine de burada son bir kez süzülür ki bozuk bir ad kayda giremesin.
      */
+    dismissDelivery: () => set({ lastDelivery: null }),
+
     openProfile: () => set({ profileOpen: true }),
     closeProfile: () => set({ profileOpen: false }),
+
+    pushPause: () => set({ pauseDepth: get().pauseDepth + 1 }),
+    popPause: () => set({ pauseDepth: Math.max(0, get().pauseDepth - 1) }),
 
     updateProfile: (next) => {
       const check = checkJewelerName(next.jewelerName);
       if (!check.ok) return false;
       set({
         profile: { jewelerName: check.value, avatarId: normalizeAvatarId(next.avatarId) },
-        profileOpen: false,
+        lastDelivery: null,
+    profileOpen: false,
+    pauseDepth: 0,
       });
       // Tercih ANINDA kalıcı olur; oyunun gün sonu checkpoint'ini beklemez.
       // Yalnız `profile` alanı yamalanır (bkz. persistProfile).
@@ -465,6 +560,21 @@ export const useGame = create<GameState>((set, get) => {
     // -----------------------------------------------------------------------
     tick: (deltaRealSeconds) => {
       const s = get();
+
+      /*
+       * §4 — YÖNETİM MODALI AÇIKKEN ZAMAN DURUR.
+       *
+       * Kapı `tick`in EN BAŞINDA: buradan sonraki her şey (saat, piyasa
+       * adımı, müşteri spawn'ı, stok yeniden değerleme, gün devri) tek bir
+       * `return` ile durur. Tek tek durdurmaya çalışmak, birini unutmaya
+       * açık olurdu — profil düzenlerken gün dönmesi tam olarak öyle bir
+       * hataydı.
+       *
+       * Hız DEĞİŞTİRİLMEZ, yalnız ilerleme durur; modal kapanınca oyuncunun
+       * seçtiği hız kendiliğinden kaldığı yerden devam eder.
+       */
+      if (s.pauseDepth > 0) return;
+
       // Aktif pazarlık sırasında saat ilerlemez: oyuncu düşünürken müşteri
       // sabrı gerçek zamanla erimez (GDD 11 — refleks oyunu değildir).
       if (s.activeDeal && !isDealFinished(s.activeDeal)) return;
@@ -524,6 +634,36 @@ export const useGame = create<GameState>((set, get) => {
 
       const head = s.queue[0];
       if (!head) return;
+
+      /*
+       * UPDATEv2 §18 — KARŞILANAMAZ TALEP GÜVENLİ KAPANIR.
+       *
+       * Satış kataloğu daraldığında (ya da ileride bir SKU kapandığında)
+       * kuyrukta duran bir satın alma talebi artık karşılanamaz olabilir.
+       * Oyuncuyu "stokta sunulacak ürün yok" duvarına toslatmak yerine
+       * talebi burada kapatıyoruz.
+       *
+       * EKONOMİK YAN ETKİ YOK: yalnız kuyruktan çıkarılır. Para, stok, XP,
+       * güven ve itibar bu yolda hiç yazılmaz — settlement'a hiç girilmez.
+       *
+       * NOT: kayıt dosyası kuyruğu ve aktif işlemi zaten taşımıyor, yani
+       * pratikte bu duruma eski kayıt üzerinden düşülmez. Kapı yine de
+       * burada duruyor çünkü talebin aktif işleme DÖNÜŞTÜĞÜ tek yer burası;
+       * kaynağı ne olursa olsun geçersiz bir talep buradan geçemez.
+       */
+      if (head.customer.intent === 'buy') {
+        const demand = head.customer.demand;
+        if (!demand || !demandIsSellable(demand.templateId, s.store.storeTier)) {
+          set({ queue: s.queue.slice(1), activeCustomer: null });
+          pushToast(
+            set,
+            get,
+            'Bu müşteri artık satış kataloğunda olmayan bir ürün istiyordu; talep kapatıldı.',
+            'info',
+          );
+          return;
+        }
+      }
 
       const items = { ...s.items };
       for (const item of head.items) items[item.id] = item;
@@ -809,6 +949,30 @@ export const useGame = create<GameState>((set, get) => {
         jobs: s.jobs.map((j) =>
           j.jobId === jobId ? { ...j, result: 'delivered' as const } : j,
         ),
+        /*
+          §9 — KALICI SONUÇ ÖZETİ.
+          Toast korunuyor (anlık geri bildirim) ama tek başına yeterli
+          değildi: ücret/tazmin rakamları 4 saniyede kayboluyordu. Panel
+          oyuncu kapatana kadar durur.
+
+          ÇİFT UYGULAMA RİSKİ YOK: bu satıra ancak `applyTransaction`
+          `applied: true` döndükten sonra gelinir ve iş `delivered`
+          işaretlenir; ikinci çağrı en baştaki kapıdan döner.
+        */
+        lastDelivery: {
+          jobId: job.jobId,
+          itemName: job.itemName,
+          typeLabel: getServiceType(job.type).label,
+          succeeded: delivery.succeeded,
+          fee: job.fee,
+          compensation: job.compensation,
+          cashDelta: delivery.cashDelta,
+          netContribution: delivery.netContribution,
+          trustDelta: delivery.trustDelta,
+          reputationDelta: delivery.reputationDelta,
+          errorRisk: job.risk,
+          lateDays: Math.max(0, s.market.day - job.promisedDay),
+        },
       });
 
       pushToast(set, get, delivery.message, delivery.succeeded ? 'positive' : 'negative');
@@ -1073,6 +1237,20 @@ export const useGame = create<GameState>((set, get) => {
         return;
       }
 
+      /*
+       * KATMAN 2 (§2) — UYUMSUZ ÜRÜN PAKETE GİREMEZ.
+       *
+       * Liste zaten uyumsuzu göstermiyor (katman 1), ama arayüz filtresine
+       * güvenmek yetmez: eski bir kayıt, çift tıklama yarışı ya da doğrudan
+       * çağrı bu fonksiyona uyumsuz bir kalem sokabilir. §2 "yalnızca
+       * kullanıcı arayüzünde filtre uygulama" diyor; kapı burada da var.
+       */
+      const candidate = s.items[itemId];
+      if (candidate && !isProductCompatible(deal.purchase.demand, candidate)) {
+        pushToast(set, get, 'Müşterinin istediği ürün bu değil.', 'negative');
+        return;
+      }
+
       const lines = deal.purchase.lines;
       const existing = lines.find((l) => l.itemId === itemId);
       const limit = maxPackageLines(s.store);
@@ -1100,6 +1278,10 @@ export const useGame = create<GameState>((set, get) => {
 
       const position = s.inventory.find((p) => p.itemId === itemId);
       if (!position) return;
+
+      // Adet değiştirmek de bir pakete-ekleme yoludur; aynı kapı burada da.
+      const qtyItem = s.items[itemId];
+      if (qtyItem && !isProductCompatible(deal.purchase.demand, qtyItem)) return;
 
       // Stokta olmayan adedi satmak stok uydurmaktır (GDD 34.4).
       const capped = Math.max(0, Math.min(position.quantity, Math.round(quantity)));
@@ -1299,6 +1481,105 @@ export const useGame = create<GameState>((set, get) => {
         profit >= 0 ? 'positive' : 'negative',
       );
     },
+
+    /*
+     * ═══════════════════════════════════════════════════════════════════
+     * UPDATEv2 §8 — STOK KALEMİ EYLEMLERİ
+     *
+     * İkisi de `applyTransaction`'a UĞRAMAZ ve uğramamalıdır: ortada bir
+     * işlem yok. Nakit, defter, borç, itibar, güven ve gerçekleşmiş kâr
+     * bu iki eylemden ETKİLENMEZ.
+     * ═══════════════════════════════════════════════════════════════════
+     */
+
+    /**
+     * Kalemi vitrin ile arka stok arasında taşır.
+     *
+     * BİRLEŞTİRME ZORUNLU: yığın kimliği (`stackKey`) konumu da içerir, yani
+     * hedefte aynı üründen bir yığın varsa iki pozisyon aynı anahtara sahip
+     * olur. Birleştirmeden taşımak, `upsertPosition`'ın tek-yığın kuralını
+     * arkadan delen ikinci bir satır bırakırdı; toplamlar toplanarak
+     * birleştirilir ve birim maliyet kendiliğinden ağırlıklı ortalama kalır
+     * (GDD 22.1).
+     *
+     * Kapasite dolu ise hiçbir şey yapılmaz — sebep zaten arayüzde yazılı.
+     */
+    moveStock: (itemId, to) => {
+      const s = get();
+      const position = s.inventory.find((p) => p.itemId === itemId);
+      if (!position || position.location === to) return;
+      // Atölyedeki kalem oyuncunun elinde değil; iş bitene kadar taşınmaz.
+      if (position.location === 'workshop') return;
+
+      const used = s.inventory.filter((p) => p.location === to).length;
+      const cap = to === 'display' ? s.store.displaySlots : s.store.backStockSlots;
+      if (used >= cap) {
+        pushToast(
+          set,
+          get,
+          to === 'display' ? 'Vitrin dolu.' : 'Arka stok dolu.',
+          'negative',
+        );
+        return;
+      }
+
+      const item = s.items[itemId];
+      const key = item ? stackKey(item, to) : null;
+      const twin = key
+        ? s.inventory.find((p) => {
+            const other = s.items[p.itemId];
+            return p.itemId !== itemId && !!other && stackKey(other, to) === key;
+          })
+        : undefined;
+
+      let inventory: InventoryPosition[];
+      if (twin) {
+        inventory = s.inventory
+          .filter((p) => p.itemId !== itemId)
+          .map((p) =>
+            p.itemId === twin.itemId
+              ? {
+                  ...p,
+                  quantity: p.quantity + position.quantity,
+                  costBasis: p.costBasis + position.costBasis,
+                  currentValue: p.currentValue + position.currentValue,
+                  // Yaşta ESKİ olan kazanır: ölü stok uyarısı taşınmayla silinmez.
+                  age: Math.max(p.age, position.age),
+                }
+              : p,
+          );
+      } else {
+        inventory = s.inventory.map((p) => (p.itemId === itemId ? { ...p, location: to } : p));
+      }
+
+      set({ inventory });
+      pushToast(set, get, to === 'display' ? 'Vitrine taşındı.' : 'Arka stoğa taşındı.', 'info');
+    },
+
+    /**
+     * Kalemin çıkış planını değiştirir (GDD 8.3 "plan etiketi").
+     *
+     * Plan MARK'ı belirler: `revalueInventory` seçili kanalın beklenen
+     * netini bugünkü değer olarak yazar. Bu yüzden değişiklikten sonra
+     * yeniden değerleme çağrılır — aksi hâlde etiket bir şey, ekrandaki
+     * rakam başka şey söylerdi. Gerçekleşmiş kâr GDD 34.5 gereği yalnız
+     * satışta doğar; buradan hiçbir kuruş gerçekleşmez.
+     */
+    setStockThesis: (itemId, channel) => {
+      const s = get();
+      const position = s.inventory.find((p) => p.itemId === itemId);
+      if (!position || position.thesis === channel) return;
+
+      const tagged = s.inventory.map((p) =>
+        p.itemId === itemId ? { ...p, thesis: channel } : p,
+      );
+      set({ inventory: revalueInventory(tagged, s.items, thesisContext(get())) });
+      pushToast(set, get, `Çıkış planı: ${CHANNEL_SHORT[channel]}`, 'info');
+    },
+
+    /** §8 — "uygun satış rotasına git"; yalnız sekme ve alt rota seçer. */
+    openBusinessRoute: (route) => set({ tab: 'business', pendingBusinessRoute: route }),
+    consumeBusinessRoute: () => set({ pendingBusinessRoute: null }),
 
     /**
      * §7 — toptancıdan mal alır. Nakit yetmezse kalanı VADEYE yazılır;
@@ -2040,6 +2321,27 @@ function settlePurchase(
       .map((l) => s.items[l.itemId])
       .filter((it): it is ItemInstance => !!it);
 
+    /*
+     * KATMAN 5 (§2) — SON KAPI: UYUMSUZ SATIŞ TRANSACTION'I REDDEDİLİR.
+     *
+     * §2: "Uyumsuz ürün kod veya eski kayıt nedeniyle işlem fonksiyonuna
+     * ulaşırsa transaction reddedilmeli; para, stok, XP ve müşteri ilişkisi
+     * DEĞİŞMEMELİ."
+     *
+     * Bu yüzden kontrol `applyTransaction`tan ÖNCE: tek yazma noktasına hiç
+     * girilmez, dolayısıyla yarım uygulanmış bir işlem de oluşamaz.
+     */
+    const incompatible = soldItems.filter((it) => !isProductCompatible(purchase.demand, it));
+    if (incompatible.length > 0) {
+      pushToast(
+        set,
+        get,
+        'Pakette müşterinin istemediği bir ürün var; satış tamamlanmadı.',
+        'negative',
+      );
+      return;
+    }
+
     const tx: SettlementTransaction = {
       // Paket bazlı benzersiz kimlik → çift tap ve reload koruması (GDD 22.1).
       txId: `sale_${deal.dealId}`,
@@ -2346,9 +2648,23 @@ export function canEnterStage(s: GameState, stage: WorkbenchStage): boolean {
         return true;
       case 'package':
         return purchase.lines.length > 0;
-      case 'negotiate':
+      case 'negotiate': {
+        /*
+         * KATMAN 4 (§2) — UYUMSUZ PAKETLE PAZARLIĞA GEÇİLMEZ.
+         *
+         * §4.1'in kısmi karşılama kuralına ek olarak paketin İÇERİĞİ de
+         * denetlenir. Boş paket zaten `fulfilment === 'none'` verir; bu
+         * kapı, dolu ama uyumsuz bir paketi durdurur.
+         */
+        if (purchase.lines.length === 0) return false;
+        const allCompatible = purchase.lines.every((l) => {
+          const item = s.items[l.itemId];
+          return !!item && isProductCompatible(purchase.demand, item);
+        });
+        if (!allCompatible) return false;
         // §4.1: kısmi karşılamayı kabul etmeyen müşteriye eksik paket sunulmaz.
         return purchase.fulfilment !== 'none';
+      }
       case 'result':
         return isTerminal(line.negotiation.state);
       default:
@@ -2395,6 +2711,20 @@ function allLinesResolved(lines: DealLine[]): boolean {
   return lines.every((l) => isTerminal(l.negotiation.state));
 }
 
+/**
+ * §3 — öğretim metinlerinin ayırt ettiği ürün grubu.
+ *
+ * Gram bazlı külçe ile ziynet ayrılıyor çünkü ders cümlesi değişiyor:
+ * külçenin gramajı ÜRETİMİNDE sabittir, ziynetinki STANDARTTIR. İkisini
+ * tek metne sıkıştırmak, ikisini de yarım anlatmak olurdu.
+ */
+function productKindOf(templateId: string): ProductKind {
+  if (!isBullion(templateId)) return 'crafted';
+  return templateId.startsWith('gram_gold') || templateId === 'small_ingot'
+    ? 'gramBullion'
+    : 'coinBullion';
+}
+
 function openingLine(customer: Customer): string {
   switch (customer.intent) {
     case 'sell':
@@ -2402,10 +2732,15 @@ function openingLine(customer: Customer): string {
         ? 'Birkaç parça getirdim, bakar mısınız?'
         : 'Bunu bozdurmak istiyorum.';
     case 'buy':
-      // Talep spawn anında sabittir; müşteri ne aradığını ilk cümlede söyler
-      // ki oyuncu stok seçimine bilgiyle girsin (GDD 23.23).
+      /*
+        Talep spawn anında sabittir; müşteri ne aradığını ilk cümlede söyler
+        ki oyuncu stok seçimine bilgiyle girsin (GDD 23.23).
+
+        §2 — cümle KATALOG ADI değil, KONUŞMA DİLİ. Eskiden
+        "Gram Altın (5 g) için geldim." yazıyordu; müşteri öyle konuşmaz.
+      */
       return customer.demand
-        ? `${customer.demand.summary} için geldim.`
+        ? customerRequestLine(customer.demand)
         : 'Bir şeye bakıyordum.';
     case 'service':
       return 'Bunun tamiri mümkün mü?';
@@ -2469,6 +2804,13 @@ export const selectors = {
       testsRun: line?.testResults.length ?? 0,
       hasBand: line?.band !== null && line?.band !== undefined,
       stockUnits: s.inventory.reduce((n, p) => n + p.quantity, 0),
+      /*
+        §3 — ders metni aktif ürüne göre konuşabilsin diye.
+        Gram bazlı sarrafiye ile ziynet ayrılıyor: ilkinde "gramaj
+        üretiminde sabittir", ikincisinde "gramajı standarttır" denir.
+        Alış akışında henüz kalem seçilmemiş olabilir; o zaman null.
+      */
+      productKind: item ? productKindOf(item.templateId) : null,
     };
   },
 

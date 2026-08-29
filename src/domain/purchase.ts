@@ -27,6 +27,7 @@ import { costBasisForUnits } from './settlement';
 import { bullionMeta, isBullion } from '@data/bullion';
 import { getArchetype } from '@data/archetypes';
 import { templatesForTier } from './item-spawn';
+import { customerBuyDemandPool } from './sales-catalog';
 import { FAMILY_LABEL, getTemplate } from '@data/item-templates';
 import { bullionUnitValue, gramsFor, priceForChannel, CHANNEL_LABEL_TR } from './channels';
 import { trueValue } from './valuation';
@@ -71,8 +72,24 @@ export function spawnDemand(
   const rng = new Rng(deriveSeed(rootSeed, 'customer/demand', spawnIndex));
   const archetype = getArchetype(archetypeId);
 
-  // Gün karakteri sarrafiye/işçilikli karmasını eğer (§3 %24 havuzu).
-  const wantsBullion = rng.chance(character.bullionBias);
+  /*
+   * UPDATEv2 §18 — TALEP HAVUZU SATIŞ KATALOĞUNDAN TÜRER.
+   *
+   * Eskiden burada `rng.chance(character.bullionBias)` ile sarrafiye/işçilikli
+   * karması çekiliyor, işçilikli çıkarsa müşteri kolye/bilezik istiyordu.
+   * Ama dükkânın kolye tedarik edecek bir yolu yok: talep doğru eşleşse bile
+   * karşılanamıyordu. Havuz artık `sellableTemplates`ten gelir; orada bugün
+   * yalnız sarrafiye var, dolayısıyla satın alma talebi de yalnız sarrafiyedir.
+   *
+   * `bullionBias` ÇEKİLMEYE DEVAM EDİYOR (ve gün karakteri hacmi hâlâ eğiyor):
+   * bu çekiliş kaldırılsaydı deterministik akış kayar ve aynı tohum farklı bir
+   * müşteri üretirdi. Sonucu artık talebin AİLESİNİ değil, yalnız hacim
+   * eğilimini besliyor — havuz zaten tek aile taşıyor.
+   */
+  const catalog = customerBuyDemandPool(storeTier);
+  rng.chance(character.bullionBias); // akış konumu korunur (bkz. yukarı)
+
+  const wantsBullion = catalog.length > 0;
 
   // §4.1 toplu sipariş — gün karakterinden gelir, niyet payından değil.
   const isBulk = wantsBullion && rng.chance(character.bulkOrderChance);
@@ -81,7 +98,7 @@ export function spawnDemand(
   let quantity = 1;
 
   if (wantsBullion) {
-    templateId = rng.pick(PURCHASE.bullionDemandPool);
+    templateId = rng.pick(catalog);
     const meta = bullionMeta(templateId);
     const band = isBulk ? meta?.bulkVolumeBand : meta?.volumeBand;
     const [lo, hi] = band ?? [1, 2];
@@ -122,6 +139,15 @@ export function spawnDemand(
     ? []
     : archetype.preferredFamilies.filter((f) => f !== 'bullion').slice(0, 2);
 
+  /*
+   * BU DAL ARTIK ULAŞILMAZ olmalı: katalog boş kalmadıkça `wantsBullion`
+   * daima true'dur. Silinmedi çünkü §18 "havuz boşsa işçilikli ürüne geri
+   * DÜŞME" diyor — ve gerçekten düşmüyoruz: bu dal yalnız katalog tamamen
+   * boşsa çalışır, o durumda da çağıran taraf (customer-spawn) satın alma
+   * niyetini hiç üretmez. Dalı kaldırmak, ileride katalog genişleyip
+   * işçilikli ürün satılabilir olduğunda yeniden yazılması gereken kodu
+   * atmak olurdu.
+   */
   if (!wantsBullion) {
     const available = templatesForTier(storeTier).filter((t) => t.family !== 'bullion');
     let pool = available.filter((t) => families.includes(t.family));
@@ -188,18 +214,49 @@ function demandSummary(
  * Bir stok kalemi talebi ne kadar karşılıyor.
  *   'exact'   — tam istediği ürün
  *   'family'  — aradığı ailede ama tam ürün değil
- *   'off'     — alakasız; müşteriye sunmak sabır ve ilgi yakar
+ *   'off'     — alakasız; müşteriye sunulamaz
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * UPDATEv1 §2 — İKAME YOK (`allowSubstitution: false`).
+ *
+ * Önceki hâli, somut ürün istenmiş olsa bile aynı ailedeki başka ürünü
+ * 'family' sayıyordu: "5 gram altın istiyorum" diyen müşteriye 1 g ve 10 g
+ * külçeler de sunulabiliyordu. §2 bunu açıkça kapatıyor ve kabul kriteri
+ * olarak yazıyor: "5 gram altın talebinde 1 g ve 10 g ürünler görünmüyor."
+ *
+ * Yeni kural: TALEP SOMUT BİR ÜRÜN ADI TAŞIYORSA yalnız o ürün uyar. Aile
+ * düzeyi eşleşme yalnız somut ad OLMAYAN talepte anlamlıdır (tip hâlâ buna
+ * izin veriyor; §18 sonrası satın alma akışında böyle bir talep üretilmiyor).
+ *
+ * BU BİLİNÇLİ BİR DAVRANIŞ DEĞİŞİKLİĞİDİR: eskiden yakın ürünü sunmak
+ * "sabır yakan ama mümkün" bir seçenekti. Artık mümkün değil.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 export type DemandMatch = 'exact' | 'family' | 'off';
 
 export function matchDemand(demand: CustomerDemand, item: ItemInstance): DemandMatch {
-  if (demand.templateId && item.templateId === demand.templateId) return 'exact';
+  // Somut ürün istendiyse ikame yok: ya o üründür ya da alakasızdır.
+  if (demand.templateId) {
+    return item.templateId === demand.templateId ? 'exact' : 'off';
+  }
+
   if (demand.wantsBullion) return isBullion(item.templateId) ? 'family' : 'off';
 
   const template = getTemplate(item.templateId);
   if (!template) return 'off';
   if (demand.families.length === 0) return 'family';
   return demand.families.includes(template.family) ? 'family' : 'off';
+}
+
+/**
+ * §2'nin merkezî uygunluk kapısı. Beş savunma katmanının hepsi bunu çağırır:
+ * liste, pakete ekleme, değerleme, pazarlığa geçiş ve settlement.
+ *
+ * Tek satırlık olması önemli: kural tek yerde yaşasın ki bir katman
+ * gevşediğinde diğerleri sessizce ayrışmasın.
+ */
+export function isProductCompatible(demand: CustomerDemand, item: ItemInstance): boolean {
+  return matchDemand(demand, item) !== 'off';
 }
 
 /** Talebi karşılayabilecek stok kalemleri — vitrin ve arka stok. */
@@ -214,6 +271,9 @@ export function offerableStock(
     if (position.location !== 'display' && position.location !== 'backStock') continue;
     const item = items[position.itemId];
     if (!item) continue;
+    // KATMAN 1 — uyumsuz ürün listeye hiç girmez. Eskiden "Aradığı değil"
+    // etiketiyle gösteriliyor ve yine de seçilebiliyordu (§2'nin ana şikâyeti).
+    if (!isProductCompatible(demand, item)) continue;
     rows.push({ position, item, match: matchDemand(demand, item) });
   }
   return rows.sort(
@@ -383,7 +443,16 @@ export function repricePackage(
   customer: Customer,
   market: MarketState,
 ): PurchaseSession {
-  const clean = lines.filter((l) => l.quantity > 0 && !!items[l.itemId]);
+  /*
+   * KATMAN 3 (§2) — DEĞERLEMEYE UYUMSUZ KALEM GİRMEZ.
+   *
+   * Paket her değişiklikte buradan yeniden türetilir, yani bu tek satır
+   * hem fiyatı hem `units`, `fulfilment` ve `packageCost`u korur. Uyumsuz
+   * bir kalem herhangi bir yoldan listeye girse bile fiyata dönüşemez.
+   */
+  const clean = lines.filter(
+    (l) => l.quantity > 0 && !!items[l.itemId] && isProductCompatible(session.demand, items[l.itemId]!),
+  );
   const units = packageUnits(clean);
   const quote = quotePackage(clean, session.demand, customer, market, items);
 

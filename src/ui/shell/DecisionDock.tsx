@@ -19,6 +19,15 @@ export interface DockAction {
   disabled?: boolean;
   danger?: boolean;
   icon?: ReactNode;
+  /**
+   * UPDATEv1 §6/§12 — DÜĞME NEDEN PASİF?
+   *
+   * Metin hem ERİŞİLEBİLİR ADA hem `title`a girer. Pasif bir düğmenin
+   * nedenini yalnız ekranda göstermek yetmez: ekran okuyucu kullanan
+   * oyuncu düğmeye odaklandığında "Teklifi Gönder, devre dışı" duyar ve
+   * NİÇİN olduğunu hiç öğrenemezdi.
+   */
+  disabledReason?: string;
 }
 
 interface Props {
@@ -51,6 +60,12 @@ export function DecisionDock({ summaryLabel, summaryValue, children, primary, se
           className="cta"
           onClick={primary.onPress}
           disabled={primary.disabled}
+          aria-label={
+            primary.disabled && primary.disabledReason
+              ? `${primary.label} — ${primary.disabledReason}`
+              : undefined
+          }
+          title={primary.disabled ? primary.disabledReason : undefined}
         >
           {primary.icon}
           {primary.label}
@@ -80,6 +95,12 @@ function SecondaryButton({ action }: { action: DockAction }) {
       className={`secondary ${action.danger ? 'secondary--danger' : ''}`}
       onClick={action.onPress}
       disabled={action.disabled}
+      aria-label={
+        action.disabled && action.disabledReason
+          ? `${action.label} — ${action.disabledReason}`
+          : undefined
+      }
+      title={action.disabled ? action.disabledReason : undefined}
     >
       {action.icon}
       {action.label}

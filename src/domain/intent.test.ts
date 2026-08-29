@@ -206,14 +206,18 @@ describe('GDD 23.23 — Müşteri alış akışı', () => {
     expect(purchaseCeiling(customer, 10_000_000)).toBeLessThanOrEqual(customer.budget);
   });
 
-  it('stok eşleşmesi talebi doğru sınıflandırır', () => {
+  it('stok eşleşmesi talebi doğru sınıflandırır — İKAME YOK (§2)', () => {
     const customer = buyer();
     const demand = { ...customer.demand!, wantsBullion: true, templateId: 'quarter_gold' };
     const quarter = spawnItem(SEED, 1, 'quarter_gold');
     const gram = spawnItem(SEED, 2, 'gram_gold_10');
+    const necklace = spawnItem(SEED, 3, 'necklace_14k');
 
     expect(matchDemand(demand, quarter)).toBe('exact');
-    expect(matchDemand(demand, gram)).toBe('family');
+    // Eskiden 'family' idi: çeyrek isteyene 10 g külçe sunulabiliyordu.
+    // §2 kabul kriteri: "Çeyrek Altın talebinde ... gram altın görünmüyor."
+    expect(matchDemand(demand, gram)).toBe('off');
+    expect(matchDemand(demand, necklace)).toBe('off');
   });
 
   it('§4.1 — kısmi karşılama kuralı: eksik paket ancak müşteri razıysa geçerli', () => {
@@ -247,7 +251,14 @@ describe('GDD 23.23 — Müşteri alış akışı', () => {
 
   it('paket değiştikçe fiyat ve karşılama durumu yeniden TÜREtilir', () => {
     const customer = buyer();
-    const { inventory, items } = stock(['quarter_gold', 'half_gold', 'full_gold']);
+    /*
+      Ölçülen şey PAKET BÜYÜDÜKÇE fiyatın yeniden türemesi. §2'nin ikame
+      yasağından sonra farklı ürünler koymak işe yaramaz — uyumsuz kalemler
+      değerlemeye hiç girmez (katman 3) ve iki paket de aynı çıkardı. Bu
+      yüzden aynı üründen iki ayrı kalem stoklanıyor.
+    */
+    const wanted = customer.demand!.templateId!;
+    const { inventory, items } = stock([wanted, wanted, wanted]);
     const ids = Object.keys(items);
 
     const empty = createPurchaseSession(customer.demand!);
@@ -264,12 +275,20 @@ describe('GDD 23.23 — Müşteri alış akışı', () => {
   });
 
   it('sunulabilir stok yalnız vitrin ve arka stoktan gelir', () => {
+    /*
+      Ölçülen şey KONUM filtresi, uygunluk değil. §2'nin ikame yasağından
+      sonra stoğa talebin kendi ürününü koymak gerekiyor; farklı ürünler
+      konsaydı hepsi uygunluk kapısında elenir ve konum filtresi hiç
+      sınanmamış olurdu (test sessizce boşa çalışırdı).
+    */
     const customer = buyer();
-    const { inventory, items } = stock(['quarter_gold', 'half_gold']);
+    const wanted = customer.demand!.templateId!;
+    const { inventory, items } = stock([wanted, wanted]);
     inventory[1]!.location = 'workshop';
 
     const rows = offerableStock(customer.demand!, inventory, items);
     expect(rows).toHaveLength(1);
+    expect(rows[0]!.position.location).toBe('display');
   });
 });
 

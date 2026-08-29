@@ -68,6 +68,14 @@ export const IconWorkshop = (p: IconProps) => (
 );
 
 /** İşletme — sütunlu bina / finans. */
+/** Market — alışveriş çantası. Sade tutuldu; 21 px'te okunmalı. */
+export const IconMarket = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4.4 8h15.2l-1.1 11.3a1.8 1.8 0 0 1-1.8 1.6H7.3a1.8 1.8 0 0 1-1.8-1.6Z" />
+    <path d="M8.8 10.4V6.9a3.2 3.2 0 0 1 6.4 0v3.5" />
+  </Svg>
+);
+
 export const IconBusiness = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3.2 9.2 12 4l8.8 5.2" />

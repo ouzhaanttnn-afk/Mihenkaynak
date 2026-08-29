@@ -18,22 +18,24 @@
  * AYRI SÜTUNDA veriliyor — ıskalanan dokunuş öbürüne düşemez.
  */
 
-import type { Lesson } from '@domain/onboarding';
+import { lessonBody, type CoachContext, type Lesson } from '@domain/onboarding';
 
 interface Props {
   lesson: Lesson;
+  /** §3 — metin aktif ürüne göre değişebildiği için bağlam gerekiyor. */
+  ctx: CoachContext;
   /** İlk derste true: öğretimi hiç istemeyen oyuncu kararını burada verir. */
   showSkip: boolean;
   onDismiss: () => void;
   onSkipAll: () => void;
 }
 
-export function CoachBar({ lesson, showSkip, onDismiss, onSkipAll }: Props) {
+export function CoachBar({ lesson, ctx, showSkip, onDismiss, onSkipAll }: Props) {
   return (
     <aside className="coach" role="note" aria-label="Öğretim ipucu">
       <div className="coach__body">
         <span className="coach__title">{lesson.title}</span>
-        <span className="coach__text">{lesson.body}</span>
+        <span className="coach__text">{lessonBody(lesson, ctx)}</span>
 
         {showSkip && (
           <button type="button" className="coach__skip" onClick={onSkipAll}>

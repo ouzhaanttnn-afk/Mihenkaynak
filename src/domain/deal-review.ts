@@ -54,7 +54,8 @@ export function buildCaseReview(input: ReviewInput): CaseReview {
 
   if (!accepted) {
     return {
-      headline: 'İşlem kapanmadı.',
+      // §11 — oyuncuya sistem durumu değil, olan biten anlatılır.
+      headline: 'Müşteriyle anlaşma sağlanamadı.',
       missedSignals: [],
       keyDecisionPoint:
         price > 0

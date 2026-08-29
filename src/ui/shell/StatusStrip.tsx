@@ -79,9 +79,14 @@ export function StatusStrip({
           <span className="profileChip__name">{profile.jewelerName}</span>
           <span className="statusStrip__levelRow">
             <span className="statusStrip__levelNum">Sv {store.level}</span>
-            <span className="statusStrip__xp num">
-              {store.xp}/{store.xpToNext}
-            </span>
+            {/*
+              UPDATEv2 §12/§7 — XP KESRİ YERİNE YÜZDE.
+              "0/580" 52 px'lik şeritte 34 px istiyordu ve hız kontrolü
+              132 px'e çıkınca "0/…" diye kırpılıyordu — kırpılmış bir kesir
+              hiçbir şey söylemez. Yüzde aynı bilgiyi 16 px'te veriyor;
+              ham sayılar Kariyer / Yetenekler rotasında tam hâliyle duruyor.
+            */}
+            <span className="statusStrip__xp num">%{Math.round(xpRatio * 100)}</span>
           </span>
           <span className="statusStrip__xpBar">
             <span className="statusStrip__xpFill" style={{ width: `${xpRatio * 100}%` }} />

@@ -14,8 +14,10 @@ import {
   LESSONS,
   nextLesson,
   onboardingComplete,
+  lessonBody,
   skipAll,
   type CoachContext,
+  type ProductKind,
 } from './onboarding';
 
 const base: CoachContext = {
@@ -28,6 +30,7 @@ const base: CoachContext = {
   testsRun: 0,
   hasBand: false,
   stockUnits: 0,
+  productKind: null,
 };
 
 const ctx = (over: Partial<CoachContext> = {}): CoachContext => ({ ...base, ...over });
@@ -41,11 +44,42 @@ describe('Ders tablosu bütünlüğü', () => {
   });
 
   it('her dersin başlığı ve gövdesi vardır, gövde telefonda okunacak kadar kısadır', () => {
+    /*
+      §3 sonrası gövde bir FONKSİYON olabilir. Uzunluk denetimi bu yüzden
+      TÜM ürün varyantlarında yapılır: yalnız birini ölçmek, sadece belirli
+      bir üründe taşan bir metni yeşil geçirirdi.
+    */
+    const kinds: (ProductKind | null)[] = [null, 'gramBullion', 'coinBullion', 'crafted'];
     for (const l of LESSONS) {
       expect(l.title.length, l.id).toBeGreaterThan(3);
-      expect(l.body.length, l.id).toBeGreaterThan(20);
-      // Uzun metin telefonda okunmaz; şerit de taşar.
-      expect(l.body.length, `${l.id} (${l.body.length} karakter)`).toBeLessThan(190);
+      for (const kind of kinds) {
+        const body = lessonBody(l, ctx({ productKind: kind }));
+        expect(body.length, `${l.id}/${kind}`).toBeGreaterThan(20);
+        // Uzun metin telefonda okunmaz; şerit de taşar.
+        expect(body.length, `${l.id}/${kind} (${body.length} karakter)`).toBeLessThan(190);
+      }
+    }
+  });
+
+  it('§3 — ürüne bağlı ders, YANLIŞ ürün adını kullanmaz', () => {
+    /*
+      Denetimin bulduğu hata: Gram Altın incelenirken "Çeyreğin gramajı…"
+      diyen ders. Test bunu doğrudan arar.
+    */
+    const fast = LESSONS.find((l) => l.id === 'fastFlow')!;
+    const gram = lessonBody(fast, ctx({ productKind: 'gramBullion' }));
+    const coin = lessonBody(fast, ctx({ productKind: 'coinBullion' }));
+
+    expect(gram.toLocaleLowerCase('tr'), gram).not.toContain('çeyre');
+    expect(gram.toLocaleLowerCase('tr'), gram).toContain('gram');
+    // İki ürün grubu gerçekten farklı konuşuyor; tek metnin kopyası değil.
+    expect(coin).not.toBe(gram);
+  });
+
+  it('§3 — aktif ürün bilinmiyorsa genel metne düşer, ürün adı uydurmaz', () => {
+    for (const l of LESSONS) {
+      const body = lessonBody(l, ctx({ productKind: null }));
+      expect(body.length, l.id).toBeGreaterThan(20);
     }
   });
 

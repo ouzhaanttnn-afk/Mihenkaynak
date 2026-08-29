@@ -86,6 +86,14 @@ export interface SaveFile {
    * şey yalnız bir varsayılanı olan yeni alansa buna gerek yok.
    */
   profile?: PlayerProfile;
+
+  /**
+   * Kaydın yazıldığı gerçek zaman (epoch ms) — UPDATEv1 §5.
+   * Kayıt ekranı "son otomatik kayıt ne zaman" sorusunu bununla yanıtlar.
+   * İsteğe bağlı: bu alandan önce yazılmış kayıtlarda yoktur ve ekran o
+   * durumda oyun içi güne düşer.
+   */
+  savedAt?: number;
 }
 
 /**
@@ -112,6 +120,7 @@ export function serialize(state: GameState): SaveFile {
     speed4xUnlocked: state.speed4xUnlocked,
     seenLessons: state.seenLessons,
     profile: state.profile,
+    savedAt: Date.now(),
   };
 }
 
@@ -261,6 +270,29 @@ export function persistProfile(state: GameState): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Kaydın ÜSTBİLGİSİ — tam yükleme yapmadan okunur (UPDATEv1 §5).
+ *
+ * Kayıt ekranı "en son ne zaman, hangi günde kaydedildi" diye soruyor;
+ * bunun için bütün oyunu deserialize edip piyasayı yeniden türetmek
+ * gereksiz iş olurdu. Bozuk dosyada null döner, ekran da "kayıt yok" der.
+ */
+export function readSaveMeta(): { savedAt: number | null; day: number; clockMinutes: number } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const file = JSON.parse(raw) as SaveFile;
+    if (typeof file.day !== 'number') return null;
+    return {
+      savedAt: typeof file.savedAt === 'number' ? file.savedAt : null,
+      day: file.day,
+      clockMinutes: typeof file.clockMinutes === 'number' ? file.clockMinutes : 0,
+    };
+  } catch {
+    return null;
   }
 }
 

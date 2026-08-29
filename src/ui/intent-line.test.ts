@@ -12,8 +12,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { customerIntentLine } from './intent-line';
+import { customerIntentLine, customerRequestLine } from './intent-line';
+import { customerBuyDemandPool } from '@domain/sales-catalog';
 import { spawnCustomer } from '@domain/customer-spawn';
+import { getTemplate } from '@data/item-templates';
 import { dayCharacter } from '@domain/intent';
 import { createMarketForDay } from '@domain/market';
 import { START } from '@domain/balance';
@@ -170,9 +172,61 @@ describe('niyet cümlesi gizli gerçeği sızdırmaz (GDD 6.6)', () => {
         ancak fiyat olabilir.
       */
       let rest = items.reduce((acc, i) => acc.split(i.displayName).join(''), line);
+      /*
+        Alış niyetinde müşteri KALEM GETİRMEZ; ürün adı `demand.templateId`den
+        gelir. Onu düşmeyi unutmuştum ve "Gram Altın (100 g)" içindeki 100
+        fiyat sanıldı — ürünün kendi gramajıydı. Test yanlıştı, ürün değil.
+      */
+      if (c.demand?.templateId) {
+        const demandName = getTemplate(c.demand.templateId)?.displayName;
+        if (demandName) rest = rest.split(demandName).join('');
+      }
       const demandQty = c.demand?.quantity;
       if (demandQty !== undefined) rest = rest.split(String(demandQty)).join('');
       expect(rest, `${line} ← fiyat benzeri sayı`).not.toMatch(/\d{3,}/);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UPDATEv1 §2 · UPDATEv2 §18 — müşterinin ağzından satın alma cümlesi
+// ---------------------------------------------------------------------------
+
+describe('satın alma cümlesi doğal Türkçedir', () => {
+  const d = (templateId: string, quantity = 1) =>
+    ({ templateId, quantity } as never);
+
+  it('belgede verilen örnek cümleleri birebir üretir', () => {
+    expect(customerRequestLine(d('gram_gold_1'))).toBe('1 gram altın almak istiyorum.');
+    expect(customerRequestLine(d('gram_gold_5'))).toBe('5 gram altın almak istiyorum.');
+    expect(customerRequestLine(d('quarter_gold'))).toBe('Bir çeyrek altın almak istiyorum.');
+    expect(customerRequestLine(d('half_gold'))).toBe('Bir yarım altın almak istiyorum.');
+    expect(customerRequestLine(d('full_gold'))).toBe('Bir tam altın almak istiyorum.');
+    expect(customerRequestLine(d('ata_gold'))).toBe('Bir Ata lira almak istiyorum.');
+  });
+
+  it('çoklu adet doğru sayılır', () => {
+    expect(customerRequestLine(d('quarter_gold', 3))).toBe('3 çeyrek altın almak istiyorum.');
+    // Gramajlı üründe ad zaten sayı taşır; "3 adet" ayrımı şart.
+    expect(customerRequestLine(d('gram_gold_5', 3))).toBe('3 adet 5 gram altın almak istiyorum.');
+  });
+
+  it('katalog adı ("Gram Altın (5 g)") cümleye SIZMAZ', () => {
+    for (const id of customerBuyDemandPool(3)) {
+      const line = customerRequestLine(d(id));
+      expect(line, line).not.toContain('(');
+      expect(line, line).toMatch(/almak istiyorum\.$/);
+      // İlk harf büyük, cümle gibi başlıyor.
+      expect(line[0], line).toBe(line[0]!.toLocaleUpperCase('tr'));
+    }
+  });
+
+  it('gerçek oyunda üretilen her talep için cümle kurulabiliyor', () => {
+    everyCustomer((c) => {
+      if (c.intent !== 'buy' || !c.demand) return;
+      const line = customerRequestLine(c.demand);
+      expect(line.length, line).toBeGreaterThan(10);
+      expect(line, line).toMatch(/almak istiyorum\.$/);
     });
   });
 });

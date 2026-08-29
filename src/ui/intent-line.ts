@@ -23,7 +23,7 @@
 
 import { getTemplate } from '@data/item-templates';
 import { isBullion } from '@data/bullion';
-import type { Customer, ItemInstance } from '@domain/types';
+import type { Customer, CustomerDemand, ItemInstance } from '@domain/types';
 
 /** Ziynet sarrafiyede adet, ürünün kendi adıyla sayılır: "3 Çeyrek Altın". */
 function countPhrase(name: string, quantity: number, templateId: string): string {
@@ -106,4 +106,64 @@ export function customerIntentLine(customer: Customer, items: ItemInstance[]): s
       return what ? `${what} için ekspertiz istiyor` : 'Ekspertiz danışıyor';
     }
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// Müşterinin AĞZINDAN çıkan cümle (UPDATEv1 §2 · UPDATEv2 §18)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sarrafiyenin konuşma dilindeki adı.
+ *
+ * NEDEN ŞABLON KİMLİĞİNE BAĞLI: görünen ad ("Gram Altın (5 g)") bir katalog
+ * adıdır, konuşma dili değil. Müşteri "Gram Altın (5 g) için geldim" demez,
+ * "5 gram altın almak istiyorum" der. Adı ayrıştırmak yerine her ürünün
+ * söylenişini burada yazmak, parantez biçimi değişince cümlenin bozulmasını
+ * da önler.
+ */
+const SPOKEN_NAME: Record<string, string> = {
+  gram_gold_1: '1 gram altın',
+  gram_gold_2_5: '2,5 gram altın',
+  gram_gold_5: '5 gram altın',
+  gram_gold_10: '10 gram altın',
+  gram_gold_20: '20 gram altın',
+  gram_gold_50: '50 gram altın',
+  gram_gold_100: '100 gram altın',
+  small_ingot: 'külçe altın',
+  quarter_gold: 'çeyrek altın',
+  half_gold: 'yarım altın',
+  full_gold: 'tam altın',
+  republic_gold: 'Cumhuriyet altını',
+  ata_gold: 'Ata lira',
+};
+
+/**
+ * Müşterinin satın alma isteğini birinci ağızdan söyler:
+ *   "5 gram altın almak istiyorum."
+ *   "Bir çeyrek altın almak istiyorum."
+ *   "3 çeyrek altın almak istiyorum."
+ *
+ * TEK PARÇADA "BİR": Türkçede "çeyrek altın almak istiyorum" eksik durur;
+ * sayı sıfatı cümleyi tamamlar. Gramajlı üründe ise ad zaten sayı taşıdığı
+ * için ikinci bir "bir" ("bir 5 gram altın") kulak tırmalar — o yüzden
+ * yalnız ziynette eklenir.
+ */
+export function customerRequestLine(demand: CustomerDemand): string {
+  const templateId = demand.templateId;
+  if (!templateId) return 'Bir şeye bakıyordum.';
+
+  const spoken = SPOKEN_NAME[templateId] ?? getTemplate(templateId)?.displayName ?? templateId;
+  const startsWithNumber = /^\d/.test(spoken);
+
+  if (demand.quantity > 1) {
+    const phrase = startsWithNumber
+      ? `${demand.quantity} adet ${spoken}`
+      : `${demand.quantity} ${spoken}`;
+    return `${phrase} almak istiyorum.`;
+  }
+
+  return startsWithNumber
+    ? `${spoken} almak istiyorum.`
+    : `Bir ${spoken} almak istiyorum.`;
 }

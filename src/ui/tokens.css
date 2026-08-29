@@ -200,7 +200,13 @@
      */
     --h-customer-strip: 44px;
     --h-decision-dock: 104px;
-    --h-bottom-nav: 56px;
+    /*
+     * UPDATEv2 §7 — alt navigasyon 60-68 px. Kısa ekranda 56 px'ti, yani
+     * bandın altında. Geri alınan 4 px'in karşılığı zaten ödendi: boş
+     * Araç Rayı artık çizilmiyor (56 px) ve Dükkan boş ekranı dikey
+     * ortalamayı bıraktı.
+     */
+    --h-bottom-nav: 60px;
     /*
      * PİYASA ŞERİDİ 44 px'TE KALIR — denendi ve geri alındı.
      *
@@ -251,6 +257,23 @@ button {
 
 button:disabled {
   cursor: default;
+}
+
+/*
+ * UPDATEv2 §12 — "Modal ve kataloglarda KLAVYE ODAĞI GÖRÜNÜR OLMALI."
+ *
+ * Kural burada, tek yerde ve TÜM odaklanabilir ögeler için: tek tek
+ * bileşenlere yazmak, yeni eklenen her düğmenin odağı sessizce kaybetmesi
+ * demekti (Sarrafiye kataloğunda tam olarak bu olmuştu).
+ *
+ * `:focus-visible` seçildi, `:focus` değil: parmakla basılan düğmenin
+ * etrafında çerçeve belirmesi mobilde hata gibi görünür. Çerçeve iki
+ * katmanlı — koyu zeminde altın halka, açık zeminde koyu halka görünür.
+ */
+:where(button, a[href], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--brass-500);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
 }
 
 ul,

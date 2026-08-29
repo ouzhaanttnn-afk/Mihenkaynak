@@ -64,7 +64,6 @@ import { PackageStage, StockPickStage } from '@ui/workbench/PurchaseStages';
 import { OfferControl, liquidityImpact, type OfferImpact } from '@ui/workbench/OfferControl';
 
 import {
-  IconClock,
   IconCollection,
   IconCounter,
   IconDensity,
@@ -88,7 +87,8 @@ import {
   IconWorkshop,
 } from '@ui/icons';
 import { Art } from '@ui/Art';
-import { NAV_ART } from '@ui/assets';
+import { NAV_ART, customerArt } from '@ui/assets';
+import { customerIntentLine } from '@ui/intent-line';
 import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
 import { offerUnitLabel } from '@ui/offer-view';
 import type {
@@ -376,6 +376,7 @@ export function ShopScreen() {
       {lesson && (
         <CoachBar
           lesson={lesson}
+          ctx={selectors.coachContext(s)}
           // Atlama kararı bir kez sorulur: hiç ders görmemiş oyuncuya.
           showSkip={s.seenLessons.length === 0}
           onDismiss={() => s.dismissLesson(lesson.id)}
@@ -383,7 +384,14 @@ export function ShopScreen() {
         />
       )}
 
-      <ContextualToolRail liquidity={liquidity} />
+      {/*
+        §7 — RAY YALNIZ İŞLEM VARKEN ÇİZİLİR.
+        Boştayken 56 px'lik bir şerit "Müşteri karşılandığında araçlar
+        burada" yazıyordu: bilgi taşımayan, yalnız yer kaplayan bir kart.
+        §7 "boşluğu dekoratif kartlarla doldurma" diyor; kazanılan 56 px
+        doğrudan dinamik operasyon alanına gidiyor.
+      */}
+      {deal && <ContextualToolRail liquidity={liquidity} />}
 
       <ShopDock offer={offer} setOffer={setOffer} bounds={offerBounds} liquidity={liquidity} />
     </>
@@ -430,19 +438,14 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
     });
   }
 
+  /*
+    §7 — TAKVİM SATIRI UYARI OLMAKTAN ÇIKTI.
+    "Sonraki müşteri ~2 dk" bir uyarı değil, ekranın ASIL durumudur; artık
+    aşağıdaki dinamik operasyon alanında, o durumun kendi başlığının
+    altında duruyor. Uyarı şeridinde yalnız gerçekten bağlam bozan iki şey
+    kalıyor: piyasa olayı ve likidite.
+  */
   const nextIn = Math.max(0, Math.round(s.nextCustomerAtMinutes - s.market.clockMinutes));
-  if (alerts.length < 3) {
-    alerts.push({
-      key: 'schedule',
-      title:
-        s.queue.length > 0
-          ? `${s.queue.length} müşteri bekliyor`
-          : `Sonraki müşteri ~${nextIn} dk`,
-      detail: `Dükkan ${clock(DAY.closeMinutes)}'da kapanıyor.`,
-      tone: 'positive',
-      Icon: IconClock,
-    });
-  }
 
   const position = selectors.position(s);
   const metalShare = Math.round(position.metalShare * 100);
@@ -490,7 +493,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
           <span className="position__value num">{tl(s.store.cash)}</span>
         </span>
         <span className="position__cell">
-          <span className="position__label">Malda</span>
+          <span className="position__label">Stok Değeri</span>
           <span className="position__value num">{tl(position.metalValue)}</span>
         </span>
         <span className="position__cell">
@@ -510,31 +513,102 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         </span>
       </button>
 
-      <div className="alerts">
-        {alerts.slice(0, 3).map(({ key, title, detail, tone, Icon }) => (
-          <div key={key} className={`alert alert--${tone}`}>
-            <span className="alert__icon">
-              <Icon size={16} />
-            </span>
-            <span className="alert__body">
-              <span className="alert__title">{title}</span>
-              <span className="alert__detail"> · {detail}</span>
-            </span>
-          </div>
-        ))}
-      </div>
+      {alerts.length > 0 && (
+        <div className="alerts">
+          {alerts.slice(0, 2).map(({ key, title, detail, tone, Icon }) => (
+            <div key={key} className={`alert alert--${tone}`}>
+              <span className="alert__icon">
+                <Icon size={16} />
+              </span>
+              <span className="alert__body">
+                <span className="alert__title">{title}</span>
+                <span className="alert__detail"> · {detail}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <OperationArea nextIn={nextIn} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// UPDATEv2 §7 — DİNAMİK OPERASYON ALANI
+// ---------------------------------------------------------------------------
+
+/**
+ * Kimlik ve finans bloklarının altında kalan alan. §7:
+ *
+ *   "Boşluğu dekoratif kartlarla doldurma. Alan yalnız mevcut oyun
+ *    durumunu ve bir sonraki anlamlı eylemi göstermeli."
+ *
+ * Bu yüzden burada tek bir şey vardır ve o şey oyunun O ANKİ hâlidir:
+ *
+ *   sakin    — kimse yok; ne zaman geleceği ve akını hızlandırma seçeneği.
+ *   bekleyen — kapıda biri var; kim olduğu, NE İSTEDİĞİ ve kaç kişi olduğu.
+ *
+ * Üçüncü durum (aktif işlem) bu bileşene hiç uğramaz: işlem varken bu ekran
+ * zaten İşlem Masası'nın kendisidir — aktif müşteri Müşteri Şeridi'nde,
+ * ürün ve aşama Aşama Şeridi'ndedir. "İşleme Dön" ise Dükkan'da değil,
+ * oyuncunun işlemi bıraktığı DİĞER sekmelerde anlamlıdır; oraya konuldu
+ * (bkz. ResumeDealBar).
+ *
+ * GDD 6.6: bekleyen müşteri satırı ürünün ADINI söyler, gizli gerçeğini
+ * değil — cümle müşterinin kendi beyanıdır.
+ */
+function OperationArea({ nextIn }: { nextIn: number }) {
+  const s = useGame();
+  const head = s.queue[0];
+
+  // --- BEKLEYEN MÜŞTERİ ---
+  if (head) {
+    const initial = head.customer.displayName.charAt(0);
+    return (
+      <button type="button" className="op op--waiting" onClick={s.greetCustomer}>
+        <Art
+          art={customerArt(head.customer.displayName)}
+          size={48}
+          decorative
+          className="op__avatar art--portrait"
+          fallback={<span className="op__initial">{initial}</span>}
+        />
+        <span className="op__body">
+          <span className="op__title">{head.customer.displayName}</span>
+          <span className="op__line">{customerIntentLine(head.customer, head.items)}</span>
+          <span className="op__meta">
+            Kuyrukta {s.queue.length} müşteri · Dükkan {clock(DAY.closeMinutes)}'da kapanıyor
+          </span>
+        </span>
+        <span className="op__cta" aria-hidden="true">
+          Karşıla ›
+        </span>
+      </button>
+    );
+  }
+
+  // --- SAKİN ---
+  return (
+    <div className="op op--calm">
+      <span className="op__title">Dükkan şu an sakin</span>
+      <span className="op__line">
+        Sonraki müşteri ~{nextIn} dk · Dükkan {clock(DAY.closeMinutes)}'da kapanıyor.
+      </span>
 
       {/*
-       * GDD 23.10.1 — "Müşteri yokken Karar Dock'unda ana akışı bozmayan
-       * ikincil 'Dükkânı Canlandır' rewarded CTA'sı gösterilebilir."
-       * Ayrı banner veya büyük reklam kartı kullanılmaz.
+       * GDD 23.10.1 — "ana akışı bozmayan ikincil rewarded CTA".
+       * §7 maliyeti/etkisi açıklansın diyor; açıklama UYDURULMADI, motorun
+       * kendisinden geliyor: `triggerCustomerRush` 90 oyun dakikası boyunca
+       * geliş aralığını 0.4 ile çarpar ve BAŞKA HİÇBİR ŞEYE dokunmaz.
        */}
-      {s.queue.length === 0 && (
-        <button type="button" className="rewardedLine" onClick={s.triggerCustomerRush}>
-          <IconVideo size={13} />
-          Dükkânı Canlandır
-        </button>
-      )}
+      <button type="button" className="rewardedLine" onClick={s.triggerCustomerRush}>
+        <IconVideo size={13} />
+        Dükkânı Canlandır
+      </button>
+      <span className="op__note">
+        Video karşılığında 90 dakika müşteri daha sık gelir. Para veya stok harcanmaz.
+      </span>
     </div>
   );
 }
@@ -1054,7 +1128,19 @@ function ShopDock({
         },
       ];
 
-      const canAfford = offer <= s.store.cash;
+      /*
+        §6 — YETERSİZ NAKİT GEREKÇESİ.
+        Tek hesaplanmış değer kaynağı: `needed`. Hem görünür panel, hem
+        pasif düğmenin erişilebilir adı, hem de eksik tutar aynı sayıdan
+        türer — slider ile gösterilen toplam arasında yuvarlama farkı
+        oluşamaz.
+      */
+      const needed = isFinal && counter !== null ? counter : offer;
+      const canAfford = needed <= s.store.cash;
+      const shortfall = Math.max(0, needed - s.store.cash);
+      const cashReason = canAfford
+        ? undefined
+        : `nakit yetersiz, ${tl(shortfall)} eksik`;
 
       return (
         <DecisionDock
@@ -1069,25 +1155,57 @@ function ShopDock({
               ? {
                   label: 'Kabul Et',
                   onPress: () => s.negotiationMove({ kind: 'acceptCounter', atRound: session.round }),
-                  disabled: counter > s.store.cash,
+                  disabled: !canAfford,
+                  disabledReason: cashReason,
                   icon: <IconSend size={18} />,
                 }
               : {
                   label: 'Teklifi Gönder',
                   onPress: () => s.submitOffer(offer),
                   disabled: !canAfford || offer <= 0,
+                  disabledReason: cashReason ?? (offer <= 0 ? 'teklif tutarı sıfır' : undefined),
                   icon: <IconSend size={18} />,
                 }
           }
           secondary={[
             {
-              label: 'Reddet',
+              label: 'İşlemi Reddet',
               onPress: () => s.negotiationMove({ kind: 'reject', atRound: session.round }),
               danger: true,
               icon: <IconReject size={16} />,
             },
           ]}
         >
+          {/*
+            §6 — pasif düğmenin nedeni GÖRÜNÜR metinde de bulunmalı.
+            Rakamlar ayrı ayrı yazılır ki oyuncu ne kadar eksik olduğunu
+            hesaplamak zorunda kalmasın; altındaki iki bağlantı da mevcut
+            rotalara gider (yeni finansman sistemi kurulmadı).
+          */}
+          {!canAfford && (
+            <div className="cashGap" role="status">
+              <div className="cashGap__row">
+                <span>{isFinal ? 'Kabul için gereken' : 'Teklif tutarı'}</span>
+                <span className="num">{tl(needed)}</span>
+              </div>
+              <div className="cashGap__row">
+                <span>Mevcut nakit</span>
+                <span className="num">{tl(s.store.cash)}</span>
+              </div>
+              <div className="cashGap__row cashGap__row--gap">
+                <span>Eksik nakit</span>
+                <span className="num">{tl(shortfall)}</span>
+              </div>
+              <div className="cashGap__links">
+                <button type="button" className="cashGap__link" onClick={() => s.setTab('stock')}>
+                  Stoktan nakit yarat
+                </button>
+                <button type="button" className="cashGap__link" onClick={() => s.setTab('business')}>
+                  Toptancı / Esnaf finansmanı
+                </button>
+              </div>
+            </div>
+          )}
           {!isFinal && (
             <OfferControl
               value={offer}

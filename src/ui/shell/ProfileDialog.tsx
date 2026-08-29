@@ -28,6 +28,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { AVATAR_IDS, NAME_MAX, checkJewelerName, type PlayerProfile } from '@domain/profile';
+import { useGame } from '@state/gameStore';
 import { avatarArt } from '@ui/assets';
 import { Art } from '@ui/Art';
 import { IconTrust } from '@ui/icons';
@@ -43,6 +44,26 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
   const [name, setName] = useState(profile.jewelerName);
   const [avatarId, setAvatarId] = useState<string>(profile.avatarId);
   const [error, setError] = useState<string | null>(null);
+
+  /*
+    §4 — PENCERE AÇIKKEN OYUN ZAMANI DURUR.
+    Sayaç montajda artar, sökümde azalır; nasıl kapatıldığı (Kaydet, İptal,
+    Escape, dış tıklama) fark etmez, temizlik her yolda aynı yerden geçer.
+  */
+  const pushPause = useGame((st) => st.pushPause);
+  const popPause = useGame((st) => st.popPause);
+  useEffect(() => {
+    pushPause();
+    return popPause;
+  }, [pushPause, popPause]);
+
+  /*
+    §4 — "Hata varsa Kaydet düğmesini pasif yap."
+    Doğrulama tek kaynaktan (checkJewelerName) gelir; düğmenin pasifliği de
+    hata metni de aynı sonucu okur, ikisi ayrışamaz.
+  */
+  const nameCheck = checkJewelerName(name);
+  const canSave = nameCheck.ok;
 
   const titleId = useId();
   const nameId = useId();
@@ -137,8 +158,8 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
           maxLength={NAME_MAX}
           autoComplete="off"
           spellCheck={false}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? errorId : undefined}
+          aria-invalid={!canSave || error ? true : undefined}
+          aria-describedby={!canSave || error ? errorId : undefined}
           onChange={(e) => {
             setName(e.target.value);
             if (error) setError(null);
@@ -150,9 +171,15 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
             }
           }}
         />
-        {error && (
+        {/*
+          Hata metni iki kaynaktan gelebilir: oyuncu Kaydet'e bastığında
+          (`error`) ya da alan zaten geçersizken canlı olarak. İkincisi
+          olmadan pasif düğmenin NEDENİ görünmezdi — §4 ve §12 ikisini de
+          istiyor.
+        */}
+        {(error ?? (!canSave && name.length > 0 ? nameCheck.ok ? null : nameCheck.error : null)) && (
           <p className="profileDialog__error" id={errorId} role="alert">
-            {error}
+            {error ?? (nameCheck.ok ? '' : nameCheck.error)}
           </p>
         )}
 
@@ -226,7 +253,19 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
           <button type="button" className="profileDialog__cancel" onClick={onCancel}>
             İptal
           </button>
-          <button type="button" className="profileDialog__save" onClick={submit}>
+          <button
+            type="button"
+            className="profileDialog__save"
+            onClick={submit}
+            disabled={!canSave}
+            /* §12 — pasif düğmenin nedeni ERİŞİLEBİLİR ADDA da bulunmalı. */
+            aria-label={
+              canSave
+                ? 'Değişiklikleri kaydet'
+                : `Değişiklikleri kaydet — ${nameCheck.ok ? '' : nameCheck.error}`
+            }
+            title={canSave ? undefined : nameCheck.ok ? undefined : nameCheck.error}
+          >
             Değişiklikleri Kaydet
           </button>
         </div>

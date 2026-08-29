@@ -22,7 +22,7 @@ import { useGame } from '@state/gameStore';
 import { IconClock, IconServiceResale, IconWarning, IconWorkshop } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { NAV_ART, OUTSIDE_MASTER_ART, SERVICE_ART } from '@ui/assets';
-import { pct, tl } from '@ui/format';
+import { pct, tl, tlSigned } from '@ui/format';
 import type { ServiceJob } from '@domain/types';
 
 export function WorkshopScreen() {
@@ -83,6 +83,7 @@ export function WorkshopScreen() {
       </header>
 
       <div className="page__scroll">
+        <DeliveryResult />
         {/* Teslime hazır işler önce — oyuncunun aksiyon alması gerekenler. */}
         {ready.length > 0 && (
           <div className="group">
@@ -102,7 +103,7 @@ export function WorkshopScreen() {
           </h2>
 
           {active.length === 0 ? (
-            <div className="empty">
+            <div className="empty workshopEmpty__inner">
               <div className="empty__icon">
                 <Art
                   art={NAV_ART.workshop}
@@ -312,6 +313,87 @@ function JobRow({
           Teslim Et
         </button>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * TESLİM SONUCU — kalıcı özet (UPDATEv1 §9).
+ *
+ * §9: "Teslimat başarısı veya hatası yalnız kısa toast olarak
+ * gösterilmemeli." Toast 4 saniyede kayboluyordu ve oyuncu ücreti mi
+ * aldığını tazmin mi ödediğini okuyamıyordu.
+ *
+ * Panel HİÇBİR ŞEY UYGULAMAZ: para, itibar ve stok `deliverJob` içinde tek
+ * transaction'la çoktan yazıldı. Burası yalnız ne olduğunu anlatır, bu
+ * yüzden açık kalması ya da iki kez çizilmesi ekonomiyi etkilemez.
+ */
+function DeliveryResult() {
+  const d = useGame((s) => s.lastDelivery);
+  const dismiss = useGame((s) => s.dismissDelivery);
+  if (!d) return null;
+
+  return (
+    <div className={`delivery ${d.succeeded ? 'delivery--ok' : 'delivery--bad'}`} role="status">
+      <div className="delivery__head">
+        <span className="delivery__badge">{d.succeeded ? 'Teslim edildi' : 'İş hatalı bitti'}</span>
+        <span className="delivery__job">
+          {d.itemName} · {d.typeLabel}
+        </span>
+      </div>
+
+      <div className="delivery__rows">
+        <Row label="Kazanılan ücret" value={d.succeeded ? tl(d.fee) : '—'} />
+        <Row label="Ödenen tazmin" value={d.succeeded ? '—' : tl(d.compensation)} />
+        <Row
+          label="Net nakit değişimi"
+          value={tlSigned(d.cashDelta)}
+          tone={d.cashDelta >= 0 ? 'positive' : 'negative'}
+        />
+        <Row
+          label="Net katkı (parça ve dış usta dahil)"
+          value={tlSigned(d.netContribution)}
+          tone={d.netContribution >= 0 ? 'positive' : 'negative'}
+        />
+        <Row
+          label="Müşteri ilişkisi"
+          value={`${d.trustDelta >= 0 ? '+' : ''}${Math.round(d.trustDelta)} güven`}
+          tone={d.trustDelta >= 0 ? 'positive' : 'negative'}
+        />
+        <Row
+          label="Semt itibarı"
+          value={`${d.reputationDelta >= 0 ? '+' : ''}${d.reputationDelta}`}
+          tone={d.reputationDelta >= 0 ? 'positive' : 'negative'}
+        />
+        <Row label="Hata riski" value={pct(d.errorRisk)} />
+        {d.lateDays > 0 && (
+          <Row label="Gecikme" value={`${d.lateDays} gün`} tone="negative" />
+        )}
+      </div>
+
+      <button type="button" className="routeAction routeAction--primary" onClick={dismiss}>
+        Devam Et
+      </button>
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: 'positive' | 'negative';
+}) {
+  return (
+    <div className="delivery__row">
+      <span className="delivery__label">{label}</span>
+      <span className={`delivery__value num ${tone ? `delivery__value--${tone}` : ''}`}>
+        {value}
+      </span>
     </div>
   );
 }

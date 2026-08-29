@@ -11,10 +11,13 @@
 
 import { useEffect } from 'react';
 
-import { useGame } from '@state/gameStore';
+import { activeLine, useGame } from '@state/gameStore';
+import { getTemplate } from '@data/item-templates';
+import { stageLabel } from '@ui/shell/StageStrip';
 import { BottomNav } from '@ui/shell/BottomNav';
 import { BusinessScreen } from '@ui/screens/BusinessScreen';
 import { ShopScreen } from '@ui/screens/ShopScreen';
+import { MarketScreen } from '@ui/screens/MarketScreen';
 import { StockScreen } from '@ui/screens/StockScreen';
 import { WorkshopScreen } from '@ui/screens/WorkshopScreen';
 import { ProfileDialog } from '@ui/shell/ProfileDialog';
@@ -51,8 +54,22 @@ export function App() {
           {tab === 'shop' && <ShopScreen />}
           {tab === 'stock' && <StockScreen />}
           {tab === 'workshop' && <WorkshopScreen />}
+          {tab === 'market' && <MarketScreen />}
           {tab === 'business' && <BusinessScreen />}
         </div>
+
+        {/*
+          UPDATEv2 §7 — "Aktif işlem varsa: aktif müşteri ve ürün, mevcut
+          aşama, İşleme Dön."
+
+          NEDEN DÜKKAN'DA DEĞİL DE BURADA: Dükkan sekmesinde açık bir işlem
+          varken ekran ZATEN o işlemdir — müşteri Müşteri Şeridi'nde, ürün
+          ve aşama Aşama Şeridi'ndedir ve dönülecek bir yer yoktur. "İşleme
+          Dön" ancak oyuncu işlemi bırakıp Stok'a, Atölye'ye, Market'e ya da
+          İşletme'ye geçtiğinde bir şey ifade eder; müşteri tezgâhta
+          beklerken oyuncunun onu unutması buranın gerçek hatasıydı.
+        */}
+        {tab !== 'shop' && <ResumeDealBar onResume={() => setTab('shop')} />}
 
         <BottomNav active={tab} onSelect={setTab} />
 
@@ -88,5 +105,43 @@ export function App() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Açık işlemi olan oyuncuyu tezgâha çağıran ince çubuk (§7).
+ * İşlem yoksa hiç çizilmez — boş yer kaplamaz.
+ */
+function ResumeDealBar({ onResume }: { onResume: () => void }) {
+  const deal = useGame((s) => s.activeDeal);
+  const customer = useGame((s) => s.activeCustomer);
+  const items = useGame((s) => s.items);
+
+  if (!deal || !customer) return null;
+
+  const line = activeLine(deal);
+  /*
+    Ürünün adı: ticaret/servis/ekspertizde müşterinin getirdiği kalem,
+    alışta paketten seçilen ilk kalem. Hiçbiri yoksa ad yazılmaz — burada
+    uydurulacak bir ürün yok.
+  */
+  const item = line ? items[line.itemId] : undefined;
+  const itemName = item
+    ? getTemplate(item.templateId).displayName
+    : (deal.purchase?.demand.alternativesLabel ?? null);
+
+  return (
+    <button type="button" className="resumeBar" onClick={onResume}>
+      <span className="resumeBar__body">
+        <span className="resumeBar__title">
+          {customer.displayName}
+          {itemName ? ` · ${itemName}` : ''}
+        </span>
+        <span className="resumeBar__stage">Aşama: {stageLabel(deal.flow, deal.stage)}</span>
+      </span>
+      <span className="resumeBar__cta" aria-hidden="true">
+        İşleme Dön ›
+      </span>
+    </button>
   );
 }

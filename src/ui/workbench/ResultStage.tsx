@@ -26,7 +26,12 @@ export function ResultStage({ review, accepted }: Props) {
   return (
     <div className="result">
       <span className={`result__badge result__badge--${review.tone}`}>
-        {accepted ? BADGE_TEXT[review.tone] : 'İşlem kapanmadı'}
+        {/*
+          §11 — "İşlem kapanmadı" KULLANMA. Cümle bir sistem durumu gibi
+          okunuyordu ("kapanmadı, demek ki hâlâ açık"); oysa olan şey
+          müşteriyle anlaşılamamasıydı.
+        */}
+        {accepted ? BADGE_TEXT[review.tone] : 'Anlaşma sağlanamadı'}
       </span>
 
       <h2 className="result__headline">{review.headline}</h2>

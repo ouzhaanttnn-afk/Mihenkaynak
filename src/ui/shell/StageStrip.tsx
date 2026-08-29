@@ -62,6 +62,26 @@ const APPRAISAL_STEPS: { stage: WorkbenchStage; label: string }[] = [
   { stage: 'result', label: 'Sonuç' },
 ];
 
+/**
+ * UPDATEv2 §7 — aşamanın oyuncuya görünen adı.
+ *
+ * Şeridin dışında da gerekiyor: başka sekmedeyken gösterilen "İşleme Dön"
+ * çubuğu oyuncuya işlemi NEREDE bıraktığını söylemek zorunda. Etiketleri
+ * orada yeniden yazmak, ikisinin zamanla ayrışması demekti; tablo tek
+ * kalıyor, okuyan çoğalıyor.
+ */
+export function stageLabel(flow: DealFlow, stage: WorkbenchStage): string {
+  const table =
+    flow === 'service'
+      ? SERVICE_STEPS
+      : flow === 'purchase'
+        ? PURCHASE_STEPS
+        : flow === 'appraisal'
+          ? APPRAISAL_STEPS
+          : TRADE_STEPS;
+  return table.find((t) => t.stage === stage)?.label ?? (stage === 'result' ? 'Sonuç' : 'İşlem');
+}
+
 const TRADE_ORDER: WorkbenchStage[] = ['inspect', 'appraise', 'thesis', 'negotiate', 'result'];
 const APPRAISAL_ORDER: WorkbenchStage[] = ['inspect', 'test', 'report', 'result'];
 const PURCHASE_ORDER: WorkbenchStage[] = ['stockPick', 'package', 'negotiate', 'result'];

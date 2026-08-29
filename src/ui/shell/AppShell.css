@@ -88,7 +88,13 @@
   height: var(--h-status-strip);
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  /*
+   * §12 sonrası 8 → 6 px. Hız kontrolü 90 px'ten 132 px'e çıktı (üç adet
+   * çakışmayan 44 px hedef); o 42 px'in bir kısmı buradan geliyor, kalanı
+   * saatin 73 → 46 px tabanına inmesinden. Aradan alınan 6 px, adı üç
+   * noktaya indirmeden kazanılan tek yerdi.
+   */
+  gap: 6px;
   padding: 0 var(--gutter);
   background: var(--ink-800);
   color: var(--text-dark-1);
@@ -204,15 +210,29 @@
   gap: var(--sp-1);
 }
 
+/*
+ * "Sv 1" TEK SATIR. Hız kontrolü 132 px'e çıkınca çip 99 → 92 px'e indi ve
+ * seviye satırı iki satıra kırıldı ("Sv" altına "1"): 52 px'lik şeritte
+ * üçüncü satır kimsenin ayıramayacağı bir yerden çıkıyor. Sıkışınca
+ * kırpılacak olan XP kesridir — çubuğu zaten altında duruyor.
+ */
 .statusStrip__levelNum {
+  flex: 0 0 auto;
+  white-space: nowrap;
   font-size: var(--fs-label);
   font-weight: var(--fw-semibold);
   letter-spacing: 0.01em;
 }
 
 .statusStrip__xp {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--fs-micro);
-  color: var(--text-dark-3);
+  /* §12 — küçük gri yardımcı metinlerin kontrastı artırıldı. */
+  color: var(--text-dark-2);
 }
 
 .statusStrip__xpBar {
@@ -276,6 +296,18 @@
 }
 
 /* Kompakt 1x / 2x / 4x hız kontrolü — ayrı kart açmaz (GDD 23.9.2). */
+/*
+ * UPDATEv2 §12 — ARALIK 1 → 6 px.
+ *
+ * Kural "tıklanabilir alan minimum 44 × 44 px". Dokunma alanı görsel
+ * düğmenin dışına taşarak sağlanıyor (aşağıdaki ::after) ve TAŞAN ALANLAR
+ * BİRBİRİNE GİRMEMELİ: iki komşunun hedefi çakışırsa üstte kalan kardeş
+ * diğerinin payını yer ve 44 px yalnız kâğıt üstünde kalır.
+ *
+ * Çakışmama koşulu merkezden merkeze ≥ 44 px'tir; 38 px düğme + 6 px aralık
+ * tam olarak 44 verir. Aralığı büyütmek, düğmeyi büyütmekten ucuzdur:
+ * şeritte kazanılacak her piksel saatten ve addan gidiyor.
+ */
 .speed {
   flex: 0 0 auto;
   display: flex;
@@ -284,7 +316,7 @@
   border: 1px solid var(--line-dark);
   border-radius: var(--r-pill);
   padding: 2px;
-  gap: 1px;
+  gap: 6px;
 }
 
 /*
@@ -295,9 +327,15 @@
  */
 .speed__step {
   position: relative;
-  min-width: 24px;
-  height: 22px;
-  padding: 0 5px;
+  /*
+   * §12 — 24 → 38 px. Eski 24 px iki işi birden bozuyordu: "1x" yazısı
+   * 27 px'lik doğal genişliğiyle 24 px'lik kutuda KESİLİYORDU (ölçüldü:
+   * scrollWidth 27 / clientWidth 24) ve dokunma hedefi yatayda 30 px'te
+   * kalıyordu. 38 px hem yazıyı hem 44 px kuralını karşılıyor.
+   */
+  min-width: 38px;
+  height: 24px;
+  padding: 0 4px;
   border-radius: var(--r-pill);
   font-size: var(--fs-micro);
   font-weight: var(--fw-semibold);
@@ -319,7 +357,8 @@
 .speed__step::after {
   content: '';
   position: absolute;
-  inset: -11px -3px;
+  /* 24 + 10 + 10 = 44 dikey · 38 + 3 + 3 = 44 yatay. */
+  inset: -10px -3px;
 }
 
 .speed__step--active {
@@ -330,6 +369,25 @@
 .speed__step--locked {
   color: var(--text-dark-3);
   opacity: 0.75;
+}
+
+/*
+ * ≤ 374 px — PROFİL METNİ ÇEKİLİR, AVATAR KALIR.
+ *
+ * Ölçüm: 360 px'te şeridin içerik payı 304 px. Çakışmayan üç 44 px hedef
+ * hız kontrolüne 132 px, saate 46 px tabanı, nakde 70 px istiyor; geriye
+ * çipe 56 px kalıyor ve ad "A…" hâline geliyordu — okunmayan bir ad,
+ * olmayan addan kötüdür.
+ *
+ * Avatar tek başına 40 px: toplam 288 px, 16 px pay artıyor. Kaybedilen
+ * bilgi (ad, seviye, XP) erişilemez değil; çipin erişilebilir adı hâlâ
+ * kuyumcunun adını söylüyor ve seviye/XP Kariyer rotasında tam hâliyle
+ * duruyor. 375 px ve üzerinde hiçbir şey değişmez.
+ */
+@media (max-width: 374px) {
+  .profileChip__text {
+    display: none;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -875,6 +933,64 @@
 }
 
 /* ------------------------------------------------------------------ */
+/* UPDATEv2 §7 — "İŞLEME DÖN" ÇUBUĞU                                   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Yalnız Dükkan DIŞINDAKİ sekmelerde ve yalnız açık bir işlem varken
+ * çizilir (bkz. App.tsx · ResumeDealBar). Alt navigasyonun hemen üstünde
+ * durur: oyuncunun geri dönerken bakacağı yer orası.
+ *
+ * 44 px dokunma hedefi tek parça — çubuğun tamamı düğmedir.
+ */
+.resumeBar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--touch-min);
+  padding: var(--sp-2) var(--gutter);
+  background: var(--ink-700);
+  border-top: 1px solid var(--brass-700);
+  color: var(--text-dark-1);
+  text-align: left;
+  font: inherit;
+}
+
+.resumeBar:active {
+  background: var(--ink-600);
+}
+
+.resumeBar__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.resumeBar__title {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resumeBar__stage {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+}
+
+.resumeBar__cta {
+  flex: 0 0 auto;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--brass-400);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ */
 /* H — Alt Navigasyon · 64 px, tam 4 kök (GDD 23.9.1)                 */
 /* ------------------------------------------------------------------ */
 
@@ -1071,17 +1187,25 @@
  * Satır yüksekliği görselin (64 px) ve iki metin satırının büyüğü kadardır;
  * yani görsel eklemek ekranı UZATMAZ.
  */
+/*
+ * UPDATEv2 §7 KİMLİK ALANI — hedef 72-88 px, ölçülen 104 px'ti.
+ * Kısılan yer içerikten değil ölçüden geldi: görsel 64 → 56 px, başlık bir
+ * kademe küçük (bkz. .idle__title). Alt/üst sınır burada YAZILI ki blok
+ * ileride sessizce yeniden şişmesin.
+ */
 .idle__head {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
+  min-height: 72px;
+  max-height: 88px;
 }
 
 .idle__art {
   flex: 0 0 auto;
   width: auto;
-  max-width: 72px;
-  height: 64px;
+  max-width: 64px;
+  height: 56px;
 }
 
 .idle__headText {

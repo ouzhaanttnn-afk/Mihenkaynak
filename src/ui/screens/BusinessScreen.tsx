@@ -11,7 +11,8 @@
  */
 
 import { TERM } from '@ui/terms';
-import { useState } from 'react';
+import { readSaveMeta } from '@state/save';
+import { useEffect, useState } from 'react';
 
 import { MARKET_REGIME } from '@domain/balance';
 import {
@@ -68,18 +69,34 @@ import {
 } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { NAV_ART, merchantArt } from '@ui/assets';
-import { pct, pctChange, price, tl, tlSigned } from '@ui/format';
+import { clock, pct, pctChange, price, tl, tlSigned } from '@ui/format';
 
-type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network' | 'store';
+type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network' | 'store' | 'save' | 'career';
 
 export function BusinessScreen() {
-  const [route, setRoute] = useState<Route>('root');
+  /*
+   * UPDATEv2 §8 — "uygun satış rotasına git".
+   *
+   * Stok ekranındaki bir kalemden Toptancı ya da Esnaf Ağı'na geçilebiliyor.
+   * Rota yerel state olduğu için hedefi dışarıdan almanın tek yolu bu:
+   * mağaza tek bir işaret bırakır, ekran açılırken onu okur ve HEMEN siler
+   * — silinmezse oyuncu "İşletme"ye her dönüşünde toptancıya düşerdi.
+   */
+  const pending = useGame((g) => g.pendingBusinessRoute);
+  const consume = useGame((g) => g.consumeBusinessRoute);
+  const [route, setRoute] = useState<Route>(pending ?? 'root');
+
+  useEffect(() => {
+    if (pending) consume();
+  }, [pending, consume]);
 
   if (route === 'market') return <MarketRoute onBack={() => setRoute('root')} />;
   if (route === 'journal') return <JournalRoute onBack={() => setRoute('root')} />;
   if (route === 'wholesaler') return <WholesalerRoute onBack={() => setRoute('root')} />;
   if (route === 'network') return <NetworkRoute onBack={() => setRoute('root')} />;
   if (route === 'store') return <StoreRoute onBack={() => setRoute('root')} />;
+  if (route === 'save') return <SaveRoute onBack={() => setRoute('root')} />;
+  if (route === 'career') return <CareerRoute onBack={() => setRoute('root')} />;
   return <BusinessRoot onOpen={setRoute} />;
 }
 
@@ -145,6 +162,62 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
         <OvernightPanel />
 
         {/*
+          §10 — ROTALAR YUKARI ALINDI.
+          "İşletme ana ekranında Rotalar bölümünü daha erişilebilir hâle
+          getir." Bölüm en alttaydı: Piyasa, İşlem Defteri veya Kayıt'a
+          gitmek için finans, gecelik pozisyon, satış kırılımı ve ilişkiler
+          bloklarının tamamını geçmek gerekiyordu. Finans ve risk özeti §10
+          gereği ilk görünümde kalır; rotalar hemen onların altında.
+        */}
+        {/* İkincil rotalar (GDD 23.9.1) */}
+        <div className="group">
+          <h2 className="group__title">Rotalar</h2>
+          <div className="group__body">
+            <MenuLine
+              title="Piyasa"
+              sub={`${MARKET_REGIME[s.market.regime].label} · ${s.market.assets.length} varlık`}
+              icon={<IconLiquidity size={17} />}
+              onPress={() => onOpen('market')}
+            />
+            <MenuLine
+              title="İşlem Defteri"
+              sub={`${s.ledger.deals.length} kayıt · vaka özetleri`}
+              icon={<IconReason size={17} />}
+              onPress={() => onOpen('journal')}
+            />
+            <MenuLine
+              title="Toptancı Hesabı"
+              sub={supplierSub(s)}
+              icon={<IconWholesale size={17} />}
+              onPress={() => onOpen('wholesaler')}
+            />
+            <MenuLine
+              title="Esnaf Ağı"
+              sub={networkSub(s)}
+              icon={<IconTrust size={17} />}
+              onPress={() => onOpen('network')}
+            />
+            <MenuLine
+              title="Kayıt"
+              sub="Gün sonunda otomatik · elle kaydet veya geri yükle"
+              icon={<IconReason size={17} />}
+              onPress={() => onOpen('save')}
+            />
+            <MenuLine
+              title="Mağaza"
+              sub={storeSub(s)}
+              icon={<IconBusiness size={17} />}
+              onPress={() => onOpen('store')}
+            />
+            <MenuLine
+              title="Kariyer / Yetenekler"
+              sub={`Seviye ${s.store.level} · ${s.store.xp}/${s.store.xpToNext} XP`}
+              icon={<IconBusiness size={17} />}
+              onPress={() => onOpen('career')}
+            />
+          </div>
+        </div>
+        {/*
           Addendum §4.1 — "Toplu işlemler tekil müşteri metriğini
           ŞİŞİRMEMELİ; adet, gram karşılığı, ciro, brüt marj ve KANAL BAZINDA
           ayrıca ölçülmelidir." §6.1 aynı şeyi kanal ortalaması için ister.
@@ -152,10 +225,12 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
         */}
         <SalesBreakdown ledger={s.ledger} />
 
-        {/* İlişkiler */}
-        <div className="group">
-          <h2 className="group__title">İlişkiler</h2>
-          <div className="group__body">
+        {/*
+          §10 — "ayrıntılı Satış Kırılımı ve İlişkiler AÇILIR BÖLÜMLER
+          olabilir." İkisi de ilk bakışta karar değiştirmez; kapalı
+          başlarlar ve Rotalar'ı ekranın dibinden kurtarırlar.
+        */}
+        <Collapsible title="İlişkiler">
             <StatLine
               label="Semt itibarı"
               value={`${Math.round(s.store.reputation)}/100`}
@@ -189,57 +264,8 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               label="Tedarik limiti"
               value={`${tl(s.store.supplier.limit)} · ${s.store.supplier.terms} gün vade`}
             />
-          </div>
-        </div>
+          </Collapsible>
 
-        {/* İkincil rotalar (GDD 23.9.1) */}
-        <div className="group">
-          <h2 className="group__title">Rotalar</h2>
-          <div className="group__body">
-            <MenuLine
-              title="Piyasa"
-              sub={`${MARKET_REGIME[s.market.regime].label} · ${s.market.assets.length} varlık`}
-              icon={<IconLiquidity size={17} />}
-              onPress={() => onOpen('market')}
-            />
-            <MenuLine
-              title="İşlem Defteri"
-              sub={`${s.ledger.deals.length} kayıt · vaka özetleri`}
-              icon={<IconReason size={17} />}
-              onPress={() => onOpen('journal')}
-            />
-            <MenuLine
-              title="Toptancı Hesabı"
-              sub={supplierSub(s)}
-              icon={<IconWholesale size={17} />}
-              onPress={() => onOpen('wholesaler')}
-            />
-            <MenuLine
-              title="Esnaf Ağı"
-              sub={networkSub(s)}
-              icon={<IconTrust size={17} />}
-              onPress={() => onOpen('network')}
-            />
-            <MenuLine
-              title="Kayıt"
-              sub="Gün sonunda otomatik · elle kaydet veya geri yükle"
-              icon={<IconReason size={17} />}
-              onPress={() => s.saveGame()}
-            />
-            <MenuLine
-              title="Mağaza"
-              sub={storeSub(s)}
-              icon={<IconBusiness size={17} />}
-              onPress={() => onOpen('store')}
-            />
-            <MenuLine
-              title="Kariyer / Yetenekler"
-              sub={`Seviye ${s.store.level} · ${s.store.xp}/${s.store.xpToNext} XP`}
-              icon={<IconBusiness size={17} />}
-              onPress={() => undefined}
-            />
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -262,9 +288,9 @@ function SalesBreakdown({ ledger }: { ledger: Ledger }) {
   if (split.single.deals + split.bulk.deals === 0) return null;
 
   return (
-    <div className="group">
-      <h2 className="group__title">Satış kırılımı</h2>
-      <div className="group__body">
+    /* §10 — ayrıntılı kırılım açılır bölümdür; kapalı başlar. */
+    <Collapsible title="Satış kırılımı" hint={`${split.single.deals + split.bulk.deals} işlem`}>
+      <>
         {split.single.deals > 0 && (
           <StatLine
             label={`Tekil müşteri · ${split.single.deals} işlem`}
@@ -284,7 +310,47 @@ function SalesBreakdown({ ledger }: { ledger: Ledger }) {
             value={`${m.units} adet · ${m.grams.toFixed(2)} gr · ${tl(m.revenue)}`}
           />
         ))}
-      </div>
+      </>
+    </Collapsible>
+  );
+}
+
+/**
+ * UPDATEv2 §10 — AÇILIR BÖLÜM.
+ *
+ * `<details>` yerine düğme + `aria-expanded`: ekranın geri kalanı zaten bu
+ * kalıbı kullanıyor (Stok eylem paneli, Sarrafiye tezgâhı) ve `<details>`ın
+ * varsayılan üçgeni palete oturmuyordu.
+ *
+ * KAPALI BAŞLAR: §10 bu iki bölümü "ayrıntı" diye ayırıyor. Açık başlasaydı
+ * bölümü açılır yapmak hiçbir şeyi kısaltmazdı.
+ */
+function Collapsible({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="group">
+      <button
+        type="button"
+        className="group__toggle"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <span className="group__title">{title}</span>
+        <span className="group__toggleHint">
+          {hint ? `${hint} · ` : ''}
+          {open ? 'gizle ▾' : 'göster ›'}
+        </span>
+      </button>
+      {open && <div className="group__body">{children}</div>}
     </div>
   );
 }
@@ -1131,7 +1197,42 @@ function Sparkline({ points }: { points: number[] }) {
  */
 function JournalRoute({ onBack }: { onBack: () => void }) {
   const s = useGame();
-  const deals = s.ledger.deals.slice().reverse();
+
+  /*
+    UPDATEv1 §10 — DEFTER FİLTRELERİ.
+    "Mevcut kayıtları koru" şartı gereği hiçbir kayıt silinmez, dönüştürülmez
+    ya da yeniden yazılmaz; filtreler yalnız GÖRÜNÜMÜ daraltır.
+  */
+  const [outcome, setOutcome] = useState<'all' | 'accepted' | 'rejected'>('all');
+  const [family, setFamily] = useState<'all' | 'bullion' | 'crafted'>('all');
+  const [dayFilter, setDayFilter] = useState<'all' | 'today'>('all');
+
+  const familyOf = (deal: (typeof s.ledger.deals)[number]) => {
+    const item = s.items[deal.itemIds[0] ?? ''];
+    if (!item) return 'crafted';
+    return isBullion(item.templateId) ? 'bullion' : 'crafted';
+  };
+
+  const deals = s.ledger.deals
+    .slice()
+    .reverse()
+    .filter((d) => {
+      if (outcome === 'accepted' && d.finalState !== 'ACCEPTED') return false;
+      if (outcome === 'rejected' && d.finalState === 'ACCEPTED') return false;
+      if (family !== 'all' && familyOf(d) !== family) return false;
+      if (dayFilter === 'today' && d.day !== s.market.day) return false;
+      return true;
+    });
+
+  /*
+    §10 — "toplam gerçekleşmiş kâr/zarar özeti".
+    GDD 34.5: kâr SATIŞTA doğar. Bu yüzden özet yalnız KABUL EDİLMİŞ
+    işlemlerin realize sonucunu toplar; reddedilen bir işlem sıfır katkıdır
+    ve toplamı kirletmemelidir.
+  */
+  const realized = deals
+    .filter((d) => d.finalState === 'ACCEPTED')
+    .reduce((sum, d) => sum + (d.realizedProfit ?? 0), 0);
 
   return (
     <div className="page">
@@ -1140,8 +1241,54 @@ function JournalRoute({ onBack }: { onBack: () => void }) {
           ← İşletme
         </button>
         <h1 className="pageHead__title">İşlem Defteri</h1>
-        <p className="pageHead__sub">{deals.length} kayıt · her işlemin gerekçesi ve sonucu</p>
+        <p className="pageHead__sub">
+          {deals.length}/{s.ledger.deals.length} kayıt · gerçekleşmiş{' '}
+          <strong className={realized >= 0 ? 'journalSum--pos' : 'journalSum--neg'}>
+            {tlSigned(realized)}
+          </strong>
+        </p>
       </header>
+
+      <div className="filterRail" role="group" aria-label="İşlem defteri filtreleri">
+        {([
+          ['all', 'Tümü'],
+          ['accepted', 'Kabul'],
+          ['rejected', 'Red'],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={`chip ${outcome === id ? 'chip--on' : ''}`}
+            aria-pressed={outcome === id}
+            onClick={() => setOutcome(id)}
+          >
+            {label}
+          </button>
+        ))}
+        {([
+          ['all', 'Her ürün'],
+          ['bullion', 'Sarrafiye'],
+          ['crafted', 'İşçilikli'],
+        ] as const).map(([id, label]) => (
+          <button
+            key={`f-${id}`}
+            type="button"
+            className={`chip ${family === id ? 'chip--on' : ''}`}
+            aria-pressed={family === id}
+            onClick={() => setFamily(id)}
+          >
+            {label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={`chip ${dayFilter === 'today' ? 'chip--on' : ''}`}
+          aria-pressed={dayFilter === 'today'}
+          onClick={() => setDayFilter(dayFilter === 'today' ? 'all' : 'today')}
+        >
+          Bugün
+        </button>
+      </div>
 
       <div className="page__scroll">
         {deals.length === 0 ? (
@@ -1149,10 +1296,13 @@ function JournalRoute({ onBack }: { onBack: () => void }) {
             <div className="empty__icon">
               <IconReason size={34} />
             </div>
-            <p className="empty__title">Henüz kayıt yok</p>
+            <p className="empty__title">
+              {s.ledger.deals.length === 0 ? 'Henüz kayıt yok' : 'Bu filtreye uyan kayıt yok'}
+            </p>
             <p className="empty__text">
-              Kapanan her işlem buraya düşer: kullanılan testler, tahmin bandı, teklif
-              geçmişi ve gerçek sonuç.
+              {s.ledger.deals.length === 0
+                ? 'Kapanan her işlem buraya düşer: kullanılan testler, tahmin bandı, teklif geçmişi ve gerçek sonuç.'
+                : 'Kayıtlar duruyor; yalnız seçili filtreler onları gizliyor. Filtreleri gevşetin.'}
             </p>
           </div>
         ) : (
@@ -1279,4 +1429,197 @@ function changeClass(pctValue: number): string {
   if (pctValue > 0.005) return 'assetRow__change--up';
   if (pctValue < -0.005) return 'assetRow__change--down';
   return 'assetRow__change--flat';
+}
+
+
+// ---------------------------------------------------------------------------
+// KAYIT (UPDATEv1 §5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Kayıt ekranı.
+ *
+ * §5: "Kayıt düğmesi basıldığında görünür bir sonuç üretmiyor." Eskiden
+ * `saveGame()` çağrılıyor ve hiçbir şey görünmüyordu — kayıt gerçekten
+ * yazılıyordu ama oyuncunun bunu anlamasının bir yolu yoktu.
+ *
+ * Projede GERÇEK kayıt/geri yükleme sistemi var (state/save.ts), bu yüzden
+ * §5'in "hazırlanıyor ekranı" yedeğine düşmüyoruz; çalışan ekranı bağlıyoruz.
+ *
+ * GERİ YÜKLEME ONAY İSTER: mevcut günün ilerlemesini geri almak geri
+ * alınamaz bir iştir. Tek dokunuşla yapılmasına izin vermek, oyuncunun
+ * saatlerini yanlışlıkla silmesine kapı açardı.
+ */
+function SaveRoute({ onBack }: { onBack: () => void }) {
+  const s = useGame();
+  const [confirming, setConfirming] = useState(false);
+  const [meta, setMeta] = useState(() => readSaveMeta());
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const refresh = () => setMeta(readSaveMeta());
+
+  const doSave = () => {
+    const ok = s.saveGame();
+    refresh();
+    setResult(
+      ok
+        ? { ok: true, text: 'Oyun kaydedildi.' }
+        : { ok: false, text: 'Kayıt yazılamadı. Tarayıcı depolaması kapalı olabilir.' },
+    );
+  };
+
+  const doRestore = () => {
+    const ok = s.loadGame();
+    setConfirming(false);
+    refresh();
+    setResult(
+      ok
+        ? { ok: true, text: 'Son kayıt geri yüklendi.' }
+        : { ok: false, text: 'Geri yüklenecek kayıt bulunamadı.' },
+    );
+  };
+
+  return (
+    <div className="page">
+      <header className="pageHead">
+        <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
+          ← İşletme
+        </button>
+        <h1 className="pageHead__title">Kayıt</h1>
+        <p className="pageHead__sub">Gün sonunda otomatik kaydedilir</p>
+      </header>
+
+      <div className="page__scroll">
+        <div className="group">
+          <h2 className="group__title">Son kayıt</h2>
+          <div className="group__body">
+            <StatLine
+              label="Son kayıt zamanı"
+              value={meta ? formatSavedAt(meta.savedAt) : 'Kayıt yok'}
+            />
+            <StatLine
+              label="Kayıttaki gün"
+              value={meta ? `Gün ${meta.day} · ${clock(meta.clockMinutes)}` : '—'}
+            />
+            <StatLine label="Şu anki gün" value={`Gün ${s.market.day} · ${clock(s.market.clockMinutes)}`} />
+          </div>
+        </div>
+
+        {result && (
+          <p className={`saveResult ${result.ok ? 'saveResult--ok' : 'saveResult--bad'}`} role="status">
+            {result.text}
+          </p>
+        )}
+
+        <div className="group">
+          <h2 className="group__title">İşlemler</h2>
+          <div className="group__body">
+            <button type="button" className="routeAction routeAction--primary" onClick={doSave}>
+              Elle Kaydet
+            </button>
+
+            {!confirming ? (
+              <button
+                type="button"
+                className="routeAction"
+                onClick={() => setConfirming(true)}
+                disabled={!meta}
+                aria-label={
+                  meta ? 'Son kaydı geri yükle' : 'Son kaydı geri yükle — geri yüklenecek kayıt yok'
+                }
+                title={meta ? undefined : 'Geri yüklenecek kayıt yok'}
+              >
+                Son Kaydı Geri Yükle
+              </button>
+            ) : (
+              <div className="confirmRow">
+                <p className="confirmRow__text">
+                  Bugünkü ilerleme kaybolacak ve oyun son kayda dönecek. Emin misiniz?
+                </p>
+                <div className="confirmRow__actions">
+                  <button type="button" className="routeAction" onClick={() => setConfirming(false)}>
+                    Vazgeç
+                  </button>
+                  <button
+                    type="button"
+                    className="routeAction routeAction--danger"
+                    onClick={doRestore}
+                  >
+                    Evet, Geri Yükle
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** "Bugün 14:32" / "3 Eylül 14:32" — kaydın gerçek zamanı. */
+function formatSavedAt(savedAt: number | null): string {
+  if (savedAt === null) return 'Bilinmiyor (eski kayıt)';
+  const d = new Date(savedAt);
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  const time = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  return sameDay ? `Bugün ${time}` : `${d.toLocaleDateString('tr-TR')} ${time}`;
+}
+
+// ---------------------------------------------------------------------------
+// KARİYER / YETENEKLER (UPDATEv1 §5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Kariyer ekranı.
+ *
+ * §5: "Henüz sistem yoksa Seviye ve XP bilgisini gösteren sade bir 'Yakında'
+ * ekranı aç. Yeni kapsamlı yetenek ağacı OLUŞTURMA."
+ *
+ * Bu yüzden burada yalnız MEVCUT ilerleme okunur; hiçbir yeni mekanik,
+ * yetenek puanı ya da ağaç yok. Düğmenin sessizce hiçbir şey yapmaması
+ * kabul edilmiyordu — görünür bir ekran açması yeterli.
+ */
+function CareerRoute({ onBack }: { onBack: () => void }) {
+  const s = useGame();
+  const ratio = Math.min(1, s.store.xp / Math.max(1, s.store.xpToNext));
+
+  return (
+    <div className="page">
+      <header className="pageHead">
+        <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
+          ← İşletme
+        </button>
+        <h1 className="pageHead__title">Kariyer</h1>
+        <p className="pageHead__sub">Seviye ve deneyim</p>
+      </header>
+
+      <div className="page__scroll">
+        <div className="group">
+          <h2 className="group__title">İlerleme</h2>
+          <div className="group__body">
+            <StatLine label="Seviye" value={`${s.store.level}`} />
+            <StatLine label="Deneyim" value={`${s.store.xp} / ${s.store.xpToNext} XP`} />
+            <div className="xpTrack" aria-hidden="true">
+              <div className="xpTrack__fill" style={{ width: `${ratio * 100}%` }} />
+            </div>
+            <StatLine label="Mağaza kademesi" value={`Kademe ${s.store.storeTier}`} />
+            <StatLine label="Semt itibarı" value={`${Math.round(s.store.reputation)}/100`} />
+          </div>
+        </div>
+
+        <div className="empty">
+          <p className="empty__title">Yetenekler yakında</p>
+          <p className="empty__text">
+            Seviye ve deneyim şimdiden birikiyor. Yetenek dalları bir sonraki
+            sürümde bu ekranda açılacak; mevcut ilerlemeniz korunacak.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }

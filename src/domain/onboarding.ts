@@ -44,14 +44,41 @@ export interface CoachContext {
   hasBand: boolean;
   /** Stokta kaç adet var. */
   stockUnits: number;
+
+  /**
+   * UPDATEv1 §3 — AKTİF ÜRÜNÜN AİLESİ.
+   *
+   * Denetimde Gram Altın incelenirken "Çeyreğin gramajı standarttır" diyen
+   * ders çıktı. Ders metni sabit yazılmıştı ve ekrandaki ürünle ilgisi
+   * yoktu. Metnin ürüne göre konuşabilmesi için bağlamın ürünü tanıması
+   * gerekiyor.
+   *
+   * Kimlik değil AİLE tutuluyor: ders bir kuralı anlatır, o kalemin
+   * cevabını değil (GDD 6.6). Şablon kimliği vermek, ders metnine gizli
+   * gerçeğe yaklaşma imkânı açardı.
+   */
+  productKind: ProductKind | null;
 }
+
+/**
+ * Öğretim metinlerinin ayırt ettiği ürün grubu. Oyunun `ItemFamily`
+ * ayrımından daha kaba: dersin söyleyeceği şey gram bazlı sarrafiye ile
+ * ziynet arasında değişir, ama zümrütle yakut arasında değişmez.
+ */
+export type ProductKind = 'gramBullion' | 'coinBullion' | 'crafted';
 
 export interface Lesson {
   id: string;
   /** Kısa başlık — tek satır. */
   title: string;
-  /** Bir–iki cümle. Uzun metin telefonda okunmaz. */
-  body: string;
+  /**
+   * Bir–iki cümle. Uzun metin telefonda okunmaz.
+   *
+   * §3 — FONKSİYON OLABİLİR: metin aktif ürüne göre değişebilsin diye.
+   * Sabit metin gerektiren dersler düz dize vermeye devam eder; yalnız
+   * ürüne bağlı olanlar bağlamı okur.
+   */
+  body: string | ((ctx: CoachContext) => string);
   /**
    * Ders bu bağlamda gösterilmeli mi.
    *
@@ -86,17 +113,33 @@ export const LESSONS: Lesson[] = [
   {
     id: 'inspect',
     title: 'Gördüğün beyandır',
-    body:
-      'Müşterinin söylediği ağırlık ve ayar doğrulanmış değil. Raydaki araçlar bu belirsizliği ' +
-      'para ve müşteri sabrı karşılığında azaltır.',
+    /* §3 — işçilikli üründe belirsizlik ayar ve ağırlıkla sınırlı değil. */
+    body: (c) =>
+      c.productKind === 'crafted'
+        ? 'Ayar, ağırlık, işçilik ve taş beyandır; hiçbiri doğrulanmış değil. Raydaki araçlar ' +
+          'bu belirsizliği para ve müşteri sabrı karşılığında azaltır.'
+        : 'Müşterinin söylediği ağırlık ve ayar doğrulanmış değil. Raydaki araçlar bu ' +
+          'belirsizliği para ve müşteri sabrı karşılığında azaltır.',
     when: (c) => c.stage === 'inspect' && c.flow === 'trade' && c.testsRun === 0,
   },
   {
     id: 'fastFlow',
     title: 'Sarrafiyede test şart değil',
-    body:
-      'Çeyreğin gramajı ve ayarı standarttır; zaten bilirsin. Şüpheli bir hâli yoksa doğrudan ' +
-      'fiyata geçebilirsin.',
+    /*
+      §3 — METİN AKTİF ÜRÜNE BAĞLI.
+      Eskiden her üründe "Çeyreğin gramajı…" yazıyordu; Gram Altın
+      incelerken çeyrekten söz eden bir ders oyuncuyu ekrandaki üründen
+      koparıyordu.
+    */
+    body: (c) =>
+      c.productKind === 'gramBullion'
+        ? 'Gram altının gramajı ve 24 ayarı üretiminde sabittir; zaten bilirsin. ' +
+          'Şüpheli bir hâli yoksa doğrudan fiyata geçebilirsin.'
+        : c.productKind === 'coinBullion'
+          ? 'Ziynet altının gramajı ve ayarı standarttır; zaten bilirsin. ' +
+            'Şüpheli bir hâli yoksa doğrudan fiyata geçebilirsin.'
+          : 'Standart sarrafiyenin gramajı ve ayarı üründe sabittir. ' +
+            'Şüpheli bir hâli yoksa doğrudan fiyata geçebilirsin.',
     when: (c) => c.stage === 'inspect' && c.transactionClass === 'fast',
   },
   {
@@ -154,4 +197,13 @@ export function onboardingComplete(seen: readonly string[]): boolean {
 /** "Tümünü atla" — kalan tüm dersleri görülmüş sayar. */
 export function skipAll(seen: readonly string[]): string[] {
   return [...new Set([...seen, ...LESSONS.map((l) => l.id)])];
+}
+
+
+/**
+ * Dersin gösterilecek metni — sabitse olduğu gibi, ürüne bağlıysa hesaplanır.
+ * Çağıran taraf `typeof` kontrolü yapmak zorunda kalmasın diye tek kapı.
+ */
+export function lessonBody(lesson: Lesson, ctx: CoachContext): string {
+  return typeof lesson.body === 'function' ? lesson.body(ctx) : lesson.body;
 }

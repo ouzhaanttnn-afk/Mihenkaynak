@@ -28,6 +28,7 @@ import { spawnCustomer } from './customer-spawn';
 import { dayCharacter } from './intent';
 import { spawnItem } from './item-spawn';
 import { createMarketForDay } from './market';
+import { demandIsSellable } from './sales-catalog';
 import { createSession, effectiveReservation } from './negotiation';
 import { liquidityRatio } from './settlement';
 import { effectiveCeiling, thesisFor } from './thesis';
@@ -213,8 +214,17 @@ describe('Müşteri isteği dükkânın tavanıyla aynı dünyada', () => {
   });
 });
 
-describe('İşçilikli talep sarrafiyeyle karşılanmaz', () => {
-  it('"kolye istiyorum" diyen müşteri çeyreğe razı olmaz', () => {
+describe('Satın alma talebi karşılanabilir olmalı', () => {
+  /*
+   * UPDATEv2 §18 — TESTİN KONUSU DEĞİŞTİ, AMACI DEĞİL.
+   *
+   * Eski hâli "kolye isteyen müşteri çeyreğe razı olmasın" diye bağlıyordu:
+   * doğru bir kuraldı ama yanlış bir dünyayı koruyordu. O müşteri zaten
+   * karşılanamıyordu — dükkânın kolye tedarik edeceği bir yol yok. Artık
+   * korunması gereken şey daha güçlü: ÜRETİLEN HER SATIN ALMA TALEBİ
+   * oyuncunun gerçekten satabildiği bir üründür.
+   */
+  it('üretilen her satın alma talebi satış kataloğunda vardır', () => {
     const store = makeStore();
     let checked = 0;
     for (let day = 1; day <= 20; day++) {
@@ -223,9 +233,14 @@ describe('İşçilikli talep sarrafiyeyle karşılanmaz', () => {
       for (let i = 0; i < 60; i++) {
         const c = spawnCustomer(SEED + day, i, market, store, character);
         const d = c.customer.demand;
-        if (!d || d.wantsBullion) continue;
-        expect(d.families, d.summary).not.toContain('bullion');
-        expect(d.alternativesLabel, d.summary).not.toContain('sarrafiye');
+        if (!d) continue;
+        expect(
+          demandIsSellable(d.templateId, store.storeTier),
+          `karşılanamaz talep: ${d.summary}`,
+        ).toBe(true);
+        // İşçilikli aile satın alma talebine hiç girmemeli.
+        expect(d.families, d.summary).toEqual([]);
+        expect(d.wantsBullion, d.summary).toBe(true);
         checked++;
       }
     }

@@ -915,12 +915,21 @@
 /* IDLE (GDD 23.10.1)                                                  */
 /* ------------------------------------------------------------------ */
 
+/*
+ * UPDATEv2 §7 — "Sabit büyük height, min-height, padding-top ve DİKEY
+ * ORTALAMA kurallarını kontrol et."
+ *
+ * `justify-content: center` idi: kimlik bloğu ekranın ortasına iniyor,
+ * üstünde ve altında 150'şer piksel ölü alan kalıyordu. Ortalamak boşluğu
+ * yok etmez, ikiye böler. İçerik artık yukarıdan başlar; kalan alan tek
+ * parça hâlinde operasyon alanının olur (`.op` aşağıda).
+ */
 .idle {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--sp-3);
 }
 
@@ -967,7 +976,8 @@
 
 .idle__title {
   font-family: var(--font-display);
-  font-size: var(--fs-title);
+  /* §7 — kimlik bloğu 104 → 80 px; başlık bir kademe küçüldü. */
+  font-size: var(--fs-subtitle);
   color: var(--text-dark-1);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
@@ -981,11 +991,17 @@
 
 /* ---- Pozisyon paneli — sarrafın "kaç param, kaç malım var" sorusu ---- */
 
+/*
+ * §7 FİNANS ÖZETİ — hedef 72-80 px. Ölçülen 110 px'ti.
+ * Kısılan yer bilgiden değil boşluktan geldi: dolgu 12 → 8 px, çubuğun üst
+ * boşluğu 8 → 5 px. Üç sayı, denge çubuğu ve "Stok ›" kapısı olduğu gibi
+ * duruyor.
+ */
 .position {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 2px var(--sp-3);
-  padding: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-card);
   background: var(--ink-900);
   border: 1px solid var(--line-dark);
@@ -1027,7 +1043,7 @@
 /* Nakit–altın dengesi: dolu kısım altın, boş kısım nakit. */
 .position__bar {
   grid-column: 1 / -1;
-  margin-top: var(--sp-2);
+  margin-top: 5px;
   height: 4px;
   border-radius: var(--r-pill);
   background: rgba(242, 236, 222, 0.1);
@@ -1105,6 +1121,147 @@
 .alert__detail {
   font-size: var(--fs-micro);
   color: var(--text-dark-3);
+}
+
+/* ------------------------------------------------------------------ */
+/* UPDATEv2 §7 — DİNAMİK OPERASYON ALANI                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Kimlik ve finans bloklarından artan alanın TAMAMI. `flex: 1` olması
+ * bilinçli: §7 "kalan alan" diyor ve boşluk artık ekranın iki ucuna
+ * dağılmıyor, tek bir yerde toplanıp o alanın sahibi olan duruma veriliyor.
+ */
+.op {
+  /*
+   * İÇERİĞİ KADAR — esnemez. `flex: 1` denendi: sakin durumda kart ekranın
+   * dibine kadar uzuyor ve altı bomboş kalıyordu. §7 "boşluğu dekoratif
+   * kartlarla doldurma" diyor; boşluğun etrafına çerçeve çizmek de onu
+   * doldurmanın bir biçimi. Artan alan artık çerçevesiz zemin olarak
+   * duruyor ve bir sonraki duruma hazır.
+   */
+  flex: 0 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-card);
+  background: var(--ink-900);
+  border: 1px solid var(--line-dark);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+/* Bekleyen müşteri tek dokunuşla karşılanır; kart düğmenin kendisidir. */
+.op--waiting {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+  cursor: pointer;
+  border-color: var(--brass-700);
+}
+
+.op--waiting:active {
+  background: var(--ink-800);
+}
+
+.op__avatar {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--brass-700);
+  background: linear-gradient(160deg, var(--ink-600), var(--ink-900));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.op__initial {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  color: var(--brass-400);
+}
+
+.op__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.op__title {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.op__line {
+  font-size: var(--fs-caption);
+  color: var(--text-dark-2);
+}
+
+.op__meta {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+.op__cta {
+  flex: 0 0 auto;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--brass-400);
+  white-space: nowrap;
+}
+
+/* Sakin durumda CTA'nın gerekçesi hemen altında; ayrı kart açmaz. */
+.op--calm .rewardedLine {
+  margin-top: var(--sp-2);
+}
+
+/*
+ * KISA EKRAN YOĞUNLUĞU (GDD 23.22 "içerik taşarsa yoğunluk azaltılır").
+ *
+ * 390 × 600'de ölçüldü: kimlik 72 + finans 80 + sakin paneli 166, kalan
+ * alan 123 px. Panel Karar Dock'unun altında kalıyor ve "Dükkânı Canlandır"
+ * düğmesi kesiliyordu — CTA'nın kesilmesi kabul edilemez.
+ *
+ * Düşen şeyler kimlik bloğundan alınıyor: mağaza görseli küçülüyor ve
+ * "Gün 1 · Semt itibarı" satırı gizleniyor (ikisi de durum şeridinde ve
+ * İşletme ekranında zaten var). Operasyon alanının hiçbir satırı
+ * düşmüyor — §7'nin istediği durum metni, süre ve maliyet açıklaması
+ * her ekranda okunur.
+ */
+@media (max-height: 720px) {
+  .idle__head {
+    min-height: 0;
+  }
+
+  .idle__art {
+    height: 44px;
+    max-width: 52px;
+  }
+
+  .idle__sub {
+    display: none;
+  }
+
+  .op {
+    padding: var(--sp-2) var(--sp-3);
+  }
+}
+
+.op__note {
+  font-size: var(--fs-micro);
+  /* §12 "küçük gri yardımcı metinlerin kontrastını artır" — 3 → 2. */
+  color: var(--text-dark-2);
+  line-height: 1.4;
+  max-width: 46ch;
 }
 
 /* Rewarded ikincil CTA — ana akışı bozmaz (GDD 23.10.1). */
@@ -2587,4 +2744,73 @@
     width: 52px;
     height: 52px;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* YETERSİZ NAKİT GEREKÇESİ (UPDATEv1 §6)                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Pasif "Teklifi Gönder" düğmesinin NEDENİ. Eskiden düğme sessizce
+ * kapanıyordu ve oyuncu ne kadar eksik olduğunu bilmiyordu.
+ * Dock'un içinde yaşar, yani ayrı bir katman açmaz ve ana ekranı kaydırmaz.
+ */
+.cashGap {
+  margin: var(--sp-1) 0 var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--negative);
+  background: rgba(198, 40, 40, 0.07);
+  font-size: var(--fs-micro);
+  color: var(--text-dark-2);
+}
+
+.cashGap__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  line-height: 1.4;
+}
+
+.cashGap__row .num {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.cashGap__row--gap {
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid rgba(198, 40, 40, 0.35);
+}
+
+.cashGap__row--gap .num {
+  color: var(--negative-soft);
+}
+
+/*
+ * Mevcut rotalara bağlantı — §6 "yeni finansman sistemi oluşturma, yalnız
+ * mevcut rotalara bağlantı ver". 44 px dokunma hedefi düzeni şişirmesin
+ * diye yükseklik ::after ile genişletilir.
+ */
+.cashGap__links {
+  display: flex;
+  gap: var(--sp-3);
+  margin-top: var(--sp-1);
+}
+
+.cashGap__link {
+  position: relative;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  color: var(--brass-300);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cashGap__link::after {
+  content: '';
+  position: absolute;
+  inset: -13px -6px;
 }
