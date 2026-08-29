@@ -3109,3 +3109,18 @@
   font-size: var(--fs-micro);
   color: var(--text-light-2);
 }
+
+/*
+ * PAZARLIK SÜTUNU: KUTULAR KÜÇÜLMEZ, SÜTUN KAYAR.
+ *
+ * `.idle`de birebir aynı hata ölçülmüştü: `overflow-y: auto` tek başına
+ * yetmiyor, çünkü flex çocukları varsayılan olarak `flex-shrink: 1` taşır ve
+ * içerik sığmayınca kutucuklar KENDİ İÇERİKLERİNDEN kısa hâle gelip eziliyor;
+ * taşan bir şey kalmadığı için kaydırma hiç devreye girmiyor.
+ *
+ * Bu sütun kapanamayacak pazarlık uyarısıyla birlikte daha da uzayabildiği
+ * için aynı koruma buraya da kondu.
+ */
+.negotiate > * {
+  flex-shrink: 0;
+}

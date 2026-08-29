@@ -64,27 +64,22 @@ import { PackageStage, StockPickStage } from '@ui/workbench/PurchaseStages';
 import { OfferControl, liquidityImpact, type OfferImpact } from '@ui/workbench/OfferControl';
 
 import {
-  IconCollection,
   IconCounter,
   IconDensity,
   IconGesture,
   IconLiquidity,
   IconLoupe,
   IconMagnet,
-  IconMelt,
   IconPackage,
   IconReason,
   IconReject,
-  IconRetail,
   IconScale,
   IconSend,
   IconSettings,
-  IconServiceResale,
   IconSpectrometer,
   IconTouchstone,
   IconVideo,
   IconWarning,
-  IconWholesale,
   IconWorkshop,
 } from '@ui/icons';
 import { Art } from '@ui/Art';
@@ -931,17 +926,29 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
 
     // Tez → yalnız ürün için rasyonel kanallar (domain filtreler).
     case 'thesis': {
-      const items: RailItem[] = line.thesisOptions.map((option) => {
-        const ChannelIcon = CHANNEL_RAIL_ICON[option.channel];
-        return {
-          id: option.channel,
-          label: CHANNEL_RAIL_LABEL[option.channel],
-          icon: <ChannelIcon size={19} />,
-          onPress: () => s.selectThesis(option.channel),
-          selected: line.selectedThesis === option.channel,
-        };
-      });
-      return <ToolRail items={items} />;
+      /*
+        Saha defteri B11 — RAY BU AŞAMADA SEÇİM YÜZEYİ DEĞİL.
+
+        Tezgâhta üç kart (rakamlı: beklenen net, tavan, süre, risk), rayda
+        aynı üç seçim (rakamsız) duruyordu. Aynı karar için iki yüzey, biri
+        eksik bilgiyle — oyuncu hangisine basacağını sorar ve rayı seçerse
+        kararı sayılara bakmadan vermiş olur.
+
+        Karar KARTLARDA kalır; ray seçilenin ne olduğunu söyleyen bir durum
+        satırına iner. Ray boş da bırakılabilirdi ama o zaman aşama boyunca
+        56 px'lik bir şerit sebepsiz dururdu.
+      */
+      const selected = line.thesisOptions.find((o) => o.channel === line.selectedThesis);
+      return (
+        <ToolRail
+          items={[]}
+          emptyLabel={
+            selected
+              ? `Seçili plan: ${CHANNEL_RAIL_LABEL[selected.channel]} · tavan ${tl(selected.buyCeiling)}`
+              : 'Bir çıkış planı seçin — karşılaştırma yukarıdaki kartlarda'
+          }
+        />
+      );
     }
 
     // Pazarlık → maks 3 görünür; "Reddet" rayda DEĞİL, Dock'ta (GDD 23.11).
@@ -1018,14 +1025,6 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
   void liquidity;
   return <ToolRail items={[]} />;
 }
-
-const CHANNEL_RAIL_ICON: Record<ExitChannel, typeof IconRetail> = {
-  retail: IconRetail,
-  wholesale: IconWholesale,
-  melt: IconMelt,
-  serviceResale: IconServiceResale,
-  collection: IconCollection,
-};
 
 const CHANNEL_RAIL_LABEL: Record<ExitChannel, string> = {
   retail: 'Vitrin',

@@ -17,6 +17,7 @@ import { CHANNEL_SHORT } from '@domain/thesis';
 import { STATE_LABEL } from '@domain/negotiation';
 import { CONFIDENCE_LABEL } from '@domain/valuation';
 import { Art } from '@ui/Art';
+import { NEGOTIATION } from '@domain/balance';
 import { MOVE_ART, OFFER_TIER_ART, OFFER_TIER_LABEL, customerArt, offerTier } from '@ui/assets';
 import { IconCounter, IconGesture, IconPackage, IconReason } from '@ui/icons';
 import { tl, tlBare, tlSigned, tonWord } from '@ui/format';
@@ -378,9 +379,19 @@ export function NegotiateStage({
           <span className="history__label">Teklifleriniz</span>
           {session.offerHistory.map((offer, i) => {
             const prev = session.offerHistory[i - 1];
-            // Anti-spam görünür kanıtı: tekrar eden teklif işaretlenir (GDD 11.4).
+            /*
+              Anti-spam görünür kanıtı: tekrar eden teklif işaretlenir
+              (GDD 11.4).
+
+              EŞİK MOTORUN KENDİ EŞİĞİ. Burada 0.005 elle yazılmıştı —
+              `NEGOTIATION.repeatEpsilon`in ikinci kopyası. Biri değişip
+              diğeri unutulursa arayüz bir teklifi "tekrar" diye işaretlerken
+              motor saymaz (ya da tersi) ve oyuncu neden ceza yediğini
+              anlayamaz.
+            */
             const isRepeat =
-              prev !== undefined && Math.abs(offer - prev) / Math.max(1, prev) < 0.005;
+              prev !== undefined &&
+              Math.abs(offer - prev) / Math.max(1, prev) < NEGOTIATION.repeatEpsilon;
             return (
               <span
                 key={`${i}-${offer}`}

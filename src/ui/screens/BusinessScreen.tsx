@@ -1036,12 +1036,19 @@ function StoreRoute({ onBack }: { onBack: () => void }) {
             <div className="group">
               <h2 className="group__title">{evaluation.next.name} · koşullar</h2>
               <div className="group__body">
+                {/*
+                  Saha defteri B10 — EKSİK KOŞUL DA KENDİ İŞARETİNİ ALIR.
+                  Karşılanan "✓", karşılanmayan ise "·" ile gösteriliyordu;
+                  nokta bir işaret değil, hangi şartın eksik olduğu ancak
+                  sayılar okununca anlaşılıyordu. Artık iki durumun da hem
+                  simgesi hem tonu var.
+                */}
                 {evaluation.gates.map((g) => (
                   <StatLine
                     key={g.key}
-                    label={`${g.met ? '✓' : '·'} ${g.label}`}
+                    label={`${g.met ? '✓' : '✗'} ${g.label}`}
                     value={fmtGate(g)}
-                    tone={g.met ? 'positive' : undefined}
+                    tone={g.met ? 'positive' : 'warning'}
                   />
                 ))}
               </div>
