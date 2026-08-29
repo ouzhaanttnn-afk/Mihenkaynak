@@ -202,6 +202,28 @@ export function NegotiateStage({
         </div>
       )}
 
+      {/*
+        KAPANAMAYACAK PAZARLIĞI SÖYLE.
+
+        Oynanışta ölçüldü: müşterinin karşı teklifi 10.909 ₺, alış tavanı
+        6.407 ₺. Bu pazarlığın kârlı bir sonucu MATEMATİKSEL OLARAK yoktu ama
+        oyun hiçbir yerde bunu söylemiyordu; oyuncu tavana kadar çıkıp
+        reddedilmeyi, sonra tekrar denemeyi kendi öğrenmek zorundaydı.
+
+        GİZLİ GERÇEK SIZMAZ (GDD 6.6): burada müşterinin kabul eşiği
+        açıklanmıyor. Söylenen iki şey de zaten ekranda: müşterinin AÇIKÇA
+        istediği rakam ve oyuncunun KENDİ hesapladığı tavan. Yapılan tek şey
+        ikisini karşılaştırmak — oyuncunun kafasında zaten yapması gereken
+        çıkarma işlemi.
+      */}
+      {counter !== null && active && counter > active.buyCeiling && (
+        <p className="counterRow__impossible">
+          Bu rakam alış tavanının {tl(counter - active.buyCeiling)} üstünde; bu plandan kâr
+          çıkmaz. Çıkış planını değiştirebilir, test yapıp bandı daraltabilir ya da işlemi
+          bırakabilirsin.
+        </p>
+      )}
+
       {active && (
         <div className="contextRow">
           <span className="contextRow__key">Seçili tez</span>
@@ -310,7 +332,7 @@ export function NegotiateStage({
 
           {band && (
             <div className="refPanel__row">
-              <span className="refPanel__key">Analize Göre Fark</span>
+              <span className="refPanel__key">Banda Göre Fark</span>
               <span className={`refPanel__val num refPanel__val--${analysisGap.tone}`}>
                 {analysisGap.text}
               </span>
@@ -399,8 +421,17 @@ export function NegotiateStage({
           {tier && (
             <span className="moveStrip__cell moveStrip__cell--tier">
               <Art art={OFFER_TIER_ART[tier]} size={56} decorative fallback={null} />
+              {/*
+                CETVEL YAZILI OLMALI.
+
+                Oynanışta şu görüldü: aynı ekranda "band altı" (yeşil, iyi)
+                ve "Teklifin: Makul" yan yana duruyor ve iki farklı şeyi
+                ölçtükleri hiçbir yerde yazmıyor. Biri teklifi DEĞER BANDINA,
+                diğeri ALIŞ TAVANINA göre konumluyor. Cetveli söylemeden iki
+                yargı vermek, oyuncuya çelişki gibi görünüyor.
+              */}
               <span className="moveStrip__label">
-                Teklifin: <strong>{OFFER_TIER_LABEL[tier]}</strong>
+                Tavana göre: <strong>{OFFER_TIER_LABEL[tier]}</strong>
               </span>
             </span>
           )}

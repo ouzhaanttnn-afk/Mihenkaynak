@@ -2930,3 +2930,20 @@
   position: absolute;
   inset: -13px -6px;
 }
+
+/*
+ * Kapanamayacak pazarlık uyarısı.
+ * Uyarı rengi taşır ama alarm değildir: durum oyuncunun hatası değil, bazı
+ * müşterilerin beklentisi gerçekten tavanın üstündedir. Söylenmesi, oyuncunun
+ * boşuna tur harcamasını önler.
+ */
+.counterRow__impossible {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--warning);
+  background: rgba(201, 130, 46, 0.1);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-micro);
+  line-height: 1.45;
+  color: var(--text-dark-2);
+}

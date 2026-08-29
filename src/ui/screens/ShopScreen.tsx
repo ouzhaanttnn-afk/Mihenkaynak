@@ -101,6 +101,7 @@ import type {
   ItemInstance,
   MarketState,
   Money,
+  NegotiationSession,
   PurchaseSession,
   WorkbenchStage,
 } from '@domain/types';
@@ -133,8 +134,22 @@ export function ShopScreen() {
     const min = Math.max(0, Math.round(line.band.min * 0.55));
     const max = Math.max(min + 1000, Math.round(Math.max(ceiling, line.band.max) * 1.15));
     const span = max - min;
-    const step = span > 200_000 ? 500 : span > 40_000 ? 100 : 50;
-    return { min, max, step };
+    const baseStep = span > 200_000 ? 500 : span > 40_000 ? 100 : 50;
+
+    /*
+      ADIM, "TEKRAR" EŞİĞİNDEN KÜÇÜK OLAMAZ.
+
+      Pazarlık makinesi %0,5'ten az değişen teklifi TEKRAR sayar ve yeni bir
+      cevap üretmez. 384.448 ₺'lik bir teklifte bu 1.922 ₺ eder; adım ise
+      500 ₺'ydi. Yani oyuncu artı düğmesine dört kez basıyor, üçünde hiçbir
+      şey değişmiyordu — rakam oynuyor ama motor için aynı teklif.
+
+      Ölçüldü ve düzeltildi: adım artık eşiğin üstüne yuvarlanıyor, böylece
+      HER basış gerçekten yeni bir teklif oluyor. Küçük tutarlarda eşik zaten
+      taban adımın altında kalır ve hiçbir şey değişmez.
+    */
+    const epsilonStep = Math.ceil((max * NEGOTIATION.repeatEpsilon) / baseStep) * baseStep;
+    return { min, max, step: Math.max(baseStep, epsilonStep) };
   }, [line?.band, ceiling]);
 
   // Pazarlığa girildiğinde teklifi tavana yakın makul bir yerden başlat.
@@ -399,6 +414,24 @@ export function ShopScreen() {
       <ShopDock offer={offer} setOffer={setOffer} bounds={offerBounds} liquidity={liquidity} />
     </>
   );
+}
+
+/**
+ * Bu rakam bir öncekinin tekrarı mı?
+ *
+ * Oynanışta bulundu: aynı rakam art arda gönderilebiliyordu ve oyun her
+ * seferinde "Cevabım değişmedi" deyip sabırdan kesiyordu. Ceza gerçekti ama
+ * oyuncu ne olduğunu ancak birkaç turdan sonra fark ediyordu. Düğmeyi
+ * kapatmak, bedeli ÖDEMEDEN önce söylüyor.
+ *
+ * Eşik motorun kendi eşiğidir (`repeatEpsilon`): arayüz "tekrar"ı, pazarlık
+ * makinesinin saydığı şeyle aynı saymalı — yoksa düğme açık kalır ve teklif
+ * yine tekrar sayılır.
+ */
+function isRepeatOffer(session: NegotiationSession, amount: Money): boolean {
+  const last = session.offerHistory[session.offerHistory.length - 1];
+  if (last === undefined) return false;
+  return Math.abs(amount - last) / Math.max(1, last) < NEGOTIATION.repeatEpsilon;
 }
 
 // ---------------------------------------------------------------------------
@@ -920,7 +953,20 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
           id: 'reason',
           label: 'Gerekçe',
           icon: <IconReason size={19} />,
-          disabled: !evidence,
+          /*
+            `disabled` DEĞİL `locked` — gerekçesi görünsün diye.
+
+            Buraya `lockReason` yazılmıştı ama hiç görünmüyordu: Araç Rayı
+            kilit nedenini yalnız `locked` olan öğede `title` ve erişilebilir
+            ada koyuyor, `disabled` olanda değil. Sonuç oynanışta görüldü —
+            "Gerekçe" her pazarlıkta pasif, nedeni hiçbir yerde yazmıyordu.
+
+            Rayın kendi sözleşmesi zaten bunu tarif ediyor: kilitli araç
+            TIKLANABİLİR kalır ve dokunulunca nedenini söyler.
+          */
+          locked: !evidence,
+          onLockedPress: () =>
+            s.notify('Gerekçe doğrulanmış veriye dayanır; önce ilgili testi yapın.', 'info'),
           used: evidence ? session.usedReasons.includes(`${evidence.field}:${evidence.toolId}`) : false,
           lockReason: 'Önce ilgili testi yapın',
           onPress: () =>
@@ -1227,8 +1273,14 @@ function ShopDock({
               : {
                   label: 'Teklifi Gönder',
                   onPress: () => s.submitOffer(offer),
-                  disabled: !canAfford || offer <= 0,
-                  disabledReason: cashReason ?? (offer <= 0 ? 'teklif tutarı sıfır' : undefined),
+                  disabled: !canAfford || offer <= 0 || isRepeatOffer(session, offer),
+                  disabledReason:
+                    cashReason ??
+                    (offer <= 0
+                      ? 'teklif tutarı sıfır'
+                      : isRepeatOffer(session, offer)
+                        ? 'bu rakamı zaten gönderdiniz; değiştirin ya da gerekçe sunun'
+                        : undefined),
                   icon: <IconSend size={18} />,
                 }
           }
@@ -1353,6 +1405,12 @@ function PurchaseDock({
             label: 'Paketi Değerle',
             onPress: () => s.setStage('package'),
             disabled: count === 0,
+            /*
+              §12 — pasif düğmenin nedeni erişilebilir adda da olmalı.
+              Tezgâh metni durumu zaten iyi anlatıyordu ama DÜĞMENİN kendisi
+              sessizdi; ekran okuyucu kullanan için sebepsiz ölü bir düğmeydi.
+            */
+            disabledReason: 'pakete henüz ürün eklenmedi',
           }}
           secondary={[{ label: 'Müşteriyi Gönder', onPress: s.finishDeal, danger: true }]}
         />
@@ -1428,7 +1486,14 @@ function PurchaseDock({
               isFinal && counter !== null
                 ? s.negotiationMove({ kind: 'acceptCounter', atRound: session.round })
                 : s.submitOffer(offer),
-            disabled: isTerminal(session.state) || offer <= 0,
+            disabled:
+              isTerminal(session.state) ||
+              offer <= 0 ||
+              (!isFinal && isRepeatOffer(session, offer)),
+            disabledReason:
+              !isFinal && isRepeatOffer(session, offer)
+                ? 'bu rakamı zaten verdiniz; değiştirin ya da gerekçe sunun'
+                : undefined,
             icon: <IconSend size={18} />,
           }}
           secondary={[

@@ -257,6 +257,57 @@ export function applyMove(
 // Teklif
 // ---------------------------------------------------------------------------
 
+/**
+ * SABIR TÜKENDİYSE MÜŞTERİ ÇIKAR — tek kapı.
+ *
+ * Her teklif yolu (normal, tekrar, son teklif) buradan geçer. Kontrolü tek
+ * yerde tutmanın sebebi doğrudan yaşandı: kural iki ayrı dala yazılmıştı,
+ * biri unutuldu ve pazarlık sonsuza kadar açık kaldı.
+ *
+ * ÇIKIP GİTMEK REDDETMEKTEN AYRIDIR (GDD 10.4): fiyatı beğenmeyip reddeden
+ * müşteri pazarlığı yapmıştır, sabrı biten ise pazarlığı BIRAKMIŞTIR. Cümle
+ * de, güven cezası da farklı. `visitOutcome` ikisini zaten `customer.patience`
+ * üzerinden ayırıyor; bu fonksiyon o ayrımın gerçekten oluşmasını sağlıyor.
+ *
+ * @returns Terminal sonuç, ya da sabır varsa `null` (çağıran devam eder).
+ */
+function walkOutIfSpent(
+  session: NegotiationSession,
+  ctx: NegotiationContext,
+  offer: Money,
+  move: NegotiationMove,
+  patienceCost: number,
+): { session: NegotiationSession; response: NegotiationResponse } | null {
+  if (ctx.customer.patience - patienceCost > 0) return null;
+
+  return {
+    session: {
+      ...session,
+      state: 'REJECTED',
+      round: session.round + 1,
+      offerHistory: [...session.offerHistory, offer],
+      moveHistory: [...session.moveHistory, move],
+      activeCounter: null,
+      finalOffer: null,
+    },
+    response: {
+      state: 'REJECTED',
+      message: 'Bu iş uzadı, ben kalkayım. Kolay gelsin.',
+      counterOffer: null,
+      patienceDelta: -patienceCost,
+      /*
+        Çıkıp giden müşterinin güven cezası reddedenden AĞIR: GDD 10.4 ciddi
+        olayları daha ağır sayar ve oyuncunun vaktini harcatması ciddi bir
+        olaydır.
+      */
+      trustDelta: -Math.round(TRUST.rejectPenalty * 1.5),
+      suspicionDelta: 0,
+      wasRepeatOffer: false,
+      settledPrice: null,
+    },
+  };
+}
+
 function handleOffer(
   session: NegotiationSession,
   ctx: NegotiationContext,
@@ -274,6 +325,23 @@ function handleOffer(
     Math.abs(offer - lastOffer) / Math.max(1, lastOffer) < NEGOTIATION.repeatEpsilon;
 
   if (wasRepeat) {
+    const cost = NEGOTIATION.repeatOfferPatiencePenalty;
+
+    /*
+      SABIR KONTROLÜ BURADA DA YAPILIR — eskiden YAPILMIYORDU.
+
+      Bu dal, sabrı 14 eritip erken dönüyor ve aşağıdaki durum geçişine hiç
+      uğramıyordu. Sonuç oynanışta ölçüldü: sabır dört teklifte 5/5'ten
+      0/5'e iniyor, sonra ON BİR tur daha aynı teklif gönderilebiliyor ve
+      işlem hiç kapanmıyordu. Sabır dolu bir gösterge, arkasında yaptırım
+      olmayan bir çubuk hâline gelmişti.
+
+      Kural artık tek yerde (`walkOutIfSpent`) ve HER teklif yolu oradan
+      geçiyor; biri düzeltilip diğeri unutulamaz.
+    */
+    const walkOut = walkOutIfSpent(session, ctx, offer, move, cost);
+    if (walkOut) return walkOut;
+
     const next: NegotiationSession = {
       ...session,
       round: session.round + 1,
@@ -287,7 +355,7 @@ function handleOffer(
         message: 'Aynı rakamı tekrar ediyorsunuz. Cevabım değişmedi.',
         // Karşı teklif de değişmez — yeni bilgi verilmediği için.
         counterOffer: session.activeCounter,
-        patienceDelta: -NEGOTIATION.repeatOfferPatiencePenalty,
+        patienceDelta: -cost,
         trustDelta: -NEGOTIATION.repeatOfferTrustPenalty,
         suspicionDelta: 0,
         wasRepeatOffer: true,
@@ -353,35 +421,17 @@ function handleOffer(
   const patienceRatioAfter = patienceAfter / Math.max(1, customer.patienceMax);
 
   // --- Durum geçişi (GDD 11.1) ---
+  //
+  // Sabır tükendiyse müşteri ÇIKIP GİDER; bu bir fiyat reddi değildir ve
+  // `walkOutIfSpent` ikisini aynı cümleyle karıştırmaz.
+  const spent = walkOutIfSpent(session, ctx, offer, move, patienceCost);
+  if (spent) return spent;
+
   let nextState: NegotiationState = session.state;
-  if (patienceRatioAfter <= 0) {
-    nextState = 'REJECTED';
-  } else if (patienceRatioAfter <= NEGOTIATION.finalOfferPatienceRatio) {
+  if (patienceRatioAfter <= NEGOTIATION.finalOfferPatienceRatio) {
     nextState = 'FINAL_OFFER';
   } else if (badOfferCount >= NEGOTIATION.hardeningTrigger || session.state === 'HARDENING') {
     nextState = 'HARDENING';
-  }
-
-  if (nextState === 'REJECTED') {
-    return {
-      session: {
-        ...session,
-        state: 'REJECTED',
-        round,
-        offerHistory: [...session.offerHistory, offer],
-        moveHistory: [...session.moveHistory, move],
-      },
-      response: {
-        state: 'REJECTED',
-        message: 'Bu fiyatlarla olmayacak. Başka yere bakacağım.',
-        counterOffer: null,
-        patienceDelta: -patienceCost,
-        trustDelta: -TRUST.rejectPenalty,
-        suspicionDelta: 0,
-        wasRepeatOffer: false,
-        settledPrice: null,
-      },
-    };
   }
 
   // --- Karşı teklif: profil + state + teklif geçmişinden TÜRETİLİR (GDD 11.4) ---
