@@ -132,3 +132,91 @@ describe('§9 — teslim yalnız bir kez uygulanır', () => {
     expect(useGame.getState().store.cash).toBe(cashAfter);
   });
 });
+
+// ===========================================================================
+// SAHA DEFTERİ B3/B4/B12 — gün kapanışı
+// ===========================================================================
+
+describe('Gün kapanışı onay ister ve raporu kalıcıdır', () => {
+  it('onay penceresi açıkken oyun zamanı DURUR', () => {
+    /*
+      Ölçüldü: sekiz saniyede altı gün geçirilip 7.200 ₺ gider yazdırılabildi.
+      Onay penceresi bunu keser; açıkken saat de akmamalı, yoksa oyuncu
+      düşünürken müşteri kaçar.
+    */
+    const s = useGame.getState();
+    const clockBefore = s.market.clockMinutes;
+
+    s.askDayClose();
+    for (let i = 0; i < 200; i += 1) useGame.getState().tick(1);
+
+    expect(useGame.getState().dayCloseAsk).toBe(true);
+    expect(useGame.getState().market.clockMinutes).toBe(clockBefore);
+
+    useGame.getState().cancelDayClose();
+    expect(useGame.getState().dayCloseAsk).toBe(false);
+    expect(useGame.getState().pauseDepth).toBe(0);
+  });
+
+  it('vazgeçmek günü DEĞİŞTİRMEZ', () => {
+    const before = useGame.getState().market.day;
+    useGame.getState().askDayClose();
+    useGame.getState().cancelDayClose();
+    expect(useGame.getState().market.day).toBe(before);
+  });
+
+  it('onaydan sonra kapanış raporu doldurulur ve duraklatma bırakılır', () => {
+    const before = useGame.getState().market.day;
+
+    useGame.getState().askDayClose();
+    useGame.getState().advanceDay();
+
+    const s = useGame.getState();
+    expect(s.market.day).toBe(before + 1);
+    expect(s.dayCloseAsk).toBe(false);
+    // Duraklatma asılı kalırsa oyun panelin arkasında donar.
+    expect(s.pauseDepth).toBe(0);
+
+    const rapor = s.lastDayClose;
+    expect(rapor, 'kapanış raporu üretilmedi').not.toBeNull();
+    expect(rapor!.day).toBe(before);
+    expect(rapor!.overhead).toBeGreaterThan(0);
+    expect(rapor!.cashAfter).toBe(s.store.cash);
+  });
+
+  it('rapor oyuncu kapatana kadar durur — kendiliğinden kaybolmaz', () => {
+    useGame.getState().askDayClose();
+    useGame.getState().advanceDay();
+    expect(useGame.getState().lastDayClose).not.toBeNull();
+
+    // Zaman aksa bile panel yerinde kalır.
+    for (let i = 0; i < 300; i += 1) useGame.getState().tick(1);
+    expect(useGame.getState().lastDayClose).not.toBeNull();
+
+    useGame.getState().dismissDayClose();
+    expect(useGame.getState().lastDayClose).toBeNull();
+  });
+
+  it('B12 — gün sonu haberleri toast sınırına kurban gitmez', () => {
+    /*
+      Gün sonunda dörde kadar toast gönderiliyordu ama ekranda en fazla ikisi
+      duruyor. Gecikmiş vade ve esnaf borcu — en çok bilinmesi gereken iki
+      şey — sessizce düşebiliyordu. Artık uyarılar raporun kendi alanında.
+    */
+    const oncekiToast = useGame.getState().toasts.length;
+
+    useGame.getState().askDayClose();
+    useGame.getState().advanceDay();
+    const rapor = useGame.getState().lastDayClose!;
+
+    expect(Array.isArray(rapor.warnings)).toBe(true);
+    /*
+      MUTLAK SAYI DEĞİL, ARTIŞ ÖLÇÜLÜR: mağaza son üç toast'ı tutuyor ve
+      testler durumu paylaştığı için mutlak sayı önceki kapanışlardan
+      birikir. Sınanan şey kapanışın KAÇ toast eklediği — eskiden dörde
+      kadar çıkıyordu, artık bir.
+    */
+    const eklenen = useGame.getState().toasts.length - oncekiToast;
+    expect(eklenen).toBeLessThanOrEqual(1);
+  });
+});

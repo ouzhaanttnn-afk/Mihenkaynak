@@ -411,6 +411,10 @@ export function ShopScreen() {
       */}
       {deal && <ContextualToolRail liquidity={liquidity} />}
 
+      {/* §B3/§B4 — gün kapanışının onayı ve kalıcı raporu. */}
+      {s.dayCloseAsk && <DayCloseConfirm />}
+      {s.lastDayClose && <DayCloseReport />}
+
       <ShopDock offer={offer} setOffer={setOffer} bounds={offerBounds} liquidity={liquidity} />
     </>
   );
@@ -1081,7 +1085,7 @@ function ShopDock({
           onPress: s.greetCustomer,
           disabled: !hasQueue,
         }}
-        secondary={[{ label: 'Günü Bitir', onPress: s.advanceDay }]}
+        secondary={[{ label: 'Günü Bitir', onPress: s.askDayClose }]}
       />
     );
   }
@@ -1912,4 +1916,126 @@ function relationLabel(offer: Money, ceiling: Money): string {
   if (ratio >= 0.95) return 'olumlu';
   if (ratio >= 0.8) return 'nötr';
   return 'riskli';
+}
+
+// ---------------------------------------------------------------------------
+// GÜN KAPANIŞI — onay ve rapor (saha defteri B3, B4, B12)
+// ---------------------------------------------------------------------------
+
+/**
+ * KAPATMADAN ÖNCE SOR.
+ *
+ * Oynanışta ölçüldü: saat 09:00'da, tek müşteri görmeden, hiçbir uyarı
+ * olmadan sekiz saniyede altı gün geçirilebiliyor ve 7.200 ₺ gider
+ * yazılabiliyordu. Onay penceresi açıkken oyun zamanı durur.
+ *
+ * Metin oyuncunun NE KAYBEDECEĞİNİ söyler, genel bir "emin misiniz?" değil:
+ * kuyrukta bekleyen müşteri sayısı, saat ve o günün gideri.
+ */
+function DayCloseConfirm() {
+  const s = useGame();
+  const bekleyen = s.queue.length;
+  const saat = clock(s.market.clockMinutes);
+  const erken = s.market.clockMinutes < DAY.closeMinutes - 120;
+
+  return (
+    <div className="confirmScrim" role="presentation">
+      <div
+        className="confirmBox"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="dayclose-title"
+      >
+        <h2 className="confirmBox__title" id="dayclose-title">
+          Günü şimdi kapat?
+        </h2>
+        <p className="confirmBox__body">
+          Saat {saat}.
+          {erken ? ' Gün daha bitmedi;' : ''}
+          {bekleyen > 0
+            ? ` kuyrukta ${bekleyen} müşteri bekliyor ve kapatırsan giderler.`
+            : ' kapatırsan bugün başka müşteri gelmez.'}{' '}
+          Günlük gider {tl(s.store.dailyOverhead)} her hâlükârda işler.
+        </p>
+        <div className="confirmBox__actions">
+          <button type="button" className="confirmBox__cancel" onClick={s.cancelDayClose}>
+            Vazgeç
+          </button>
+          <button type="button" className="confirmBox__ok" onClick={s.advanceDay}>
+            Günü Bitir
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * GÜNÜN KAPANIŞ RAPORU — oyuncu kapatana kadar durur.
+ *
+ * Buradaki her satır eskiden bir toast'tı ve dört saniyede kayboluyordu.
+ * Dahası gün sonunda dörde kadar toast gönderiliyor ama ekranda en fazla
+ * ikisi duruyordu; gecikmiş vade ya da esnaf borcu sessizce düşebiliyordu.
+ * Uyarılar bu yüzden panelin EN ÜSTÜNDE: düşen haberler onlardı.
+ */
+function DayCloseReport() {
+  const s = useGame();
+  const r = s.lastDayClose;
+  if (!r) return null;
+
+  return (
+    <div className="confirmScrim" role="presentation">
+      <div className="dayReport" role="dialog" aria-modal="true" aria-labelledby="dayreport-title">
+        <h2 className="dayReport__title" id="dayreport-title">
+          Gün {r.day} kapandı
+        </h2>
+
+        {r.warnings.length > 0 && (
+          <div className="dayReport__warnings">
+            {r.warnings.map((w) => (
+              <p key={w} className="dayReport__warning">
+                <IconWarning size={14} />
+                {w}
+              </p>
+            ))}
+          </div>
+        )}
+
+        <div className="dayReport__rows">
+          <DayRow label="Gerçekleşmiş kâr" value={tlSigned(r.realizedProfit)} tone={r.realizedProfit >= 0 ? 'positive' : 'negative'} />
+          <DayRow label="Günlük gider" value={`−${tl(r.overhead)}`} tone="negative" />
+          <DayRow label="Kasa değişimi" value={tlSigned(r.netCashChange)} tone={r.netCashChange >= 0 ? 'positive' : 'negative'} />
+          <DayRow label="Kapanış nakdi" value={tl(r.cashAfter)} />
+          <DayRow label="Stok potansiyeli" value={tlSigned(r.stockPotential)} tone={r.stockPotential >= 0 ? 'positive' : 'negative'} />
+          <DayRow label={TERM.liquidity} value={pct(r.liquidity)} />
+        </div>
+
+        {r.overnight && <p className="dayReport__overnight">{r.overnight}</p>}
+
+        {r.upcoming.length > 0 && (
+          <div className="dayReport__upcoming">
+            <span className="dayReport__upcomingHead">Yaklaşan yükümlülükler</span>
+            {r.upcoming.slice(0, 3).map((u) => (
+              <p key={`${u.label}-${u.dueDay}`} className="dayReport__upcomingRow">
+                {u.label} · {tl(u.amount)} · gün {u.dueDay}
+              </p>
+            ))}
+          </div>
+        )}
+
+        <button type="button" className="dayReport__ok" onClick={s.dismissDayClose}>
+          Yeni güne başla
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DayRow({ label, value, tone }: { label: string; value: string; tone?: 'positive' | 'negative' }) {
+  return (
+    <div className="dayReport__row">
+      <span className="dayReport__key">{label}</span>
+      <span className={`dayReport__val num ${tone ? `dayReport__val--${tone}` : ''}`}>{value}</span>
+    </div>
+  );
 }

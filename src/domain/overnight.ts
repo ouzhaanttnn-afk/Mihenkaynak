@@ -87,6 +87,19 @@ export function measurePosition(
 }
 
 /**
+ * Tutarı binlik ayraçla yazar.
+ *
+ * Bu cümleler ham sayı basıyordu: "29963 ₺'lik fırsatı kaçırdı". Oyunun her
+ * yerinde para "29.963 ₺" biçiminde; tek istisna gün kapanışının en çok
+ * okunan satırıydı. Biçimlendirme `@ui/format` içinde ama bu dosya domain
+ * katmanında ve arayüzü import ETMEZ — bu yüzden aynı kural burada, iki
+ * satırda.
+ */
+function money(n: number): string {
+  return Math.round(n).toLocaleString('tr-TR');
+}
+
+/**
  * Pozisyonun gecelik sonucu.
  *
  * §5'in iki yarısı da hesaplanır ve İKİSİ DE döndürülür. Yalnız birini
@@ -133,11 +146,11 @@ function describeOutcome(
   if (spotChange > 0) {
     return position.metalShare >= 0.5
       ? 'Fiyat yükseldi; ağırlığı altında taşımak bu gece işe yaradı.'
-      : `Fiyat yükseldi; nakitte kalan kısım ${Math.abs(opportunityCost)} ₺'lik fırsatı kaçırdı.`;
+      : `Fiyat yükseldi; nakitte kalan kısım ${money(Math.abs(opportunityCost))} ₺'lik fırsatı kaçırdı.`;
   }
 
   return position.metalShare >= 0.5
-    ? `Fiyat düştü; altında kalan pozisyon ${Math.abs(metalDelta)} ₺ geriledi.`
+    ? `Fiyat düştü; altında kalan pozisyon ${money(Math.abs(metalDelta))} ₺ geriledi.`
     : 'Fiyat düştü; nakit ağırlığı bu gece zararı sınırladı.';
 }
 

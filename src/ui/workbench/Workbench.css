@@ -2947,3 +2947,165 @@
   line-height: 1.45;
   color: var(--text-dark-2);
 }
+
+/* ==========================================================================
+   GÜN KAPANIŞI — onay penceresi ve rapor (saha defteri B3, B4, B12)
+   ========================================================================== */
+
+/*
+ * Her ikisi de CİHAZ ÇERÇEVESİNİ kaplar, sayfayı değil — Profil penceresiyle
+ * aynı kalıp. Ekranın içine konsalardı Dükkan'ın `overflow: hidden` gövdesine
+ * hapsolur ve alt navigasyonun altında kalırlardı.
+ */
+.confirmScrim {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gutter);
+  background: rgba(8, 11, 15, 0.7);
+  backdrop-filter: blur(2px);
+}
+
+.confirmBox,
+.dayReport {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: 100%;
+  max-width: 330px;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  border-radius: var(--r-sheet);
+  background: var(--stone-50);
+  color: var(--text-light-1);
+  border: 1px solid var(--brass-500);
+  box-shadow: 0 18px 48px rgba(8, 11, 15, 0.55);
+}
+
+.confirmBox__title,
+.dayReport__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+}
+
+.confirmBox__body {
+  margin: 0;
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  color: var(--text-light-2);
+}
+
+.confirmBox__actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.confirmBox__cancel,
+.confirmBox__ok,
+.dayReport__ok {
+  flex: 1 1 0;
+  min-height: var(--touch-min);
+  border-radius: var(--r-md);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.confirmBox__cancel {
+  border: 1px solid var(--line-light-strong);
+  background: transparent;
+  color: var(--text-light-1);
+}
+
+.confirmBox__ok,
+.dayReport__ok {
+  border: 0;
+  background: var(--surface-brass);
+  color: var(--ink-900);
+}
+
+/* Uyarılar EN ÜSTTE: toast sınırı yüzünden düşen haberler bunlardı. */
+.dayReport__warnings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.dayReport__warning {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  border-left: 2px solid var(--negative);
+  background: rgba(198, 40, 40, 0.08);
+  font-size: var(--fs-caption);
+  color: var(--negative);
+}
+
+.dayReport__rows {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-light);
+  overflow: hidden;
+}
+
+.dayReport__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line-light);
+}
+
+.dayReport__row:last-child { border-bottom: none; }
+
+.dayReport__key {
+  font-size: var(--fs-caption);
+  color: var(--text-light-2);
+}
+
+.dayReport__val {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.dayReport__val--positive { color: var(--positive); }
+.dayReport__val--negative { color: var(--negative); }
+
+.dayReport__overnight {
+  margin: 0;
+  font-size: var(--fs-micro);
+  line-height: 1.45;
+  color: var(--text-light-2);
+}
+
+.dayReport__upcoming {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dayReport__upcomingHead {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-light-2);
+}
+
+.dayReport__upcomingRow {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-light-2);
+}

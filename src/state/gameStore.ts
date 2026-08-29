@@ -141,6 +141,22 @@ import { normalizeSettings, type GameSettings } from '@domain/settings';
  */
 export type BusinessRoute = 'wholesaler' | 'network' | 'settings';
 
+/** Gün kapanışının oyuncuya gösterilecek özeti (§B4). */
+export interface DayCloseSummary {
+  day: number;
+  realizedProfit: Money;
+  overhead: Money;
+  netCashChange: Money;
+  cashAfter: Money;
+  stockPotential: Money;
+  liquidity: number;
+  /** Gecelik pozisyonun sonucu — GDD 34.5: gerçekleşmiş kâra YAZILMAZ. */
+  overnight: string | null;
+  /** Vade ve esnaf gecikmeleri gibi, düşerse kaybolacak satırlar. */
+  warnings: string[];
+  upcoming: { label: string; amount: Money; dueDay: number }[];
+}
+
 /**
  * AYARLAR MAĞAZADAN ÖNCE OKUNUR VE DİL HEMEN UYGULANIR.
  *
@@ -433,6 +449,30 @@ export interface GameState {
 
   advanceDay: () => void;
 
+  /*
+   * GÜN KAPANIŞININ KALICI KAYDI.
+   *
+   * Kapanış eskiden yalnız toast'la anlatılıyordu ve toast dört saniyede
+   * kayboluyordu; üstelik gün sonunda DÖRDE KADAR toast gönderiliyor ama
+   * ekranda en fazla ikisi duruyor — gecikmiş vade ya da esnaf borcu
+   * sessizce düşebiliyordu. Bir işletme oyununda günün kapanışı en çok
+   * okunan ekrandır; burada en kısa ömürlü olanıydı.
+   *
+   * Panel oyuncu kapatana kadar durur. Kaydedilmez: bir sonraki gün devri
+   * onu zaten tazeler, kayda yazmak türetilebilir veriyi ikinci kez
+   * saklamak olurdu.
+   */
+  lastDayClose: DayCloseSummary | null;
+  dismissDayClose: () => void;
+
+  /**
+   * Gün kapatma onayı bekliyor mu (§B3).
+   * Kazara kapatmayı önler; modal açıkken oyun zamanı durur.
+   */
+  dayCloseAsk: boolean;
+  askDayClose: () => void;
+  cancelDayClose: () => void;
+
   /** GDD 19.2 — mağaza kademesini yükseltir. */
   upgradeStore: () => void;
 
@@ -504,6 +544,8 @@ export const useGame = create<GameState>((set, get) => {
     seenLessons: [],
     profile: defaultProfile(),
     lastDelivery: null,
+    lastDayClose: null,
+    dayCloseAsk: false,
     profileOpen: false,
     pauseDepth: 0,
     pendingBusinessRoute: null,
@@ -569,6 +611,22 @@ export const useGame = create<GameState>((set, get) => {
      * yine de burada son bir kez süzülür ki bozuk bir ad kayda giremesin.
      */
     dismissDelivery: () => set({ lastDelivery: null }),
+    dismissDayClose: () => set({ lastDayClose: null }),
+
+    /*
+      §B3 — GÜNÜ KAPATMAK ONAY İSTER.
+      Ölçüldü: sekiz saniyede altı gün geçirilip 7.200 ₺ gider yazdırılabildi,
+      hiçbir uyarı olmadan. Onay penceresi açıkken oyun zamanı durur; pause
+      sayacı modal kalıbının kendisi.
+    */
+    askDayClose: () => {
+      get().pushPause();
+      set({ dayCloseAsk: true });
+    },
+    cancelDayClose: () => {
+      set({ dayCloseAsk: false });
+      get().popPause();
+    },
 
     openProfile: () => set({ profileOpen: true }),
     closeProfile: () => set({ profileOpen: false }),
@@ -2000,6 +2058,15 @@ export const useGame = create<GameState>((set, get) => {
 
     advanceDay: () => {
       const s = get();
+
+      /*
+        Onay penceresi açıksa duraklatmayı BURADA bırak. Sayacı yalnız
+        pencerenin kendi kapanışına bırakmak, "onayla" yolunun sayacı asılı
+        bırakmasına yol açıyordu — oyun kapanış panelinin arkasında donuk
+        kalırdı.
+      */
+      if (s.dayCloseAsk) s.popPause();
+
       const { state: closed, report } = closeDay(economyOf(s), s.market.day);
       const nextDay = s.market.day + 1;
       const market = createMarketForDay(s.seed, nextDay, s.market);
@@ -2052,36 +2119,54 @@ export const useGame = create<GameState>((set, get) => {
         customerRushUntilMinutes: null,
       });
 
+      /*
+        §B4 — KAPANIŞ ARTIK TOAST DEĞİL, PANEL.
+
+        Burada eskiden DÖRDE KADAR toast gönderiliyordu ama ekranda en fazla
+        ikisi durur (`pushToast` son üçü tutar, arayüz ikisini çizer). Yani
+        gecikmiş bir vade ya da esnaf borcu — oyuncunun en çok bilmesi
+        gereken iki şey — sessizce düşebiliyordu. Hepsi tek panelde toplandı
+        ve panel oyuncu kapatana kadar duruyor.
+
+        Tek toast kalıyor: paneli kaçırmayan kısa bir bildirim.
+      */
+      const warnings: string[] = [];
+      if (networkOverdue.penalty > 0) {
+        warnings.push(
+          `${networkOverdue.lateMembers.length} esnaf borcu gecikti · ${fmt(networkOverdue.penalty)} yük`,
+        );
+      }
+      if (overdue.penalty > 0) {
+        warnings.push(
+          `${overdue.overdueIds.length} vade gecikti · ${fmt(overdue.penalty)} gecikme yükü`,
+        );
+      }
+
+      set({
+        dayCloseAsk: false,
+        lastDayClose: {
+          day: report.day,
+          realizedProfit: report.realizedTradeProfit,
+          overhead: report.overhead,
+          netCashChange: report.netCashChange,
+          cashAfter: store.cash,
+          stockPotential: report.stockPotential,
+          liquidity: report.liquidity,
+          // §5 · GDD 34.5 — bu sayı gerçekleşmiş kâra YAZILMAZ; mal hâlâ
+          // stokta, fırsat maliyeti ise hiç var olmamış bir para.
+          overnight:
+            Math.abs(overnightOutcome.spotChange) >= 0.0005 ? overnightOutcome.summary : null,
+          warnings,
+          upcoming: report.upcomingLiabilities,
+        },
+      });
+
       pushToast(
         set,
         get,
-        `Gün ${report.day} kapandı · Gerçekleşmiş kâr ${fmt(report.realizedTradeProfit)} · Gider ${fmt(report.overhead)}`,
+        `Gün ${report.day} kapandı`,
         report.netCashChange >= 0 ? 'positive' : 'negative',
       );
-
-      // §5 — gecelik pozisyonun sonucu. GDD 34.5: bu sayı gerçekleşmiş kâra
-      // YAZILMAZ; mal hâlâ stokta, fırsat maliyeti ise hiç var olmamış bir para.
-      if (Math.abs(overnightOutcome.spotChange) >= 0.0005) {
-        pushToast(set, get, overnightOutcome.summary, 'info');
-      }
-
-      if (networkOverdue.penalty > 0) {
-        pushToast(
-          set,
-          get,
-          `${networkOverdue.lateMembers.length} esnaf borcu gecikti · ${fmt(networkOverdue.penalty)} yük`,
-          'negative',
-        );
-      }
-
-      if (overdue.penalty > 0) {
-        pushToast(
-          set,
-          get,
-          `${overdue.overdueIds.length} vade gecikti · ${fmt(overdue.penalty)} gecikme yükü`,
-          'negative',
-        );
-      }
 
       // GDD 28.1 — gün sonu checkpoint. Kaydın §11'e göre taşıdığı şeyler:
       // rejim (seed'den yeniden türetilir), açık borçlar, vadeler, limitler
