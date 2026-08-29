@@ -1188,3 +1188,131 @@
 .planChip--active .planChip__net {
   color: var(--brass-300);
 }
+
+/* ==========================================================================
+   AYARLAR — ses, titreşim, dil
+   ========================================================================== */
+
+/*
+ * Satır grup gövdesinin içinde yaşar ve komşusundan ince bir çizgiyle
+ * ayrılır; İşletme'deki `.statLine` ile aynı ritim. Ayarlar ekranı için ayrı
+ * bir görsel dil kurmak, oyuncuya farklı bir uygulamaya girmiş hissi verirdi.
+ */
+.settingsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  /* GDD 23.22 — dokunma hedefi. Tüm satır tıklanır, ayrı küçük düğme yok. */
+  min-height: var(--touch-min);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line-light);
+  text-align: left;
+  font: inherit;
+  color: var(--text-light-1);
+  background: none;
+}
+
+.settingsRow:last-child {
+  border-bottom: none;
+}
+
+.settingsRow--button {
+  cursor: pointer;
+}
+
+.settingsRow--button:active {
+  background: var(--stone-100);
+}
+
+.settingsRow--button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.settingsRow--disabled {
+  opacity: 0.5;
+}
+
+.settingsRow__icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--brass-700);
+}
+
+.settingsRow__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-label);
+}
+
+.settingsRow__control {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.settingsRow__value {
+  flex: 0 0 auto;
+  min-width: 42px;
+  text-align: right;
+  font-size: var(--fs-caption);
+  color: var(--text-light-2);
+}
+
+/*
+ * Kaydırıcı yerleşik `<input type="range">`. Klavye ve ekran okuyucu desteği
+ * bedava geliyor; özel bir sürükleme ikisini de elle kurmak demekti.
+ */
+.settingsRow__slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--touch-min);
+  accent-color: var(--brass-500);
+  background: none;
+  cursor: pointer;
+}
+
+.settingsRow__slider:disabled {
+  cursor: default;
+}
+
+/* Aç/kapa anahtarı — yalnız görsel; durum `aria-checked` ile taşınır. */
+.switch {
+  flex: 0 0 auto;
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: var(--r-pill);
+  background: var(--line-light-strong);
+  transition: background var(--t-fast) var(--ease-standard);
+}
+
+.switch--on {
+  background: var(--brass-500);
+}
+
+.switch__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-pill);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(8, 11, 15, 0.35);
+  transition: transform var(--t-fast) var(--ease-standard);
+}
+
+.switch--on .switch__knob {
+  transform: translateX(18px);
+}
+
+/* Grup altındaki açıklama — neden/kapsam yazısı. */
+.settingsNote {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-micro);
+  /* UPDATEv2 §12 — küçük gri yardımcı metinlerin kontrastı. */
+  color: var(--text-light-2);
+  line-height: 1.45;
+}

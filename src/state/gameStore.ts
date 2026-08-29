@@ -132,6 +132,37 @@ import {
 } from '@domain/appraisal';
 import { applyTierGrants, evaluateUpgrade, growthSnapshot } from '@domain/store-growth';
 import { demandIsSellable } from '@domain/sales-catalog';
+import { normalizeSettings, type GameSettings } from '@domain/settings';
+
+/**
+ * Stok ekranından açılabilen İşletme alt rotaları (§8) ve Ayarlar.
+ * Ayarlar buraya eklendi çünkü giriş noktası Dükkan ana ekranında: gezinme
+ * işaretini taşıyan mekanizma zaten vardı, ikincisini kurmak gereksizdi.
+ */
+export type BusinessRoute = 'wholesaler' | 'network' | 'settings';
+
+/**
+ * AYARLAR MAĞAZADAN ÖNCE OKUNUR VE DİL HEMEN UYGULANIR.
+ *
+ * `setLocale`i React efektine bırakmak DENENDİ ve tarayıcıda kırık çıktı:
+ * efekt ilk çizimden SONRA çalışıyor, dil ise React durumu değil modül
+ * durumu olduğu için sonrasında hiçbir şey yeniden çizilmiyordu. Sonuç:
+ * oyuncu İngilizceyi seçip sayfayı yeniliyor, tercih kayıtta duruyor ama
+ * ekran Türkçe açılıyordu.
+ *
+ * Modül değerlendirmesi ilk çizimden önce biter; dil burada uygulanınca
+ * ilk kare zaten doğru dilde çizilir. Sonraki değişiklikler mağazadaki
+ * `settings` üzerinden yeniden çizim tetiklediği için sorun çıkarmaz.
+ *
+ * SES BURADA BAŞLATILMAZ: tarayıcı kullanıcı dokunmadan ses bağlamı
+ * açtırmaz; o iş ilk dokunuşa bağlı (App.tsx · unlockAudio).
+ */
+const INITIAL_SETTINGS = loadSettings();
+setLocale(INITIAL_SETTINGS.locale);
+import { loadSettings, persistSettings } from './settings-store';
+import { playSfx, syncAudioSettings } from '@ui/audio';
+import { vibrate } from '@ui/haptics';
+import { setLocale } from '@ui/i18n';
 import { getServiceType } from '@data/service-types';
 import { customerRequestLine } from '@ui/intent-line';
 import { clearSave, persistProfile, readSave, writeSave } from './save';
@@ -380,9 +411,20 @@ export interface GameState {
   setStockThesis: (itemId: string, channel: ExitChannel) => void;
 
   /** §8 — Stok'tan satış rotasına geçiş; yalnız gezinme durumu. */
-  pendingBusinessRoute: 'wholesaler' | 'network' | null;
-  openBusinessRoute: (route: 'wholesaler' | 'network') => void;
+  pendingBusinessRoute: BusinessRoute | null;
+  openBusinessRoute: (route: BusinessRoute) => void;
   consumeBusinessRoute: () => void;
+
+  /*
+   * OYUNCU AYARLARI — ses, titreşim, dil.
+   *
+   * Oyun durumunun parçası GİBİ durur ama DEĞİLDİR: kayıt dosyasına
+   * yazılmaz, `resetGame` sıfırlamaz, seed'e ve determinizme dokunmaz.
+   * Mağazada durmasının tek sebebi arayüzün tek bir yerden okuyabilmesi;
+   * kalıcılığı kendi deposunda (settings-store.ts).
+   */
+  settings: GameSettings;
+  updateSettings: (patch: Partial<GameSettings>) => void;
 
   // --- Esnaf ağı (Addendum §8) ---
   liquidateToNetwork: (memberId: string, itemId: string, quantity: number) => void;
@@ -465,6 +507,7 @@ export const useGame = create<GameState>((set, get) => {
     profileOpen: false,
     pauseDepth: 0,
     pendingBusinessRoute: null,
+    settings: INITIAL_SETTINGS,
 
     dayCharacter: dayCharacter(seed, 1, market),
     intentTelemetry: emptyTelemetry(),
@@ -1589,6 +1632,23 @@ export const useGame = create<GameState>((set, get) => {
     /** §8 — "uygun satış rotasına git"; yalnız sekme ve alt rota seçer. */
     openBusinessRoute: (route) => set({ tab: 'business', pendingBusinessRoute: route }),
     consumeBusinessRoute: () => set({ pendingBusinessRoute: null }),
+
+    /**
+     * Ayarı değiştirir, diske yazar ve yan sistemlere bildirir.
+     *
+     * ÜÇÜ AYNI YERDE: durum, kalıcılık ve etki. Ayrı ayrı çağrılsalardı,
+     * birini unutmak "kapattım ama ses geliyor" ya da "kapattım, geri
+     * geldi" hâlini doğururdu.
+     *
+     * Ekonomiye DOKUNMAZ: `applyTransaction` çağrılmaz, çağrılmamalı.
+     */
+    updateSettings: (patch) => {
+      const next = normalizeSettings({ ...get().settings, ...patch });
+      set({ settings: next });
+      persistSettings(next);
+      syncAudioSettings(next);
+      setLocale(next.locale);
+    },
 
     /**
      * §7 — toptancıdan mal alır. Nakit yetmezse kalanı VADEYE yazılır;
@@ -2775,6 +2835,19 @@ function patienceComment(customer: Customer): string {
   return 'Buyurun, inceleyin.';
 }
 
+/**
+ * Oyuncuya görünen her sonucun tek kapısı — ve bu yüzden SES İLE TİTREŞİMİN
+ * de doğru yeri.
+ *
+ * NEDEN BURADA, ÇAĞRI YERLERİNDE DEĞİL: geri bildirimi tek tek eylemlere
+ * serpiştirmek, yeni bir eylem eklendiğinde sessiz kalmasını neredeyse
+ * garanti ederdi. Toast zaten "oyuncuya bir şey oldu" demenin tek yolu;
+ * duyulan ve hissedilen şey de aynı olaydır.
+ *
+ * BİLGİ TONU TİTREŞMEZ: bilgi toast'ları sık çıkar (akın başladı, plan
+ * değişti). Her birinde telefonu titretmek geri bildirim değil, rahatsızlık
+ * olurdu. Titreşim yalnız oyuncunun BEKLEDİĞİ bir sonuç geldiğinde.
+ */
 function pushToast(
   set: (partial: Partial<GameState>) => void,
   get: () => GameState,
@@ -2783,6 +2856,17 @@ function pushToast(
 ): void {
   const id = `toast_${get().ledger.transactions.length}_${text.length}_${Date.now()}`;
   set({ toasts: [...get().toasts, { id, text, tone }].slice(-3) });
+
+  const settings = get().settings;
+  if (tone === 'positive') {
+    playSfx('offerAccepted');
+    vibrate('success', settings.haptics);
+  } else if (tone === 'negative') {
+    playSfx('offerRejected');
+    vibrate('warn', settings.haptics);
+  } else {
+    playSfx('tap');
+  }
 }
 
 function clamp(n: number, lo: number, hi: number): number {

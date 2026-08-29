@@ -259,6 +259,38 @@ export const IconTrust = (p: IconProps) => (
   </Svg>
 );
 
+/** Ayarlar — dişli. */
+export const IconSettings = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="3.1" />
+    <path d="M12 2.6v2.2M12 19.2v2.2M21.4 12h-2.2M4.8 12H2.6M18.6 5.4l-1.6 1.6M7 17l-1.6 1.6M18.6 18.6 17 17M7 7 5.4 5.4" />
+  </Svg>
+);
+
+/** Ses açık — hoparlör + dalga. */
+export const IconSound = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4.6 9.4h3.2L12 5.6v12.8l-4.2-3.8H4.6Z" />
+    <path d="M15.6 9.2a4 4 0 0 1 0 5.6M18.2 6.8a7.4 7.4 0 0 1 0 10.4" />
+  </Svg>
+);
+
+/** Titreşim — telefon + yan dalgalar. */
+export const IconVibrate = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="8.2" y="4.2" width="7.6" height="15.6" rx="1.6" />
+    <path d="M4.6 9.6v4.8M2 10.8v2.4M19.4 9.6v4.8M22 10.8v2.4" />
+  </Svg>
+);
+
+/** Dil — küre + meridyen. */
+export const IconLanguage = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="8.6" />
+    <path d="M3.6 12h16.8M12 3.4c2.2 2.4 3.3 5.3 3.3 8.6S14.2 18.2 12 20.6c-2.2-2.4-3.3-5.3-3.3-8.6S9.8 5.8 12 3.4Z" />
+  </Svg>
+);
+
 /** Nakit / kasa. */
 export const IconCash = (p: IconProps) => (
   <Svg {...p}>

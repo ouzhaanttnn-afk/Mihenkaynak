@@ -13,6 +13,9 @@
 import { TERM } from '@ui/terms';
 import { readSaveMeta } from '@state/save';
 import { shopDisplayName } from '@domain/profile';
+import { LOCALES, LOCALE_LABEL, type GameSettings, type Locale } from '@domain/settings';
+import { isHapticsSupported, vibrate } from '@ui/haptics';
+import { t } from '@ui/i18n';
 import { useEffect, useState } from 'react';
 
 import { MARKET_REGIME } from '@domain/balance';
@@ -62,6 +65,10 @@ import { selectors, useGame } from '@state/gameStore';
 import {
   IconBusiness,
   IconCash,
+  IconLanguage,
+  IconSettings,
+  IconSound,
+  IconVibrate,
   IconChevronRight,
   IconLiquidity,
   IconReason,
@@ -72,7 +79,16 @@ import { Art } from '@ui/Art';
 import { NAV_ART, merchantArt } from '@ui/assets';
 import { clock, hasGold, pct, pctChange, price, tl, tlSigned } from '@ui/format';
 
-type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network' | 'store' | 'save' | 'career';
+type Route =
+  | 'root'
+  | 'market'
+  | 'journal'
+  | 'wholesaler'
+  | 'network'
+  | 'store'
+  | 'save'
+  | 'career'
+  | 'settings';
 
 export function BusinessScreen() {
   /*
@@ -98,6 +114,7 @@ export function BusinessScreen() {
   if (route === 'store') return <StoreRoute onBack={() => setRoute('root')} />;
   if (route === 'save') return <SaveRoute onBack={() => setRoute('root')} />;
   if (route === 'career') return <CareerRoute onBack={() => setRoute('root')} />;
+  if (route === 'settings') return <SettingsRoute onBack={() => setRoute('root')} />;
   return <BusinessRoot onOpen={setRoute} />;
 }
 
@@ -228,6 +245,12 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               sub={`Seviye ${s.store.level} · ${s.store.xp}/${s.store.xpToNext} XP`}
               icon={<IconBusiness size={17} />}
               onPress={() => onOpen('career')}
+            />
+            <MenuLine
+              title={t('settings.title', 'Ayarlar')}
+              sub={settingsSub(s.settings)}
+              icon={<IconSettings size={17} />}
+              onPress={() => onOpen('settings')}
             />
           </div>
         </div>
@@ -1634,6 +1657,235 @@ function CareerRoute({ onBack }: { onBack: () => void }) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AYARLAR ROTASI — ses, titreşim, dil
+// ---------------------------------------------------------------------------
+
+/** Rotalar listesindeki özet satırı: açık olanlar bir bakışta okunur. */
+function settingsSub(s: GameSettings): string {
+  const parts = [
+    `${t('settings.music', 'Müzik')} ${s.music ? t('settings.on', 'açık') : t('settings.off', 'kapalı')}`,
+    `${t('settings.sfx', 'Efekt')} ${s.sfx ? t('settings.on', 'açık') : t('settings.off', 'kapalı')}`,
+    LOCALE_LABEL[s.locale],
+  ];
+  return parts.join(' · ');
+}
+
+/**
+ * AYARLAR EKRANI.
+ *
+ * DEĞİŞMEZ: buradaki hiçbir kontrol oyunu kolaylaştırmaz veya zorlaştırmaz.
+ * Ses kapalı oynayan oyuncu daha ucuza almaz, titreşimi açan daha iyi test
+ * yapmaz. Ayarlar oyunun NASIL SUNULDUĞUNU değiştirir, ne olduğunu değil.
+ *
+ * Değişiklikler ANINDA kaydedilir — ayrı bir "Kaydet" düğmesi yok. Ses
+ * seviyesini deneyerek bulan oyuncuya sonradan onaylatmak, denemenin
+ * kendisini bozardı.
+ */
+function SettingsRoute({ onBack }: { onBack: () => void }) {
+  const settings = useGame((g) => g.settings);
+  const update = useGame((g) => g.updateSettings);
+  const hapticsOk = isHapticsSupported();
+
+  return (
+    <div className="page">
+      <header className="pageHead">
+        <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
+          ← {t('nav.business', 'İşletme')}
+        </button>
+        <h1 className="pageHead__title">{t('settings.title', 'Ayarlar')}</h1>
+        <p className="pageHead__sub">
+          {t('settings.subtitle', 'Ses, titreşim ve dil')}
+        </p>
+      </header>
+
+      <div className="page__scroll">
+        {/* --- SES --- */}
+        <div className="group">
+          <h2 className="group__title">{t('settings.audio', 'Ses')}</h2>
+          <div className="group__body">
+            <ToggleRow
+              icon={<IconSound size={17} />}
+              label={t('settings.music', 'Müzik')}
+              checked={settings.music}
+              onChange={(v) => update({ music: v })}
+            />
+            <SliderRow
+              label={t('settings.musicVolume', 'Müzik seviyesi')}
+              value={settings.musicVolume}
+              disabled={!settings.music}
+              onChange={(v) => update({ musicVolume: v })}
+            />
+            <ToggleRow
+              icon={<IconSound size={17} />}
+              label={t('settings.sfx', 'Efekt sesleri')}
+              checked={settings.sfx}
+              onChange={(v) => update({ sfx: v })}
+            />
+            <SliderRow
+              label={t('settings.sfxVolume', 'Efekt seviyesi')}
+              value={settings.sfxVolume}
+              disabled={!settings.sfx}
+              onChange={(v) => update({ sfxVolume: v })}
+            />
+          </div>
+          {/*
+            DÜRÜSTLÜK SATIRI: ses dosyaları henüz projede yok. Çalışan bir
+            düğmenin sessiz kalmasını açıklamak, oyuncunun cihazını suçlamasına
+            engel olur. Dosyalar eklendiğinde bu satır kalkar.
+          */}
+          <p className="settingsNote">
+            {t(
+              'settings.audioPending',
+              'Ses dosyaları henüz eklenmedi, bu yüzden oyun sessiz. Bu düğmeler şimdiden kaydediliyor ve dosyalar geldiğinde çalışmaya başlayacak.',
+            )}
+          </p>
+        </div>
+
+        {/* --- TİTREŞİM --- */}
+        <div className="group">
+          <h2 className="group__title">{t('settings.haptics', 'Titreşim')}</h2>
+          <div className="group__body">
+            <ToggleRow
+              icon={<IconVibrate size={17} />}
+              label={t('settings.haptics', 'Titreşim')}
+              checked={settings.haptics && hapticsOk}
+              disabled={!hapticsOk}
+              /* §12 — pasif düğmenin nedeni metin ve erişilebilir adda. */
+              disabledReason={t(
+                'settings.hapticsUnsupported',
+                'Bu cihaz titreşimi desteklemiyor.',
+              )}
+              onChange={(v) => {
+                update({ haptics: v });
+                // Açarken bir kez titreşir: ayarın ne yaptığı hemen anlaşılsın.
+                if (v) vibrate('tap', true);
+              }}
+            />
+          </div>
+          <p className="settingsNote">
+            {hapticsOk
+              ? t('settings.hapticsNote', 'Teklif ve sonuçlarda kısa geri bildirim.')
+              : t('settings.hapticsUnsupported', 'Bu cihaz titreşimi desteklemiyor.')}
+          </p>
+        </div>
+
+        {/* --- DİL --- */}
+        <div className="group">
+          <h2 className="group__title">{t('settings.language', 'Dil')}</h2>
+          <div className="group__body">
+            <div className="settingsRow">
+              <span className="settingsRow__icon">
+                <IconLanguage size={17} />
+              </span>
+              <span className="settingsRow__label">{t('settings.language', 'Dil')}</span>
+              <span className="settingsRow__control">
+                {LOCALES.map((code: Locale) => (
+                  <button
+                    key={code}
+                    type="button"
+                    className={`chip ${settings.locale === code ? 'chip--active' : ''}`}
+                    aria-pressed={settings.locale === code}
+                    onClick={() => update({ locale: code })}
+                  >
+                    {LOCALE_LABEL[code]}
+                  </button>
+                ))}
+              </span>
+            </div>
+          </div>
+          {/*
+            KAPSAM AÇIKÇA YAZILI. Çeviri arayüz metinleriyle sınırlı; müşteri
+            cümleleri ve ders metinleri dilbilgisiyle ÜRETİLDİĞİ için Türkçe
+            kalıyor. Bunu yazmamak, İngilizceye geçen oyuncuya sebepsiz bir
+            karışıklık olarak görünürdü.
+          */}
+          <p className="settingsNote">
+            {t(
+              'settings.languageNote',
+              'Yalnız arayüz metinleri. Müşteri cümleleri ve öğretim metinleri şimdilik Türkçe kalır.',
+            )}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Aç/kapa satırı — tüm satır tıklanır, hedef 44 px. */
+function ToggleRow({
+  icon,
+  label,
+  checked,
+  disabled,
+  disabledReason,
+  onChange,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="settingsRow settingsRow--button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      title={disabled ? disabledReason : undefined}
+      aria-label={disabled && disabledReason ? `${label} — ${disabledReason}` : undefined}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="settingsRow__icon">{icon}</span>
+      <span className="settingsRow__label">{label}</span>
+      <span className={`switch ${checked ? 'switch--on' : ''}`} aria-hidden="true">
+        <span className="switch__knob" />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Seviye kaydırıcısı.
+ *
+ * `<input type="range">` KULLANILIYOR, özel bir sürükleme değil: klavyeyle
+ * ok tuşlarıyla ayarlanabilmesi ve ekran okuyucunun değeri okuyabilmesi
+ * bedava geliyor. Özel bir kaydırıcı ikisini de elle kurmak demekti.
+ */
+function SliderRow({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  disabled?: boolean;
+  onChange: (next: number) => void;
+}) {
+  const percent = Math.round(value * 100);
+  return (
+    <div className={`settingsRow ${disabled ? 'settingsRow--disabled' : ''}`}>
+      <span className="settingsRow__label">{label}</span>
+      <input
+        type="range"
+        className="settingsRow__slider"
+        min={0}
+        max={100}
+        step={5}
+        value={percent}
+        disabled={disabled}
+        aria-label={label}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+      />
+      <span className="settingsRow__value num">%{percent}</span>
     </div>
   );
 }

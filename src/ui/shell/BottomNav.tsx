@@ -19,18 +19,19 @@
  */
 
 import { IconBusiness, IconMarket, IconShop, IconStock, IconWorkshop } from '@ui/icons';
+import { t } from '@ui/i18n';
 import type { RootTab } from '@state/gameStore';
 
 /**
  * UPDATEv1 §13 — ZORUNLU SIRA: Dükkan / Stok / Atölye / Market / İşletme.
  * Market, Atölye ile İşletme ARASINDA durur.
  */
-const ROOTS: { id: RootTab; label: string; Icon: typeof IconShop }[] = [
-  { id: 'shop', label: 'Dükkan', Icon: IconShop },
-  { id: 'stock', label: 'Stok', Icon: IconStock },
-  { id: 'workshop', label: 'Atölye', Icon: IconWorkshop },
-  { id: 'market', label: 'Market', Icon: IconMarket },
-  { id: 'business', label: 'İşletme', Icon: IconBusiness },
+const ROOTS: { id: RootTab; key: string; label: string; Icon: typeof IconShop }[] = [
+  { id: 'shop', key: 'nav.shop', label: 'Dükkan', Icon: IconShop },
+  { id: 'stock', key: 'nav.stock', label: 'Stok', Icon: IconStock },
+  { id: 'workshop', key: 'nav.workshop', label: 'Atölye', Icon: IconWorkshop },
+  { id: 'market', key: 'nav.market', label: 'Market', Icon: IconMarket },
+  { id: 'business', key: 'nav.business', label: 'İşletme', Icon: IconBusiness },
 ];
 
 interface Props {
@@ -41,7 +42,7 @@ interface Props {
 export function BottomNav({ active, onSelect }: Props) {
   return (
     <nav className="bottomNav" aria-label="Ana navigasyon">
-      {ROOTS.map(({ id, label, Icon }) => (
+      {ROOTS.map(({ id, key, label, Icon }) => (
         <button
           key={id}
           type="button"
@@ -50,7 +51,7 @@ export function BottomNav({ active, onSelect }: Props) {
           aria-current={active === id ? 'page' : undefined}
         >
           <Icon size={21} />
-          <span className="bottomNav__label">{label}</span>
+          <span className="bottomNav__label">{t(key, label)}</span>
         </button>
       ))}
     </nav>

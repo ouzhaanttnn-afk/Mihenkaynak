@@ -1513,3 +1513,32 @@
   font-size: var(--fs-micro);
   color: var(--text-light-2);
 }
+
+/*
+ * Ayarlar girişi — kimlik satırının sağ ucunda.
+ * Görsel 20 px'lik dişli, dokunma hedefi 44 px: satırı büyütmeden parmağa
+ * doğru ölçüyü verir (aynı kalıp `.speed__step` ve `.chip`te de var).
+ */
+.idle__settings {
+  flex: 0 0 auto;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-pill);
+  color: var(--text-dark-3);
+  background: transparent;
+}
+
+.idle__settings::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.idle__settings:active {
+  background: var(--ink-700);
+  color: var(--brass-400);
+}

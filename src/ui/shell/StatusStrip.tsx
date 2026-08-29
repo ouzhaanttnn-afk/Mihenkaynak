@@ -10,6 +10,7 @@ import { IconLock, IconPencil, IconVideo, BrandMark } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { avatarArt } from '@ui/assets';
 import { clock, tlBare } from '@ui/format';
+import { t } from '@ui/i18n';
 import type { PlayerProfile } from '@domain/profile';
 import type { MarketState, StoreState } from '@domain/types';
 
@@ -60,7 +61,7 @@ export function StatusStrip({
         type="button"
         className="profileChip"
         onClick={onEditProfile}
-        aria-label={`Profili düzenle — ${profile.jewelerName}`}
+        aria-label={`${t('strip.editProfile', 'Profili düzenle')} — ${profile.jewelerName}`}
       >
         <span className="profileChip__avatar">
           <Art
@@ -96,7 +97,7 @@ export function StatusStrip({
       </button>
 
       <div className="statusStrip__clock">
-        <div className="statusStrip__day">Gün {market.day}</div>
+        <div className="statusStrip__day">{t('strip.day', 'Gün')} {market.day}</div>
         <div className="statusStrip__time num">{clock(market.clockMinutes)}</div>
       </div>
 
@@ -114,7 +115,7 @@ export function StatusStrip({
       */}
       <div className="statusStrip__right">
         <div className="statusStrip__cash">
-          <span className="statusStrip__cashLabel">Nakit</span>{' '}
+          <span className="statusStrip__cashLabel">{t('strip.cash', 'Nakit')}</span>{' '}
           <span className="statusStrip__cashValue num">{tlBare(store.cash)} ₺</span>
         </div>
 
@@ -146,7 +147,7 @@ function SpeedControl({
   onUnlock: () => void;
 }) {
   return (
-    <div className="speed" role="group" aria-label="Oyun hızı">
+    <div className="speed" role="group" aria-label={t('strip.speed', 'Oyun hızı')}>
       {SPEED_STEPS.map((step) => {
         const isLocked = step === 4 && !unlocked;
         const isActive = speed === step;

@@ -78,6 +78,7 @@ import {
   IconRetail,
   IconScale,
   IconSend,
+  IconSettings,
   IconServiceResale,
   IconSpectrometer,
   IconTouchstone,
@@ -90,6 +91,7 @@ import { Art } from '@ui/Art';
 import { NAV_ART, customerArt } from '@ui/assets';
 import { customerIntentLine } from '@ui/intent-line';
 import { shopDisplayName } from '@domain/profile';
+import { t } from '@ui/i18n';
 import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
 import { offerUnitLabel } from '@ui/offer-view';
 import type {
@@ -480,6 +482,26 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
             Gün {s.market.day} · Semt itibarı {Math.round(s.store.reputation)}
           </p>
         </div>
+
+        {/*
+          AYARLARIN ANA EKRAN GİRİŞİ.
+
+          Durum şeridine KONULMADI ve bu ölçülerek karar verildi: 390 px'te
+          şeridin yatay bütçesinde 44 px'lik bir hedefe yer yok, sıkıştırmak
+          dükkân adını üç noktaya indiriyordu. Kimlik satırının sağ ucu ise
+          boş duruyordu ve zaten "bu dükkân senin" diyen satır orası.
+
+          Ayarların tam hâli her zaman İşletme > Ayarlar'da; burası kısa yol.
+        */}
+        <button
+          type="button"
+          className="idle__settings"
+          onClick={() => s.openBusinessRoute('settings')}
+          aria-label={t('settings.title', 'Ayarlar')}
+          title={t('settings.title', 'Ayarlar')}
+        >
+          <IconSettings size={20} />
+        </button>
       </div>
 
       {/*

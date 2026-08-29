@@ -13,6 +13,8 @@ import { useEffect } from 'react';
 
 import { activeLine, useGame } from '@state/gameStore';
 import { getTemplate } from '@data/item-templates';
+import { syncAudioSettings, unlockAudio } from '@ui/audio';
+import { setLocale } from '@ui/i18n';
 import { stageLabel } from '@ui/shell/StageStrip';
 import { BottomNav } from '@ui/shell/BottomNav';
 import { BusinessScreen } from '@ui/screens/BusinessScreen';
@@ -36,6 +38,36 @@ export function App() {
   const profileOpen = useGame((s) => s.profileOpen);
   const closeProfile = useGame((s) => s.closeProfile);
   const updateProfile = useGame((s) => s.updateProfile);
+
+  /*
+    AYARLARI AÇILIŞTA UYGULA.
+
+    Mağaza ayarları depodan OKUR ama uygulamaz: dil ve ses motoru mağazanın
+    dışında yaşıyor. Bu etki olmadan oyuncunun kaydettiği dil bir sonraki
+    açılışta ekrana yansımaz — ayar duruyor ama işlemiyor olurdu.
+  */
+  const settings = useGame((s) => s.settings);
+  useEffect(() => {
+    setLocale(settings.locale);
+    syncAudioSettings(settings);
+  }, [settings]);
+
+  /*
+    SES KİLİDİNİ İLK DOKUNUŞTA AÇ.
+
+    Tarayıcılar kullanıcı bir şeye dokunmadan ses açtırmaz; `resume()`
+    sessizce reddedilir. Dinleyici bir kez çalışır ve kendini kaldırır —
+    her dokunuşta yeniden denemek gereksiz iş olurdu.
+  */
+  useEffect(() => {
+    const onFirstInput = () => unlockAudio();
+    window.addEventListener('pointerdown', onFirstInput, { once: true });
+    window.addEventListener('keydown', onFirstInput, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', onFirstInput);
+      window.removeEventListener('keydown', onFirstInput);
+    };
+  }, []);
 
   // Toast'lar kısa geri bildirimdir; kendiliğinden kapanır.
   useEffect(() => {
