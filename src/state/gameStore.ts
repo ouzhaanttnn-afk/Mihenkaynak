@@ -599,6 +599,15 @@ export const useGame = create<GameState>((set, get) => {
           s.store,
           s.dayCharacter,
           s.customers,
+          /*
+            Dükkânda o an bulunan adlar: kuyrukta bekleyenler + tezgâhtaki.
+            Kuyruk ekranda alt alta durduğu için iki aynı ad ayırt edilemez
+            iki kişi demekti (ölçüldü: "Elif Hanım" hem 1. hem 2. sırada).
+          */
+          [
+            ...queue.map((q) => q.customer.displayName),
+            ...(s.activeCustomer ? [s.activeCustomer.displayName] : []),
+          ],
         );
         queue = [...queue, spawned];
         spawnCounter += 1;

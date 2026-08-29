@@ -931,6 +931,49 @@
   flex-direction: column;
   justify-content: flex-start;
   gap: var(--sp-3);
+  /*
+   * KUYRUK UZUNSA BURASI KAYAR.
+   *
+   * GDD 23.22'nin kuralı "AKTİF MÜŞTERİDE dikey scroll yok; CTA scroll
+   * altında kalmaz" — ikisi de burada çiğnenmiyor: bu alan yalnız işlem
+   * YOKKEN çizilir ve birincil eylem ("Müşteriyi Karşıla") Karar Dock'unda,
+   * bu kutunun tamamen dışında sabit duruyor. Yani kuyruk üç kişiye
+   * çıktığında kaybolan hiçbir kontrol yok, yalnız liste uzuyor.
+   *
+   * Alternatifi kuyruk listesine kendi `overflow`unu vermekti; o da §8'de
+   * Sarrafiye kataloğundan kaldırılan iç içe kaydırmanın aynısı olurdu.
+   */
+  overflow-y: auto;
+  scrollbar-width: none;
+  /*
+   * KAYDIRMA ÇAPASI KAPALI.
+   *
+   * Kuyruğa yeni müşteri EKLENDİĞİNDE Chrome, görünen içeriği yerinde
+   * tutmak için kaydırmayı kendiliğinden aşağı kaydırıyordu: oyuncu hiçbir
+   * şey yapmadan dükkânın adı yukarı kaçıyor, ekran yarısından açılmış gibi
+   * görünüyordu. Burada çapaya ihtiyaç yok — liste alttan uzuyor, üstten
+   * değil.
+   */
+  overflow-anchor: none;
+}
+
+.idle::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * KUTULAR KÜÇÜLMEZ, LİSTE KAYAR.
+ *
+ * `overflow-y: auto` tek başına yetmedi: flex çocukları varsayılan olarak
+ * `flex-shrink: 1` taşır, yani içerik sığmayınca kutucuk KENDİ İÇERİĞİNDEN
+ * kısa hâle geliyor ve dükkânın adı ikiye bölünmüş görünüyordu (390 × 600'de
+ * kuyruk üç kişiye çıkınca ölçüldü). Kaydırma o zaman hiç devreye girmiyor,
+ * çünkü taşan bir şey kalmıyor — içerik eziliyor.
+ *
+ * Çocuklar doğal boylarında kalınca taşma gerçek olur ve `.idle` kayar.
+ */
+.idle > * {
+  flex-shrink: 0;
 }
 
 /*
@@ -1154,6 +1197,19 @@
   color: inherit;
 }
 
+/*
+ * KUYRUK LİSTESİ — baştaki kart + sıradakiler, alt alta.
+ *
+ * Liste kendi kaydırma yüzeyini KURMAZ; taşarsa `.idle` kayar (aşağıya
+ * bakın). İç içe iki kaydırma, §8'de Sarrafiye kataloğundan kaldırılan
+ * hatanın aynısı olurdu.
+ */
+.opQueue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
 /* Bekleyen müşteri tek dokunuşla karşılanır; kart düğmenin kendisidir. */
 .op--waiting {
   flex-direction: row;
@@ -1196,6 +1252,36 @@
   font-size: var(--fs-title);
   font-weight: var(--fw-semibold);
   color: var(--brass-400);
+}
+
+/*
+ * SIRADAKİLER — düğme değil, satır.
+ * `greetCustomer` her zaman kuyruğun başını alır; buradaki kartı tıklanır
+ * yapmak, dokunulan kişiden başkasını karşıladan bir düğme demekti.
+ */
+.op--queued {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+  background: transparent;
+  border-style: dashed;
+}
+
+.op__avatar--small {
+  width: 48px;
+  height: 48px;
+}
+
+.op__queuePos {
+  flex: 0 0 auto;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-3);
+  white-space: nowrap;
+}
+
+.op__title--small {
+  font-size: var(--fs-caption);
 }
 
 .op__body {
@@ -1277,6 +1363,11 @@
   .op__avatar {
     width: 72px;
     height: 72px;
+  }
+
+  .op__avatar--small {
+    width: 40px;
+    height: 40px;
   }
 }
 

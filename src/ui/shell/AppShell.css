@@ -94,7 +94,7 @@
    * saatin 73 → 46 px tabanına inmesinden. Aradan alınan 6 px, adı üç
    * noktaya indirmeden kazanılan tek yerdi.
    */
-  gap: 6px;
+  gap: 4px;
   padding: 0 var(--gutter);
   background: var(--ink-800);
   color: var(--text-dark-1);
@@ -118,7 +118,7 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   /* Dokunma hedefi şeridin tamamı kadar yüksek (GDD 23.22 · 44 px). */
   height: 44px;
@@ -130,11 +130,23 @@
   background: var(--ink-700);
 }
 
+/*
+ * AVATAR 34 → 44 px.
+ *
+ * 52 px'lik şeritte 44 px, çipin dokunma hedefiyle (44 px) aynı yükseklik:
+ * avatar artık çipin kendisi kadar yer kaplıyor ve oyuncunun yüzü seçiliyor.
+ * Üstünde/altında 4'er piksel kalıyor, şerit büyümüyor.
+ *
+ * GENİŞLİĞİN NEREDEN GELDİĞİ: +10 px'in 6'sı şerit aralığının 6 → 4 px'e,
+ * 2'si çip içi aralığın 6 → 4 px'e inmesinden, kalan 2'si XP kesrinin
+ * yüzdeye dönmesiyle zaten kazanılmış paydan. Ölçüldü: 390 px'te kuyumcu
+ * adı hâlâ üç noktasız sığıyor, saat 46 px tabanında kalıyor.
+ */
 .profileChip__avatar {
   position: relative;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -162,8 +174,8 @@
   position: absolute;
   right: -1px;
   bottom: -1px;
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
   display: flex;
   align-items: center;
   justify-content: center;

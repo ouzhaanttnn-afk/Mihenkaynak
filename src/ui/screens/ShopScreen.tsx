@@ -562,31 +562,65 @@ function OperationArea({ nextIn }: { nextIn: number }) {
   const s = useGame();
   const head = s.queue[0];
 
-  // --- BEKLEYEN MÜŞTERİ ---
+  // --- BEKLEYEN MÜŞTERİLER ---
   if (head) {
-    const initial = head.customer.displayName.charAt(0);
+    /*
+      KUYRUĞUN TAMAMI ALT ALTA.
+
+      Önce yalnız ilk müşteri gösteriliyordu ve şeritteki "Bekleyen: 3
+      müşteri" sayısı, altındaki tek kartla çelişiyordu: oyuncu kimin
+      beklediğini görmeden gününü planlıyordu.
+
+      SIRADAKİLER TIKLANMAZ ve bu bilinçli: `greetCustomer` her zaman
+      kuyruğun BAŞINI alır. Sıradaki kartı düğme yapmak, dokunduğu kişiden
+      başkasını karşılayan bir düğme olurdu. Onlar bilgi satırıdır; sıra
+      numarası da bunu söyler.
+    */
+    const rest = s.queue.slice(1);
+
     return (
-      <button type="button" className="op op--waiting" onClick={s.greetCustomer}>
-        <Art
-          art={customerArt(head.customer.displayName)}
-          /* CSS 88 px'e sabitliyor; öznitelik onunla aynı kalsın ki görsel
-             yüklenmeden önce yer ayırması doğru olsun (layout shift yok). */
-          size={88}
-          decorative
-          className="op__avatar art--portrait"
-          fallback={<span className="op__initial">{initial}</span>}
-        />
-        <span className="op__body">
-          <span className="op__title">{head.customer.displayName}</span>
-          <span className="op__line">{customerIntentLine(head.customer, head.items)}</span>
-          <span className="op__meta">
-            Kuyrukta {s.queue.length} müşteri · Dükkan {clock(DAY.closeMinutes)}'da kapanıyor
+      <div className="opQueue">
+        <button type="button" className="op op--waiting" onClick={s.greetCustomer}>
+          <Art
+            art={customerArt(head.customer.displayName)}
+            /* CSS 88 px'e sabitliyor; öznitelik onunla aynı kalsın ki görsel
+               yüklenmeden önce yer ayırması doğru olsun (layout shift yok). */
+            size={88}
+            decorative
+            className="op__avatar art--portrait"
+            fallback={
+              <span className="op__initial">{head.customer.displayName.charAt(0)}</span>
+            }
+          />
+          <span className="op__body">
+            <span className="op__title">{head.customer.displayName}</span>
+            <span className="op__line">{customerIntentLine(head.customer, head.items)}</span>
+            <span className="op__meta">Dükkan {clock(DAY.closeMinutes)}'da kapanıyor</span>
           </span>
-        </span>
-        <span className="op__cta" aria-hidden="true">
-          Karşıla ›
-        </span>
-      </button>
+          <span className="op__cta" aria-hidden="true">
+            Karşıla ›
+          </span>
+        </button>
+
+        {rest.map((entry, i) => (
+          <div key={entry.customer.id} className="op op--queued">
+            <Art
+              art={customerArt(entry.customer.displayName)}
+              size={48}
+              decorative
+              className="op__avatar op__avatar--small art--portrait"
+              fallback={
+                <span className="op__initial">{entry.customer.displayName.charAt(0)}</span>
+              }
+            />
+            <span className="op__body">
+              <span className="op__title op__title--small">{entry.customer.displayName}</span>
+              <span className="op__line">{customerIntentLine(entry.customer, entry.items)}</span>
+            </span>
+            <span className="op__queuePos">{i + 2}. sıra</span>
+          </div>
+        ))}
+      </div>
     );
   }
 

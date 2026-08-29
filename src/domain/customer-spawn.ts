@@ -56,6 +56,16 @@ export function spawnCustomer(
   character: DayCharacter,
   /** GDD 10 — tanıdık müşteri defteri. Boşsa herkes yabancıdır. */
   registry: CustomerRegistry = {},
+  /**
+   * UPDATEv2 — DÜKKÂNDA O AN BULUNAN ADLAR (kuyruk + tezgâh).
+   *
+   * Kuyruk artık ekranda alt alta duruyor ve iki "Elif Hanım" yan yana
+   * çıkabiliyordu: farklı portre, aynı ad. Oyuncu için bunlar ayırt
+   * edilemez iki kişi demek.
+   *
+   * Boş bırakılırsa davranış eskisiyle birebir aynıdır.
+   */
+  takenNames: readonly string[] = [],
 ): SpawnedCustomer {
   const rng = new Rng(deriveSeed(rootSeed, 'customer', spawnIndex));
 
@@ -64,8 +74,9 @@ export function spawnCustomer(
 
   // --- Kimlik ---
   const isFemale = rng.chance(0.55);
-  const firstName = isFemale ? rng.pick(FIRST_NAMES_F) : rng.pick(FIRST_NAMES_M);
-  const displayName = `${firstName} ${isFemale ? HONORIFIC_F : HONORIFIC_M}`;
+  const namePool = isFemale ? FIRST_NAMES_F : FIRST_NAMES_M;
+  const honorific = isFemale ? HONORIFIC_F : HONORIFIC_M;
+  const displayName = `${uniqueFirstName(rng.pick(namePool), namePool, honorific, takenNames)} ${honorific}`;
 
   // --- Niyet (Ekonomi Ara Düzeltmesi §3) ---
   //
@@ -271,6 +282,33 @@ export function nextCustomerDelay(
   const rng = new Rng(deriveSeed(rootSeed, 'customer/delay', spawnIndex));
   const base = rng.range(band[0], band[1]);
   return Math.round(rushActive ? base * 0.4 : base);
+}
+
+/**
+ * Dükkânda aynı adı taşıyan ikinci kişi olmasın diye havuzda ilerler.
+ *
+ * RNG'YE DOKUNMAZ — bu bilinçli. Çakışmayı yeni bir `rng.pick` ile çözmek
+ * rastgelelik akışından fazladan bir sayı yerdi ve o müşterinin bütçesi,
+ * rezervasyon fiyatı, sabrı, hepsi kayardı (GDD 28.3). Yürüyüş, çekilen
+ * addan başlayıp havuzu sırayla dolaşır: girdi aynıysa çıktı aynıdır.
+ *
+ * Havuzun tamamı doluysa çekilen ad olduğu gibi döner — ad uydurmaktansa
+ * tekrar etmek yeğdir. (Havuz 15 kişilik, kuyruk en çok 3.)
+ */
+function uniqueFirstName(
+  picked: string,
+  pool: readonly string[],
+  honorific: string,
+  taken: readonly string[],
+): string {
+  if (taken.length === 0) return picked;
+
+  const start = Math.max(0, pool.indexOf(picked));
+  for (let step = 0; step < pool.length; step += 1) {
+    const candidate = pool[(start + step) % pool.length]!;
+    if (!taken.includes(`${candidate} ${honorific}`)) return candidate;
+  }
+  return picked;
 }
 
 function clamp(n: number, lo: number, hi: number): number {
