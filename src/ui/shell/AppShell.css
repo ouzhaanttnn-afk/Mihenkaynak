@@ -131,28 +131,20 @@
 }
 
 /*
- * AVATAR 34 → 44 px.
+ * AVATAR 34 → 56 px (iki adımda: önce 44, sonra 52, şimdi 56).
  *
- * 52 px'lik şeritte 44 px, çipin dokunma hedefiyle (44 px) aynı yükseklik:
- * avatar artık çipin kendisi kadar yer kaplıyor ve oyuncunun yüzü seçiliyor.
- * Üstünde/altında 4'er piksel kalıyor, şerit büyümüyor.
+ * 72 px'lik şeritte 56 px, 64 px'lik profil düğmesinin içinde 4'er piksel
+ * payla oturuyor. Yatay maliyeti saatin 46 px tabanından karşılanıyor;
+ * ölçüldü: 390 px'te dükkân adı hâlâ üç noktasız sığıyor.
  *
- * GENİŞLİĞİN NEREDEN GELDİĞİ: +10 px'in 6'sı şerit aralığının 6 → 4 px'e,
- * 2'si çip içi aralığın 6 → 4 px'e inmesinden, kalan 2'si XP kesrinin
- * yüzdeye dönmesiyle zaten kazanılmış paydan. Ölçüldü: 390 px'te kuyumcu
- * adı hâlâ üç noktasız sığıyor, saat 46 px tabanında kalıyor.
+ * Nakit ve hız kontrolü tek sütuna alınmasaydı bu büyüme mümkün olmazdı —
+ * o değişiklik ~74 px'i buraya aktardı.
  */
 .profileChip__avatar {
   position: relative;
   flex: 0 0 auto;
-  /*
-   * UPDATEv3 — 44 → 52 px. Şerit 72 px'e çıktığı için avatar artık kendi
-   * bandında rahat: 52 + 10 px boşluk. Genişlik payı da var, çünkü şeridin
-   * dört bloğu aynı yatay bütçeyi paylaşmaya devam ediyor ve +8 px'lik fark
-   * saatin 46 px tabanından karşılanıyor (390 px'te ölçüldü).
-   */
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;

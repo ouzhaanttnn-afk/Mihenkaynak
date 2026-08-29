@@ -612,9 +612,9 @@ function OperationArea({ nextIn }: { nextIn: number }) {
         <button type="button" className="op op--waiting" onClick={s.greetCustomer}>
           <Art
             art={customerArt(head.customer.displayName)}
-            /* CSS 88 px'e sabitliyor; öznitelik onunla aynı kalsın ki görsel
+            /* CSS 76 px'e sabitliyor; öznitelik onunla aynı kalsın ki görsel
                yüklenmeden önce yer ayırması doğru olsun (layout shift yok). */
-            size={88}
+            size={76}
             decorative
             className="op__avatar art--portrait"
             fallback={

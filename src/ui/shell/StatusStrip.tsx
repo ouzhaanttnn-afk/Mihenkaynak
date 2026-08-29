@@ -66,11 +66,11 @@ export function StatusStrip({
         <span className="profileChip__avatar">
           <Art
             art={avatarArt(profile.avatarId)}
-            /* CSS 52 px'e sabitliyor; öznitelik onunla aynı kalsın. */
-            size={52}
+            /* CSS 56 px'e sabitliyor; öznitelik onunla aynı kalsın. */
+            size={56}
             decorative
             className="profileChip__img"
-            fallback={<BrandMark size={30} />}
+            fallback={<BrandMark size={32} />}
           />
           <span className="profileChip__pencil" aria-hidden="true">
             <IconPencil size={10} />
