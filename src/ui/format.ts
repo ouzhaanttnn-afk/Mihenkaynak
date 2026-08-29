@@ -105,3 +105,25 @@ export function daDe(word: string): string {
   for (const ch of word) if (vowels.includes(ch)) last = ch;
   return 'aâıouAÂIOU'.includes(last) ? 'da' : 'de';
 }
+
+/**
+ * HAS altın miktarı — 1000 gramın altında gram, üstünde kilogram.
+ *
+ * NEDEN İKİ BİRİM: oyuncunun sermayesi ilk günlerde birkaç yüz gram,
+ * ilerleyen günlerde birkaç kilogramdır. Tek birimde tutmak ya "0,24 kg"
+ * gibi okunmayan bir sayı ya da "4.812 g" gibi anlamsız bir yığın verirdi.
+ * Eşik 1 kg: kuyumcu da orada birim değiştirir.
+ */
+export function hasGold(gramsValue: number): string {
+  if (!Number.isFinite(gramsValue) || gramsValue <= 0) return '0 g HAS';
+  if (gramsValue >= 1000) {
+    return `${(gramsValue / 1000).toLocaleString('tr-TR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} kg HAS`;
+  }
+  return `${gramsValue.toLocaleString('tr-TR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })} g HAS`;
+}

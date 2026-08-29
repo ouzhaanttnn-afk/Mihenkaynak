@@ -27,10 +27,20 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 
-import { AVATAR_IDS, NAME_MAX, checkJewelerName, type PlayerProfile } from '@domain/profile';
+import {
+  AVATAR_IDS,
+  NAME_MAX,
+  SHOP_SUFFIX,
+  checkJewelerName,
+  shopDisplayName,
+  type PlayerProfile,
+} from '@domain/profile';
 import { useGame } from '@state/gameStore';
 import { avatarArt } from '@ui/assets';
 import { Art } from '@ui/Art';
+import { summarizeWealth } from '@domain/settlement';
+import { tlToHasGrams } from '@domain/channels';
+import { hasGold, price, tl } from '@ui/format';
 import { IconTrust } from '@ui/icons';
 
 interface Props {
@@ -143,7 +153,7 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
         </h2>
 
         <label className="profileDialog__label" htmlFor={nameId}>
-          Kuyumcu Adı
+          Dükkân Adı
         </label>
         <input
           id={nameId}
@@ -155,7 +165,15 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
             arayüzü bozmasını daha yazılırken engeller. Sınırın kendisi yine
             checkJewelerName'de — tek doğruluk kaynağı orası.
           */
-          maxLength={NAME_MAX}
+          /*
+            UPDATEv3 §2 — maxLength EKİ SAYMAZ.
+            Sınır TEMEL isme aittir (24). Oyuncu örnekteki gibi
+            "Alvera Kuyumculuk" yazabilsin diye yazma sınırı ekin uzunluğu
+            kadar genişletildi; kaydedilen değer yine `checkJewelerName`in
+            kırptığı temel isimdir ve 24 karakteri aşamaz.
+          */
+          maxLength={NAME_MAX + SHOP_SUFFIX.length + 1}
+          placeholder={`İsim koyunuz — örn. Alvera ${SHOP_SUFFIX}`}
           autoComplete="off"
           spellCheck={false}
           aria-invalid={!canSave || error ? true : undefined}
@@ -182,6 +200,19 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
             {error ?? (nameCheck.ok ? '' : nameCheck.error)}
           </p>
         )}
+
+        {/*
+          §2 — "Kuyumculuk" ekini SİSTEM ekliyor. Oyuncu bunu yazarken
+          görmezse eki kendisi yazar ve sonra neden kırpıldığını anlamaz;
+          önizleme kuralı açıklamanın en kısa yolu.
+        */}
+        {nameCheck.ok && (
+          <p className="profileDialog__preview">
+            Ekranda: <strong>{shopDisplayName(nameCheck.value)}</strong>
+          </p>
+        )}
+
+        <CapitalInHas />
 
         <span className="profileDialog__label">Karakter</span>
         <div
@@ -270,6 +301,42 @@ export function ProfileDialog({ profile, onCancel, onSave }: Props) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * SERMAYENİN HAS ALTIN KARŞILIĞI.
+ *
+ * Kuyumcu serveti TL ile ölçmez; "kaç kilo altınım var" diye ölçer. Enflasyon
+ * altında TL rakamı sürekli büyüdüğü için oyuncunun gerçekten ilerleyip
+ * ilerlemediğini TL söylemez — altın söyler.
+ *
+ * SALT GÖSTERİM: burada hiçbir şey çevrilmez, satılmaz, kaydedilmez. Nakit
+ * nakit kalır; bu satır yalnız "bugünkü kurla bu sermaye kaç gram HAS eder"
+ * sorusunun cevabıdır ve her fiyat adımında kendiliğinden güncellenir.
+ *
+ * SERMAYE = NET SERVET: nakit + stoğun bugünkü değeri − yükümlülükler.
+ * Yalnız nakdi saymak, malını altına çevirmiş oyuncuyu fakir gösterirdi;
+ * borcu saymamak da olduğundan zengin.
+ */
+function CapitalInHas() {
+  const store = useGame((st) => st.store);
+  const inventory = useGame((st) => st.inventory);
+  const items = useGame((st) => st.items);
+  const ledger = useGame((st) => st.ledger);
+  const goldSpot = useGame((st) => st.market.goldSpot);
+
+  const wealth = summarizeWealth({ store, inventory, items, ledger });
+  const gramsOfHas = tlToHasGrams(wealth.netWorth, goldSpot);
+
+  return (
+    <div className="profileDialog__capital">
+      <span className="profileDialog__capitalLabel">Sermaye</span>
+      <span className="profileDialog__capitalValue num">{hasGold(gramsOfHas)}</span>
+      <span className="profileDialog__capitalNote">
+        {tl(wealth.netWorth)} · bugünkü HAS karşılığı ({price(goldSpot)} ₺/g)
+      </span>
     </div>
   );
 }

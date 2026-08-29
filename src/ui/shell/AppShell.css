@@ -120,8 +120,8 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
-  /* Dokunma hedefi şeridin tamamı kadar yüksek (GDD 23.22 · 44 px). */
-  height: 44px;
+  /* UPDATEv3 — düğme yüksekliği 44 → 64 px; 52 px'lik avatarı taşıyor. */
+  height: 64px;
   border-radius: var(--r-sm);
   text-align: left;
 }
@@ -145,8 +145,14 @@
 .profileChip__avatar {
   position: relative;
   flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
+  /*
+   * UPDATEv3 — 44 → 52 px. Şerit 72 px'e çıktığı için avatar artık kendi
+   * bandında rahat: 52 + 10 px boşluk. Genişlik payı da var, çünkü şeridin
+   * dört bloğu aynı yatay bütçeyi paylaşmaya devam ediyor ve +8 px'lik fark
+   * saatin 46 px tabanından karşılanıyor (390 px'te ölçüldü).
+   */
+  width: 52px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -289,9 +295,27 @@
   font-weight: var(--fw-semibold);
 }
 
+/*
+ * UPDATEv3 — sağ sütun: nakit üstte, hız kontrolü altta.
+ * Genişliği hız kontrolü belirler (132 px); nakit onun altına sığar ve
+ * ikisi birlikte 66 px tutar, 72 px'lik şeridin içinde.
+ */
+.statusStrip__right {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+/* Nakit artık TEK SATIR: iki satırlık blok 72 px'lik sütuna sığmıyordu. */
 .statusStrip__cash {
   flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
   text-align: right;
+  white-space: nowrap;
 }
 
 .statusStrip__cashLabel {
@@ -1443,4 +1467,49 @@
     font-size: var(--fs-subtitle);
     margin-bottom: var(--sp-2);
   }
+}
+
+/* UPDATEv3 §2 — dükkân adının canlı önizlemesi. */
+.profileDialog__preview {
+  margin: -8px 0 var(--sp-3);
+  font-size: var(--fs-caption);
+  color: var(--text-light-2);
+}
+
+.profileDialog__preview strong {
+  color: var(--text-light-1);
+  font-weight: var(--fw-semibold);
+}
+
+/* Sermayenin HAS altın karşılığı — salt gösterim, oyun kararı değil. */
+.profileDialog__capital {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--sp-2);
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--stone-100);
+  border: 1px solid var(--line-light);
+}
+
+.profileDialog__capitalLabel {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-light-2);
+}
+
+.profileDialog__capitalValue {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
+  color: var(--brass-700);
+}
+
+.profileDialog__capitalNote {
+  flex: 1 0 100%;
+  font-size: var(--fs-micro);
+  color: var(--text-light-2);
 }

@@ -502,6 +502,18 @@ export interface MarketState {
   volatility: number;
   activeEvent: MarketEvent | null;
   assets: MarketAsset[];
+  /**
+   * GÜNÜN AÇILIŞ FİYATLARI — %3'lük günlük bandın çapası.
+   *
+   * Eskiden gün içi kıyas noktası `asset.history[0]` idi ve GÜVENİLİR
+   * DEĞİLDİ: `buildAssets` diziye başa ekliyor, `stepMarketIntraday` sona
+   * ekleyip baştan kırpıyordu. 12. adımdan sonra dizinin başı artık günün
+   * açılışı olmuyor, gün içi yüzde değişimi kayan bir tabana göre
+   * hesaplanıyordu. Açılış artık açıkça saklanıyor.
+   *
+   * Eski kayıtlarda YOKTUR; okuyan taraf o günün mevcut fiyatına düşer.
+   */
+  dayOpen?: { goldSpot: number; silverSpot: number; fxIndex: number };
   /** QA aynı günü tekrar oynayabilsin diye (GDD 28.3). */
   seed: number;
 }

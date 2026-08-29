@@ -440,7 +440,17 @@ export interface UnitPriceView {
 
 /** Gram bazlı sayılan şablonlar: adı gram olan külçe/gram altın ailesi. */
 export function isPerGramProduct(templateId: string): boolean {
-  return templateId.startsWith('gram_gold') || templateId.includes('ingot');
+  /*
+    UPDATEv3 §1 — yatırım bileziği de gramla konuşur. Ziynet "adet" satılır
+    (çeyreğin gramı sorulmaz), bilezik ise gramajıyla anılır: müşteri "20
+    gram bilezik" ister, "bir bilezik" değil. Birim fiyatın ₺/g gösterilmesi
+    oyuncunun onu gram altınla karşılaştırabilmesi için şart.
+  */
+  return (
+    templateId.startsWith('gram_gold') ||
+    templateId.includes('ingot') ||
+    templateId.startsWith('bracelet_22k_plain')
+  );
 }
 
 /**
@@ -604,4 +614,36 @@ function round3(n: number): number {
 function round4(n: number): number {
   const r = Math.round(n * 10000) / 10000;
   return r === 0 ? 0 : r; // -0 normalize
+}
+
+// ---------------------------------------------------------------------------
+// SERMAYENİN HAS ALTIN KARŞILIĞI
+// ---------------------------------------------------------------------------
+
+/**
+ * HAS ALTIN SAFLIĞI — 995/1000.
+ *
+ * "HAS" kuyumcu dilinde saf altındır; oyundaki gram altın şablonları da
+ * 0.995 saflıkla duruyor (bkz. BULLION_META). Aynı sayıyı kullanmak,
+ * oyuncunun "sermayem şu kadar HAS" ile "elimdeki gram altın" arasında
+ * kafasının karışmamasını sağlar.
+ */
+export const HAS_PURITY = 0.995;
+
+/**
+ * Bir TL tutarının o anki HAS altın karşılığı — GRAM cinsinden.
+ *
+ * NEDEN AYRI BİR FİYAT YOK: `market.goldSpot` zaten gram altının ₺/g
+ * fiyatıdır. HAS karşılığı ondan TÜREİR; ikinci bir altın fiyatı tanımlamak
+ * GDD 13.4'ün yasakladığı arbitraj açığını doğururdu.
+ *
+ * SALT GÖSTERİM: bu fonksiyon hiçbir şey satmaz, çevirmez, kaydetmez.
+ * Oyuncunun nakdi nakit kalır; bu yalnız "bu para bugün kaç gram altın
+ * eder" sorusunun cevabıdır.
+ */
+export function tlToHasGrams(amount: Money, goldSpotPerGram: number): number {
+  if (!(goldSpotPerGram > 0)) return 0;
+  // Gram altın 0.995 saflıkta satılır; HAS gramı biraz daha pahalıdır.
+  const hasGramPrice = goldSpotPerGram / HAS_PURITY;
+  return amount / hasGramPrice;
 }

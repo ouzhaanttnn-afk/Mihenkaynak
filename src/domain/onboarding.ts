@@ -133,7 +133,13 @@ export const LESSONS: Lesson[] = [
     */
     body: (c) =>
       c.productKind === 'gramBullion'
-        ? 'Gram altının gramajı ve 24 ayarı üretiminde sabittir; zaten bilirsin. ' +
+        ? /*
+             UPDATEv3 §1 — "24 ayar" iddiası kaldırıldı: gram tarafında artık
+             22 ayar işçiliksiz yatırım bileziği de var. Dersin söylemek
+             istediği şey zaten ayarın KAÇ olduğu değil, ÜRETİMDE SABİT
+             olduğu.
+          */
+          'Yatırım altınının gramajı ve ayarı üretiminde sabittir; zaten bilirsin. ' +
           'Şüpheli bir hâli yoksa doğrudan fiyata geçebilirsin.'
         : c.productKind === 'coinBullion'
           ? 'Ziynet altının gramajı ve ayarı standarttır; zaten bilirsin. ' +

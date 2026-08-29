@@ -99,6 +99,18 @@ const CRAFTED_ART: Partial<Record<Silhouette, Art>> = {
 };
 
 export function productArt(templateId: string, silhouette: Silhouette): Art | undefined {
+  /*
+    UPDATEv3 §1 — YATIRIM BİLEZİĞİ SİLUETTE KALIR.
+
+    Silüet eşlemesi buraya 'bracelet' → telkari bilezik FOTOĞRAFINI verirdi;
+    ama telkari işçilikli bir üründür ve bu ürünün tanımı "işçiliksiz".
+    Oyuncuya işlemeli bir bileziğin fotoğrafını gösterip "işçilik primi
+    sıfır" demek, bu dosyanın kendi kuralını çiğnemek olurdu: "yanlış bir
+    ürünün fotoğrafını göstermek, çizimden daha kötü bilgi verir."
+
+    `undefined` dönünce <Art> siluete düşer — kasıtlı, geçici değil.
+  */
+  if (templateId.startsWith('bracelet_22k_plain')) return undefined;
   return BULLION_ART[templateId] ?? CRAFTED_ART[silhouette];
 }
 

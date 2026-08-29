@@ -65,11 +65,11 @@ export function StatusStrip({
         <span className="profileChip__avatar">
           <Art
             art={avatarArt(profile.avatarId)}
-            /* CSS 44 px'e sabitliyor; öznitelik onunla aynı kalsın. */
-            size={44}
+            /* CSS 52 px'e sabitliyor; öznitelik onunla aynı kalsın. */
+            size={52}
             decorative
             className="profileChip__img"
-            fallback={<BrandMark size={26} />}
+            fallback={<BrandMark size={30} />}
           />
           <span className="profileChip__pencil" aria-hidden="true">
             <IconPencil size={10} />
@@ -100,17 +100,31 @@ export function StatusStrip({
         <div className="statusStrip__time num">{clock(market.clockMinutes)}</div>
       </div>
 
-      <div className="statusStrip__cash">
-        <div className="statusStrip__cashLabel">Nakit</div>
-        <div className="statusStrip__cashValue num">{tlBare(store.cash)} ₺</div>
-      </div>
+      {/*
+        UPDATEv3 — NAKİT VE HIZ ARTIK ALT ALTA.
 
-      <SpeedControl
-        speed={speed}
-        unlocked={speed4xUnlocked}
-        onSpeed={onSpeed}
-        onUnlock={onUnlock4x}
-      />
+        Şerit 52 → 72 px'e çıkınca yatay bütçe değişmedi ama DİKEY yer açıldı.
+        Nakit (70 px) ve hız kontrolü (132 px) yan yanayken 206 px yiyordu;
+        aynı sütunda üst üste durunca 132 px'e iniyorlar ve kazanılan ~74 px
+        doğrudan profil bloğuna gidiyor.
+
+        Bu olmadan 52 px'lik avatar dükkân adını yiyordu: 390 px'te ad
+        82 px'lik doğal genişliğinden 42 px'e kırpılıyor ve "MIHENKAY…"
+        görünüyordu. Şeridi büyütüp adı kırpmak, büyütmenin amacına ters.
+      */}
+      <div className="statusStrip__right">
+        <div className="statusStrip__cash">
+          <span className="statusStrip__cashLabel">Nakit</span>{' '}
+          <span className="statusStrip__cashValue num">{tlBare(store.cash)} ₺</span>
+        </div>
+
+        <SpeedControl
+          speed={speed}
+          unlocked={speed4xUnlocked}
+          onSpeed={onSpeed}
+          onUnlock={onUnlock4x}
+        />
+      </div>
     </header>
   );
 }

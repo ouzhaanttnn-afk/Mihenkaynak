@@ -31,7 +31,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { ITEM_TEMPLATES, getTemplate, type ItemTemplate } from '@data/item-templates';
+import {
+  ITEM_TEMPLATES,
+  PLAIN_BRACELET_GRAMS,
+  getTemplate,
+  plainBraceletId,
+  type ItemTemplate,
+} from '@data/item-templates';
 import { isBullion } from '@data/bullion';
 
 /**
@@ -54,6 +60,17 @@ const SUPPLIER_CATALOG_IDS = [
   'full_gold',
   'republic_gold',
   'ata_gold',
+  /*
+    UPDATEv3 §1 — 22 AYAR İŞÇİLİKSİZ YATIRIM BİLEZİĞİ.
+
+    Kimlikler ELLE YAZILMAZ, `PLAIN_BRACELET_GRAMS`ten türer. §1 "15 g, 25 g
+    gibi 10'un katı olmayan gramajları satılabilir kataloğa ekleme" diyor;
+    listeyi tek kaynaktan türetmek o kuralı ihlal edilebilir bir yerde
+    bırakmaz. Aynı sebeple 8/14/18 ayar ve işçilikli/taşlı 22 ayar bilezikler
+    buraya HİÇ girmez: onlar sarrafiye değil (`isBullion` false) ve
+    `sellableToCustomer`ın ilk kapısında zaten elenirler.
+  */
+  ...PLAIN_BRACELET_GRAMS.map(plainBraceletId),
 ] as const;
 
 export type SupplierCatalogId = (typeof SUPPLIER_CATALOG_IDS)[number];

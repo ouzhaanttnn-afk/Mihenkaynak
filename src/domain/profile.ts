@@ -26,13 +26,26 @@ export type AvatarId = (typeof AVATAR_IDS)[number];
 export const DEFAULT_AVATAR_ID: AvatarId = 'male-01';
 
 /**
- * Varsayılan ad. Oyunda oyuncunun/kuyumcunun ADI diye bir alan yoktu —
- * `store.name` DÜKKÂNIN adıdır ("MIHENKAYNAK Kuyumculuk") ve İşletme
- * ekranında kademe/seviye ile birlikte o sıfatla gösteriliyor. Bir kişi
- * adını oraya yazmak dükkânın adını silerdi. Bu yüzden kuyumcu adı ayrı
- * bir alandır ve mevcut ad bulunmadığı için varsayılanı "Kuyumcu"dur.
+ * UPDATEv3 §2 — DÜKKÂN ADININ TEMEL PARÇASI.
+ *
+ * Bu alan artık hem kuyumcunun hem dükkânın adıdır ve YALNIZ TEMEL İSMİ
+ * tutar: "Alvera". Ekranda görünen "Alvera Kuyumculuk" ondan TÜRETİLİR
+ * (`shopDisplayName`), saklanmaz — §2: "save/state tarafında yalnız temel
+ * isim saklansın."
+ *
+ * Varsayılan 'Kuyumcu' değil 'MIHENKAYNAK': türetilmiş hâli
+ * "MIHENKAYNAK Kuyumculuk" olur, yani yeni oyunda ve eski kayıtta ekran
+ * bugünküyle birebir aynı kalır. ('Kuyumcu' kalsaydı "Kuyumcu Kuyumculuk"
+ * yazardı.) Bu, oyunun global markasını değiştirmez — MIHENKAYNAK oyunun
+ * adı olmayı sürdürür; burada yalnız oyuncunun dükkânının varsayılanıdır.
  */
-export const DEFAULT_JEWELER_NAME = 'Kuyumcu';
+export const DEFAULT_JEWELER_NAME = 'MIHENKAYNAK';
+
+/**
+ * Dükkân adının sistem tarafından eklenen sabit eki (§2).
+ * Oyuncu bunu yazmaz, silemez ve iki kez alamaz.
+ */
+export const SHOP_SUFFIX = 'Kuyumculuk';
 
 export interface PlayerProfile {
   jewelerName: string;
@@ -61,7 +74,7 @@ export type NameCheck =
  * yalnız uçlardan yapılsaydı sınır anlamını yitirirdi.
  */
 export function checkJewelerName(raw: string): NameCheck {
-  const value = raw.trim().replace(/\s+/g, ' ');
+  const value = stripShopSuffix(raw.trim().replace(/\s+/g, ' '));
 
   if (value.length === 0) {
     return { ok: false, error: 'Kuyumcu adı boş bırakılamaz.' };
@@ -73,6 +86,48 @@ export function checkJewelerName(raw: string): NameCheck {
     return { ok: false, error: `Kuyumcu adı en fazla ${NAME_MAX} karakter olabilir.` };
   }
   return { ok: true, value };
+}
+
+/**
+ * Sondaki "Kuyumculuk" ekini kırpar (§2).
+ *
+ * NEDEN GEREKLİ: alan artık dükkân adını soruyor ve yer tutucu örneği
+ * "Alvera Kuyumculuk". Oyuncunun eki de yazması çok olası; kırpmasaydık
+ * gösterim "Alvera Kuyumculuk Kuyumculuk" olurdu.
+ *
+ * KIRPMA DOĞRULAMADAN ÖNCE: "Alvera Kuyumculuk" 17 karakter, temel isim 6.
+ * Sonra kırpsaydık 24 karakterlik sınır ekin ağırlığını da sayar ve
+ * "Abdurrahman Kuyumculuk" gibi meşru bir giriş reddedilirdi.
+ *
+ * BÜYÜK/KÜÇÜK HARF DUYARSIZ ve Türkçe: 'KUYUMCULUK' ile 'kuyumculuk' aynı
+ * ektir; 'I/i' dönüşümü için `toLocaleLowerCase('tr')` kullanılır.
+ *
+ * TEK SEFER kırpar: "Alvera Kuyumculuk Kuyumculuk" girildiğinde döngüyle
+ * hepsini silmek "Kuyumculuk Kuyumculuk" adını da boşaltırdı. Bir ek yeter;
+ * kalan metin zaten oyuncunun yazdığı isimdir.
+ */
+export function stripShopSuffix(value: string): string {
+  const lower = value.toLocaleLowerCase('tr');
+  const suffix = ` ${SHOP_SUFFIX.toLocaleLowerCase('tr')}`;
+
+  if (lower.endsWith(suffix)) {
+    return value.slice(0, value.length - suffix.length).trim();
+  }
+  // Yalnız ekin kendisi yazıldıysa geriye isim kalmaz; doğrulama yakalar.
+  if (lower === SHOP_SUFFIX.toLocaleLowerCase('tr')) return '';
+  return value;
+}
+
+/**
+ * Ekranda görünen dükkân adı: temel isim + sabit ek (§2).
+ *
+ * Tek kapı olması bilinçli — iki ekranda (Dükkan başlığı, İşletme alt
+ * satırı) ayrı ayrı birleştirmek, birinin ekini alıp diğerinin almadığı bir
+ * durumu er geç doğururdu.
+ */
+export function shopDisplayName(baseName: string): string {
+  const base = stripShopSuffix(baseName.trim().replace(/\s+/g, ' '));
+  return base.length > 0 ? `${base} ${SHOP_SUFFIX}` : `${DEFAULT_JEWELER_NAME} ${SHOP_SUFFIX}`;
 }
 
 /** Bilinmeyen avatar kimliğini varsayılana çeker — bozuk kayıt çökertmez. */

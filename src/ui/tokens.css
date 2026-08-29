@@ -125,7 +125,16 @@
   --r-pill: 999px;
 
   /* ---- Bölge yükseklikleri (GDD 23.9.2 — bağlayıcı) ---- */
-  --h-status-strip: 52px;
+  /*
+   * UPDATEv3 — 52 → 72 px.
+   *
+   * İstenen: profil fotoğrafı 52 × 52 px, profil düğmesi 64 px yüksek.
+   * 64 px'lik bir düğme 52 px'lik şeride sığmaz; şerit büyümek zorunda.
+   * 72 px = 64 (düğme) + 4 + 4 (nefes payı). GDD 23.9.2'nin 52 px'i
+   * bilerek aşılıyor — kazanan taraf oyuncunun okunur kimliği; kaybeden
+   * 20 px, İşlem Masası'nın payından düşüyor ve kısa ekranda ölçüldü.
+   */
+  --h-status-strip: 72px;
   --h-market-strip: 44px;
   --h-customer-strip: 50px;
   --h-stage-strip: 32px;

@@ -89,6 +89,7 @@ import {
 import { Art } from '@ui/Art';
 import { NAV_ART, customerArt } from '@ui/assets';
 import { customerIntentLine } from '@ui/intent-line';
+import { shopDisplayName } from '@domain/profile';
 import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
 import { offerUnitLabel } from '@ui/offer-view';
 import type {
@@ -468,7 +469,13 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
           fallback={null}
         />
         <div className="idle__headText">
-          <h2 className="idle__title">{s.store.name}</h2>
+          {/*
+            UPDATEv3 §2 — başlık artık SABİT DEĞİL, profilden türer.
+            `store.name` okunmuyor: o alan kayıtta "MIHENKAYNAK Kuyumculuk"
+            diye TÜRETİLMİŞ hâliyle duruyordu ve §2 yalnız temel ismin
+            saklanmasını istiyor. Ek gösterimde ekleniyor.
+          */}
+          <h2 className="idle__title">{shopDisplayName(s.profile.jewelerName)}</h2>
           <p className="idle__sub">
             Gün {s.market.day} · Semt itibarı {Math.round(s.store.reputation)}
           </p>

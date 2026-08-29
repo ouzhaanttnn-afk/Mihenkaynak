@@ -15,6 +15,7 @@
  */
 
 import type { TradeChannel } from '@domain/types';
+import { PLAIN_BRACELET_GRAMS, plainBraceletId } from '@data/item-templates';
 
 /** §4 "likidite sınıfı" — ürünün ne kadar kolay nakde döndüğü. */
 export type LiquidityClass = 'high' | 'medium' | 'low';
@@ -215,6 +216,47 @@ export const BULLION_META: BullionMeta[] = [
     premiumRatio: 0.005,
   },
 ];
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ * UPDATEv3 §1 — 22 AYAR İŞÇİLİKSİZ YATIRIM BİLEZİĞİ METADATASI
+ *
+ * Bileziğin sarrafiye sayılması bu kayıtla olur: `isBullion` bu haritaya
+ * bakar, fiyat/hacim/kanal davranışının tamamı buradan türer. Yani ürün
+ * KENDİ FİYAT MOTORUNU getirmez — mevcut altın fiyatı, saflık, gramaj ve
+ * §6 makası aynen işler (§1: "yeni bağımsız fiyat motoru oluşturma").
+ *
+ * premiumRatio: 0 — §1 "İşçilik primi sıfır olsun." Ziynetin (çeyrek 0.045,
+ * Ata 0.068) taşıdığı darphane/tanınırlık payı burada YOKTUR: yatırım
+ * bileziği tanınırlık değil, gram satar.
+ *
+ * marketSensitivity: 1 — primi olmayan ürün spot hareketini birebir yansıtır;
+ * sönümlenecek talep kaynaklı bir pay yok.
+ *
+ * Hacim bantları gramajla ters orantılı: 10 g'lik bilezikten birkaç tane
+ * alınır, 100 g'lik tek başına büyük tutar bağlar.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+const PLAIN_BRACELET_META: BullionMeta[] = PLAIN_BRACELET_GRAMS.map((g) => {
+  // Ağır bilezik daha az adette döner; bant gramajla daralır.
+  const retailTop = g <= 20 ? 3 : g <= 50 ? 2 : 1;
+  const bulkBand: [number, number] = g <= 20 ? [4, 20] : g <= 50 ? [2, 10] : [2, 6];
+
+  return {
+    templateId: plainBraceletId(g),
+    unitWeightGrams: g,
+    /* 22 ayar = 916/1000. Ziynetle aynı saflık, farkı primsiz olması. */
+    unitPurity: 0.916,
+    liquidityClass: g <= 50 ? 'high' : 'medium',
+    volumeBand: [1, retailTop],
+    bulkVolumeBand: bulkBand,
+    channelFit: ['retailCustomer', 'bulkCustomer', 'wholesaler', 'tradeNetwork'],
+    marketSensitivity: 1,
+    premiumRatio: 0,
+  };
+});
+
+BULLION_META.push(...PLAIN_BRACELET_META);
 
 export const BULLION_BY_TEMPLATE = new Map(BULLION_META.map((m) => [m.templateId, m]));
 

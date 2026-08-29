@@ -14,6 +14,7 @@ import {
   EVENT_DIRECTION,
   MARKET_BASE,
   MARKET_COMPOSITION,
+  MARKET_DAILY_CAP,
   MARKET_REGIME,
   REGIME_DRIFT,
   REGIME_TRANSITIONS,
@@ -92,9 +93,22 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
   // hiçbiri tek başına yönü belirlemez:
   const move = composeDailyMove(rng, { regime, trend, volatility, activeEvent, day });
 
-  const goldSpot = round2(prevGold * (1 + move.total));
-  const silverSpot = round2(prevSilver * (1 + move.total * rng.range(0.8, 1.6)));
-  const fxIndex = round2(prevFx * (1 + move.total * 0.3));
+  /*
+    GÜNLÜK TAVAN (%3) — bileşim toplandıktan SONRA kırpılır.
+
+    Bileşenleri tek tek küçültmek rejimin karakterini bozardı: şok günü ile
+    sakin günü ayıran şey bileşenlerin oranıdır. Toplamı kırpmak sıralamayı
+    korur, yalnız uçları keser.
+
+    Gümüş ve kur altının hareketinden TÜRETİLDİĞİ için ayrı ayrı kırpılır:
+    gümüş çarpanı 1.6'ya kadar çıkabiliyor ve kırpılmamış hâlde altın %3'te
+    dururken gümüş %4.8'e gidebilirdi.
+  */
+  const goldSpot = bandedPrice(prevGold * (1 + move.total), prevGold);
+  const silverSpot = bandedPrice(prevSilver * (1 + move.total * rng.range(0.8, 1.6)), prevSilver);
+  const fxIndex = bandedPrice(prevFx * (1 + move.total * 0.3), prevFx);
+
+  const dayOpen = { goldSpot, silverSpot, fxIndex };
 
   const assets = buildAssets(
     { goldSpot, silverSpot, fxIndex },
@@ -113,8 +127,28 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
     volatility,
     activeEvent,
     assets,
+    dayOpen,
     seed: rootSeed,
   };
+}
+
+/**
+ * Fiyatı yuvarlar ve çapasına göre ±%3 bandına çeker.
+ *
+ * SIRA ÖNEMLİ: önce yuvarla, SONRA kırp. Ters sırada denendi ve test
+ * yakaladı — `round2` kırpılmış değeri bir kuruş yukarı iterek bandı
+ * %3,007'ye taşıyordu. Bant sınırları da İÇERİ yuvarlanır (alt sınır
+ * yukarı, üst sınır aşağı) ki sınıra oturan fiyat yuvarlanıp dışarı
+ * kaçmasın.
+ *
+ * RNG TÜKETMEZ — aynı tohum aynı oyunu üretmeye devam eder (GDD 28.3).
+ */
+function bandedPrice(raw: number, anchor: number): number {
+  const price = round2(raw);
+  if (!(anchor > 0)) return price;
+  const lo = Math.ceil(anchor * (1 - MARKET_DAILY_CAP) * 100) / 100;
+  const hi = Math.floor(anchor * (1 + MARKET_DAILY_CAP) * 100) / 100;
+  return Math.max(lo, Math.min(hi, price));
 }
 
 /** §5.1 fiyat bileşenlerinin tek tek katkısı — §5.2 sinyalleri buradan okur. */
@@ -237,16 +271,43 @@ export function stepMarketIntraday(market: MarketState, newClockMinutes: number)
 
   // Gün içi adım, günlük volatilitenin küçük bir kesridir.
   const stepScale = market.volatility * 0.12;
-  const dayOpenGold = market.assets.find((a) => a.id === 'goldGram')?.history[0] ?? market.goldSpot;
+
+  /*
+    GÜN İÇİ BANT (%3).
+
+    Adım fiyatı BİR ÖNCEKİ FİYATLA çarpıyor; 40 adımlık serbest yürüyüş
+    günün açılışından istediği kadar uzaklaşabiliyordu (ölçüldü: tepe-dip
+    %5,72). Her adım artık günün açılışına göre ±%3 bandına çekiliyor, yani
+    günün en yükseği ile en düşüğü arasındaki fark tavanı da bu bant.
+
+    Açılış eski kayıtlarda yok; o durumda bandın çapası günün o anki fiyatı
+    olur ve davranış eskisi gibi kalır — kayıt açılır, çökmez.
+  */
+  const open = market.dayOpen ?? {
+    goldSpot: market.goldSpot,
+    silverSpot: market.silverSpot,
+    fxIndex: market.fxIndex,
+  };
 
   const nudge = (rng.next() - 0.5) * 2 * stepScale + market.trend * stepScale * 0.35;
-  const goldSpot = round2(market.goldSpot * (1 + nudge));
-  const silverSpot = round2(market.silverSpot * (1 + nudge * rng.range(0.9, 1.4)));
-  const fxIndex = round2(market.fxIndex * (1 + nudge * 0.25));
+  const goldSpot = bandedPrice(market.goldSpot * (1 + nudge), open.goldSpot);
+  const silverSpot = bandedPrice(
+    market.silverSpot * (1 + nudge * rng.range(0.9, 1.4)),
+    open.silverSpot,
+  );
+  const fxIndex = bandedPrice(market.fxIndex * (1 + nudge * 0.25), open.fxIndex);
 
   const assets = market.assets.map((asset) => {
     const price = priceForAsset(asset.id, { goldSpot, silverSpot, fxIndex });
-    const base = asset.history[0] ?? price;
+    /*
+      YÜZDE DEĞİŞİM ARTIK GÜNÜN AÇILIŞINA GÖRE.
+
+      Taban `asset.history[0]` idi ve kayıyordu: `buildAssets` diziye BAŞA
+      ekliyor, burası SONA ekleyip baştan kırpıyordu; 12. adımdan sonra
+      dizinin başı artık günün açılışı değildi ve şeritteki "%1,07" her
+      adımda başka bir şeyi ölçüyordu. Açılış artık açıkça taşınıyor.
+    */
+    const base = priceForAsset(asset.id, open);
     return {
       ...asset,
       price,
@@ -255,8 +316,15 @@ export function stepMarketIntraday(market: MarketState, newClockMinutes: number)
     };
   });
 
-  void dayOpenGold;
-  return { ...market, clockMinutes: newClockMinutes, goldSpot, silverSpot, fxIndex, assets };
+  return {
+    ...market,
+    clockMinutes: newClockMinutes,
+    goldSpot,
+    silverSpot,
+    fxIndex,
+    assets,
+    dayOpen: open,
+  };
 }
 
 type Spots = { goldSpot: number; silverSpot: number; fxIndex: number };

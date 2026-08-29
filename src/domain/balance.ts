@@ -142,6 +142,32 @@ export const SELL_FLOOR = {
 } as const;
 
 /** GDD 13.2 — Piyasa rejim modeli. Günlük ve olay hareket bantları. */
+/**
+ * GÜNLÜK HAREKET TAVANI — %3.
+ *
+ * Ölçüldü (40 gün × 4 tohum): gün-güne hareket %6,84'e, gün içi tepe-dip
+ * bandı %5,72'ye çıkıyordu. İki ayrı yerden geliyordu:
+ *
+ *   1. `composeDailyMove` toplamı rejim + trend + olay + gürültü olarak
+ *      birikiyor ve şok rejiminde tavansız kalıyordu.
+ *   2. `stepMarketIntraday` her 15 dakikada bir fiyatı BİR ÖNCEKİ FİYATLA
+ *      çarpıyordu — 40 adımlık serbest rastgele yürüyüş, günün açılışından
+ *      istediği kadar uzaklaşabiliyordu.
+ *
+ * Tavan ikisine de uygulanır: hem ertesi günün açılışı, hem gün içindeki
+ * her fiyat, günün açılışına göre ±%3'ün dışına çıkamaz. Yani "günlük taban
+ * ve tavan" sözünün ikisi de tutulur.
+ *
+ * NEDEN KIRPMA, DAHA KÜÇÜK RASTGELELİK DEĞİL: rejim bantlarını küçültmek
+ * piyasanın KARAKTERİNİ (sakin/volatil/şok ayrımını) da düzleştirirdi.
+ * Kırpma karakteri korur, yalnız uçları keser — şok günü hâlâ en hareketli
+ * gündür, sadece artık %3'ü aşmaz.
+ *
+ * DETERMİNİZM: kırpma rastgelelik akışından sayı TÜKETMEZ (GDD 28.3), yani
+ * aynı tohum aynı oyunu üretmeye devam eder.
+ */
+export const MARKET_DAILY_CAP = 0.03;
+
 export const MARKET_REGIME: Record<
   MarketRegime,
   {

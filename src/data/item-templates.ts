@@ -633,6 +633,64 @@ export const ITEM_TEMPLATES: ItemTemplate[] = [
   },
 ];
 
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ * UPDATEv3 §1 — 22 AYAR İŞÇİLİKSİZ YATIRIM BİLEZİĞİ
+ *
+ * Bu şablonlar ELLE YAZILMAZ, üretilir. Sebebi kuralın kendisi:
+ * "Gramaj yalnız 10 gramın katlarından oluşacak. 15 g, 25 g gibi 10'un katı
+ * olmayan gramajları ÜRETME." Elle yazılan on kayıtta o kural bir yorumdur;
+ * tek bir diziden türetildiğinde YAPISAL hâle gelir — 15 g'lik bir şablonun
+ * araya sıkışabileceği bir yer kalmaz.
+ *
+ * İŞÇİLİK SIFIR: `craftsmanshipRatioBand: [0, 0]`. Bu ürün metalin kendisidir;
+ * fiyatı GDD 6.2'nin formülünden (net gram × saflık × spot) çıkar ve üstüne
+ * yalnız §6 makası biner. Yeni bir fiyat motoru YOK.
+ *
+ * NE OLMADIĞI: mevcut '22 Ayar İnce Bilezik' ve '22 Ayar Burma Bilezik'
+ * şablonlarına DOKUNULMAZ. Onlar işçilikli, `classic` ailesinden ürünlerdir
+ * ve müşteri satın alma kataloğuna girmezler; oyuncuya SATILDIKLARI
+ * akışlarda (alış, ekspertiz, servis) aynen kalırlar.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/** §1 — desteklenen gramajlar. 10'un katı olmayan bir sayı buraya giremez. */
+export const PLAIN_BRACELET_GRAMS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
+
+/** Şablon kimliği: gramajdan türer, elle yazılmaz. */
+export function plainBraceletId(grams: number): string {
+  return `bracelet_22k_plain_${grams}`;
+}
+
+const PLAIN_BRACELET_TEMPLATES: ItemTemplate[] = PLAIN_BRACELET_GRAMS.map((g) => ({
+  id: plainBraceletId(g),
+  displayName: `22 Ayar Yatırım Bileziği (${g} g)`,
+  /*
+    AİLE `bullion`: bu ürün ekonomik olarak sarrafiyedir — standart gramaj,
+    standart ayar, işçilik yok. `classic` deseydik hızlı işlem sınıfına
+    giremez ve her satışta test angaryası doğardı.
+  */
+  family: 'bullion',
+  metal: 'gold',
+  nominalKarat: '22K',
+  /* Gramaj SABİT: yatırım bileziği tartıyla değil, standart ağırlıkla satılır. */
+  weightBand: [g, g],
+  netRatioBand: [1, 1],
+  /* §1 "İşçilik değeri sıfır olacak." */
+  craftsmanshipRatioBand: [0, 0],
+  conditionWeights: { pristine: 10 },
+  hasStone: false,
+  rarityBand: [0, 0],
+  flawChance: 0,
+  demandTags: ['yatırım', 'likit', 'sarrafiye', 'bilezik'],
+  minTier: 1,
+  designNote:
+    'Standart yatırım bileziği: 22 ayar, işçiliksiz. Fiyatı yalnız gram, saflık ve piyasadan gelir; ziynetin aksine darphane primi taşımaz.',
+  silhouette: 'bracelet',
+}));
+
+ITEM_TEMPLATES.push(...PLAIN_BRACELET_TEMPLATES);
+
 export const TEMPLATE_BY_ID = new Map(ITEM_TEMPLATES.map((t) => [t.id, t]));
 
 export function getTemplate(id: string): ItemTemplate {

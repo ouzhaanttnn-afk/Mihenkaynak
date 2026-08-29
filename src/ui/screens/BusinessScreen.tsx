@@ -12,6 +12,7 @@
 
 import { TERM } from '@ui/terms';
 import { readSaveMeta } from '@state/save';
+import { shopDisplayName } from '@domain/profile';
 import { useEffect, useState } from 'react';
 
 import { MARKET_REGIME } from '@domain/balance';
@@ -24,7 +25,7 @@ import {
   volumeSplitMetrics,
   type Ledger,
 } from '@domain/settlement';
-import { CHANNEL_LABEL_TR } from '@domain/channels';
+import { CHANNEL_LABEL_TR, tlToHasGrams } from '@domain/channels';
 import { marketSignals } from '@domain/overnight';
 import { registrySummary } from '@domain/customer-memory';
 import { evaluateUpgrade, growthSnapshot } from '@domain/store-growth';
@@ -69,7 +70,7 @@ import {
 } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { NAV_ART, merchantArt } from '@ui/assets';
-import { clock, pct, pctChange, price, tl, tlSigned } from '@ui/format';
+import { clock, hasGold, pct, pctChange, price, tl, tlSigned } from '@ui/format';
 
 type Route = 'root' | 'market' | 'journal' | 'wholesaler' | 'network' | 'store' | 'save' | 'career';
 
@@ -126,7 +127,9 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
         />
         <h1 className="pageHead__title">İşletme</h1>
         <p className="pageHead__sub">
-          {s.store.name} · Kademe {s.store.storeTier} · Seviye {s.store.level}
+          {/* §2 — dükkân adı profilden türer; ek gösterimde eklenir. */}
+          {shopDisplayName(s.profile.jewelerName)} · Kademe {s.store.storeTier} · Seviye{' '}
+          {s.store.level}
         </p>
       </header>
 
@@ -155,6 +158,17 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
             />
             <StatLine label="Yükümlülük" value={tl(wealth.liabilities)} />
             <StatLine label="Net servet" value={tl(wealth.netWorth)} />
+            {/*
+              SERMAYENİN HAS ALTIN KARŞILIĞI — salt gösterim.
+              Kuyumcu serveti TL ile değil "kaç kilo altın" ile ölçer; TL
+              rakamı fiyat yükselince kendiliğinden büyüdüğü için gerçek
+              ilerlemeyi göstermez. Hiçbir şey çevrilmez veya kaydedilmez;
+              satır her fiyat adımında yeniden hesaplanır.
+            */}
+            <StatLine
+              label="Sermaye (HAS altın)"
+              value={hasGold(tlToHasGrams(wealth.netWorth, s.market.goldSpot))}
+            />
           </div>
         </div>
 

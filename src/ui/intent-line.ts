@@ -21,13 +21,28 @@
  * bu satıra hiç girmez.
  */
 
-import { getTemplate } from '@data/item-templates';
+import {
+  PLAIN_BRACELET_GRAMS,
+  getTemplate,
+  plainBraceletId,
+} from '@data/item-templates';
 import { isBullion } from '@data/bullion';
 import type { Customer, CustomerDemand, ItemInstance } from '@domain/types';
 
 /** Ziynet sarrafiyede adet, ürünün kendi adıyla sayılır: "3 Çeyrek Altın". */
 function countPhrase(name: string, quantity: number, templateId: string): string {
   if (quantity <= 1) return name;
+
+  /*
+    ADIN KENDİSİ SAYIYLA BAŞLIYORSA "adet" ZORUNLU.
+
+    Sarrafiyede normalde "3 çeyrek altın" denir, "3 adet çeyrek altın"
+    değil. Ama ad gramaj taşıyorsa iki sayı yan yana geliyor ve okunuş
+    bozuluyor: "2 100 gram altın" gözde "2100 gram" olarak birleşiyor.
+    Bu, konuşma dilini üçüncü şahıs cümlesine de taşıyınca ortaya çıktı ve
+    testte yakalandı.
+  */
+  if (/^\d/.test(name)) return `${quantity} adet ${name}`;
   return isBullion(templateId) ? `${quantity} ${name}` : `${quantity} adet ${name}`;
 }
 
@@ -84,7 +99,17 @@ export function customerIntentLine(customer: Customer, items: ItemInstance[]): s
       if (!demand) return 'Dükkandan ürün almak istiyor';
 
       if (demand.templateId) {
-        const name = getTemplate(demand.templateId)?.displayName ?? demand.templateId;
+        /*
+          KONUŞMA DİLİ, KATALOG ADI DEĞİL — birinci ağızdaki cümleyle aynı
+          kaynak. Şeritte "22 Ayar Yatırım Bileziği (90 g) almak istiyor"
+          yazıyordu; müşteri karşılanınca aynı kişi "90 gram 22 ayar
+          işçiliksiz bilezik almak istiyorum" diyordu. Aynı talebin iki
+          farklı adı, oyuncuya iki farklı ürün gibi görünür.
+        */
+        const name =
+          SPOKEN_NAME[demand.templateId] ??
+          getTemplate(demand.templateId)?.displayName ??
+          demand.templateId;
         const phrase = countPhrase(name, demand.quantity, demand.templateId);
         const bulk = demand.isBulk ? 'toplu olarak ' : '';
         return `${bulk}${phrase} almak istiyor`;
@@ -136,6 +161,18 @@ const SPOKEN_NAME: Record<string, string> = {
   full_gold: 'tam altın',
   republic_gold: 'Cumhuriyet altını',
   ata_gold: 'Ata lira',
+  /*
+    UPDATEv3 §1 — müşteri KESİN GRAMAJ söyler:
+      "20 gram 22 ayar işçiliksiz bilezik almak istiyorum."
+    Sayıyla başladığı için `customerRequestLine` başına "bir" eklemez;
+    gram altınla aynı kural.
+
+    Kimlikler burada da elle yazılmaz: gramaj listesi tek kaynaktan gelir,
+    yani şablon eklenip cümlesi unutulamaz.
+  */
+  ...Object.fromEntries(
+    PLAIN_BRACELET_GRAMS.map((g) => [plainBraceletId(g), `${g} gram 22 ayar işçiliksiz bilezik`]),
+  ),
 };
 
 /**
@@ -149,6 +186,17 @@ const SPOKEN_NAME: Record<string, string> = {
  * için ikinci bir "bir" ("bir 5 gram altın") kulak tırmalar — o yüzden
  * yalnız ziynette eklenir.
  */
+/**
+ * Bir ürünün konuşma dilindeki adı — yoksa null.
+ *
+ * Dışa açık: testler cümledeki meşru sayıları (ürünün kendi gramajını)
+ * düşebilmek için bu listeye ihtiyaç duyuyor ve listeyi kopyalamak, ürün
+ * eklendiğinde testin sessizce yanlış pozitif üretmesi demekti.
+ */
+export function spokenNameOf(templateId: string): string | null {
+  return SPOKEN_NAME[templateId] ?? null;
+}
+
 export function customerRequestLine(demand: CustomerDemand): string {
   const templateId = demand.templateId;
   if (!templateId) return 'Bir şeye bakıyordum.';

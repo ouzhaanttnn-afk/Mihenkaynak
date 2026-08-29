@@ -2729,7 +2729,17 @@ function allLinesResolved(lines: DealLine[]): boolean {
  */
 function productKindOf(templateId: string): ProductKind {
   if (!isBullion(templateId)) return 'crafted';
-  return templateId.startsWith('gram_gold') || templateId === 'small_ingot'
+  /*
+    UPDATEv3 §1 — yatırım bileziği GRAM tarafında.
+
+    'coinBullion' deseydik ders "Ziynet altının gramajı ve ayarı
+    standarttır" derdi; bilezik ziynet değil, gramla anılan bir yatırım
+    ürünü. 'gramBullion' dersi de "24 ayar" diyor ve bilezik 22 ayar —
+    bu yüzden o dersin metni de düzeltildi (bkz. onboarding.ts fastFlow).
+  */
+  return templateId.startsWith('gram_gold') ||
+    templateId === 'small_ingot' ||
+    templateId.startsWith('bracelet_22k_plain')
     ? 'gramBullion'
     : 'coinBullion';
 }

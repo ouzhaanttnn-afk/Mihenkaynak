@@ -12,12 +12,13 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { customerIntentLine, customerRequestLine } from './intent-line';
+import { customerIntentLine, customerRequestLine, spokenNameOf } from './intent-line';
 import { customerBuyDemandPool } from '@domain/sales-catalog';
 import { spawnCustomer } from '@domain/customer-spawn';
-import { getTemplate } from '@data/item-templates';
+import { PLAIN_BRACELET_GRAMS, getTemplate, plainBraceletId } from '@data/item-templates';
 import { dayCharacter } from '@domain/intent';
 import { createMarketForDay } from '@domain/market';
+import type { CustomerDemand } from '@domain/types';
 import { START } from '@domain/balance';
 import type { Customer, ItemInstance, StoreState } from '@domain/types';
 
@@ -178,8 +179,16 @@ describe('niyet cümlesi gizli gerçeği sızdırmaz (GDD 6.6)', () => {
         fiyat sanıldı — ürünün kendi gramajıydı. Test yanlıştı, ürün değil.
       */
       if (c.demand?.templateId) {
+        /*
+          İKİ AD BİRDEN DÜŞÜLÜR: katalog adı ("Gram Altın (100 g)") ve
+          KONUŞMA DİLİNDEKİ ad ("100 gram altın"). Şerit cümlesi artık
+          ikincisini kullanıyor ve yalnız katalog adını düşmek, ürünün
+          kendi gramajını fiyat sanmaya geri döndürüyordu.
+        */
         const demandName = getTemplate(c.demand.templateId)?.displayName;
         if (demandName) rest = rest.split(demandName).join('');
+        const spoken = spokenNameOf(c.demand.templateId);
+        if (spoken) rest = rest.split(spoken).join('');
       }
       const demandQty = c.demand?.quantity;
       if (demandQty !== undefined) rest = rest.split(String(demandQty)).join('');
@@ -228,5 +237,59 @@ describe('satın alma cümlesi doğal Türkçedir', () => {
       expect(line.length, line).toBeGreaterThan(10);
       expect(line, line).toMatch(/almak istiyorum\.$/);
     });
+  });
+});
+
+// ===========================================================================
+
+/**
+ * Test talebi — TAM `CustomerDemand`.
+ *
+ * Kısmi bir nesneyi `as CustomerDemand` ile geçmek denendi ve typecheck
+ * haklı olarak reddetti: eksik alan (families, minQuantity, summary…)
+ * ileride cümleyi etkilemeye başlarsa test onu göremezdi. Yardımcı, gerçek
+ * sözleşmenin tamamını kurar.
+ */
+function braceletDemand(grams: number, quantity = 1): CustomerDemand {
+  return {
+    families: ['bullion'],
+    wantsBullion: true,
+    templateId: plainBraceletId(grams),
+    quantity,
+    isBulk: false,
+    acceptsPartial: false,
+    minQuantity: quantity,
+    summary: `${quantity} adet ${grams} g bilezik`,
+    alternativesLabel: '',
+  };
+}
+
+describe('UPDATEv3 §1 — bilezik talebinde KESİN GRAMAJ', () => {
+  it('müşteri gramajı söyler; belgedeki cümlenin aynısı çıkar', () => {
+    const line = customerRequestLine(braceletDemand(20, 1));
+
+    expect(line).toBe('20 gram 22 ayar işçiliksiz bilezik almak istiyorum.');
+  });
+
+  it('sayıyla başladığı için başına "bir" eklenmez', () => {
+    for (const g of PLAIN_BRACELET_GRAMS) {
+      const line = customerRequestLine(braceletDemand(g, 1));
+      expect(line.startsWith('Bir '), `${g} g cümlesi "Bir" ile başlıyor`).toBe(false);
+      expect(line).toContain(`${g} gram`);
+    }
+  });
+
+  it('çoklu adette "adet" ile sayılır — gramaj adın parçası kalır', () => {
+    const line = customerRequestLine(braceletDemand(30, 2));
+
+    expect(line).toBe('2 adet 30 gram 22 ayar işçiliksiz bilezik almak istiyorum.');
+  });
+
+  it('her gramajın kendi cümlesi vardır — şablon eklenip cümlesi unutulamaz', () => {
+    for (const g of PLAIN_BRACELET_GRAMS) {
+      const line = customerRequestLine(braceletDemand(g, 1));
+      // Katalog adına ("22 Ayar Yatırım Bileziği (20 g)") düşmüş olmamalı.
+      expect(line, `${g} g katalog adına düşmüş`).not.toContain('Yatırım Bileziği');
+    }
   });
 });
