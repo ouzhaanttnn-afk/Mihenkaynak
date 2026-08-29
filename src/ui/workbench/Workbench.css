@@ -1056,6 +1056,146 @@
   white-space: nowrap;
 }
 
+/* ---- Bekleyen müşteri kuyruğu — FIFO sırasını görünür kılan kompakt liste ---- */
+
+.waitingQueue {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.waitingQueue__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-dark-2);
+}
+
+.waitingQueue__head h3 {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.waitingQueue__head span {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+.waitingQueue__list {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.waitingCustomer {
+  flex: 0 0 auto;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-dark);
+  background: rgba(8, 11, 15, 0.45);
+}
+
+.waitingCustomer--next {
+  border-color: var(--brass-700);
+  background: linear-gradient(90deg, rgba(215, 170, 74, 0.11), rgba(8, 11, 15, 0.52));
+}
+
+.waitingCustomer__avatar {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--brass-700);
+  overflow: hidden;
+}
+
+.waitingCustomer__initial {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--brass-400);
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+}
+
+.waitingCustomer__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.waitingCustomer__identity,
+.waitingCustomer__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.waitingCustomer__identity strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dark-1);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waitingCustomer__identity > span {
+  flex: 0 0 auto;
+  color: var(--brass-400);
+  font-size: var(--fs-micro);
+}
+
+.waitingCustomer__body p {
+  overflow: hidden;
+  color: var(--text-dark-2);
+  font-size: var(--fs-micro);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waitingCustomer__meta {
+  margin-top: 2px;
+  color: var(--text-dark-3);
+  font-size: var(--fs-micro);
+}
+
+.waitingCustomer__greet {
+  flex: 0 0 auto;
+  min-width: 68px;
+  min-height: var(--touch-min);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--brass-600);
+  border-radius: var(--r-pill);
+  background: var(--surface-brass);
+  color: #241a06;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+}
+
+@media (max-height: 720px) {
+  .waitingCustomer {
+    min-height: 56px;
+  }
+
+  .waitingCustomer__meta {
+    display: none;
+  }
+}
+
 /* En fazla 3 kompakt uyarı satırı; ayrı büyük kartlar kullanılmaz. */
 .alerts {
   display: flex;

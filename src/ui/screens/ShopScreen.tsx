@@ -22,6 +22,7 @@ import { effectiveCeiling, suggestedChannel } from '@domain/thesis';
 import { isTerminal } from '@domain/negotiation';
 import { liquidityRatio } from '@domain/settlement';
 import { toolsForLevel } from '@data/tools';
+import { getArchetype } from '@data/archetypes';
 import { getServiceType } from '@data/service-types';
 import { expectedCompletionDay, findQuote } from '@domain/service';
 import { activeLine, canEnterStage, selectors, useGame } from '@state/gameStore';
@@ -35,7 +36,7 @@ import {
 import { isBullion } from '@data/bullion';
 import { CLASS_LABEL, flowPolicy, isToolRelevant, transactionClass } from '@domain/transaction-class';
 
-import { CustomerStrip } from '@ui/shell/CustomerStrip';
+import { CustomerStrip, PatienceDots } from '@ui/shell/CustomerStrip';
 import { DecisionDock } from '@ui/shell/DecisionDock';
 import { MarketStrip } from '@ui/shell/MarketStrip';
 import { CoachBar } from '@ui/shell/CoachBar';
@@ -89,7 +90,8 @@ import {
   IconWorkshop,
 } from '@ui/icons';
 import { Art } from '@ui/Art';
-import { NAV_ART } from '@ui/assets';
+import { customerArt, NAV_ART } from '@ui/assets';
+import { customerIntentLine } from '@ui/intent-line';
 import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
 import { offerUnitLabel } from '@ui/offer-view';
 import type {
@@ -432,7 +434,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
   }
 
   const nextIn = Math.max(0, Math.round(s.nextCustomerAtMinutes - s.market.clockMinutes));
-  if (alerts.length < 3) {
+  if (alerts.length < 3 && s.queue.length === 0) {
     alerts.push({
       key: 'schedule',
       title:
@@ -511,6 +513,8 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         </span>
       </button>
 
+      {s.queue.length > 0 && <WaitingCustomerQueue />}
+
       <div className="alerts">
         {alerts.slice(0, 3).map(({ key, title, detail, tone, Icon }) => (
           <div key={key} className={`alert alert--${tone}`}>
@@ -537,6 +541,64 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * Bekleme kuyruğu mevcut FIFO davranışını görünür kılar. Yalnız ilk müşteri
+ * karşılanabilir; sonraki kartlar sırayı bozacak sahte bir eylem sunmaz.
+ */
+function WaitingCustomerQueue() {
+  const queue = useGame((s) => s.queue);
+  const greetCustomer = useGame((s) => s.greetCustomer);
+
+  return (
+    <section className="waitingQueue" aria-labelledby="waiting-queue-title">
+      <div className="waitingQueue__head">
+        <h3 id="waiting-queue-title">Bekleyen Müşteriler</h3>
+        <span>{queue.length}/3</span>
+      </div>
+
+      <div className="waitingQueue__list">
+        {queue.map(({ customer, items }, index) => {
+          const archetype = getArchetype(customer.archetype);
+          const isNext = index === 0;
+
+          return (
+            <article
+              key={customer.id}
+              className={`waitingCustomer ${isNext ? 'waitingCustomer--next' : ''}`}
+            >
+              <Art
+                art={customerArt(customer.displayName)}
+                size={42}
+                decorative
+                className="waitingCustomer__avatar art--portrait"
+                fallback={<span className="waitingCustomer__initial">{customer.displayName[0]}</span>}
+              />
+
+              <div className="waitingCustomer__body">
+                <div className="waitingCustomer__identity">
+                  <strong>{customer.displayName}</strong>
+                  <span>{isNext ? 'Şimdi' : `${index + 1}. sırada`}</span>
+                </div>
+                <p>{customerIntentLine(customer, items)}</p>
+                <div className="waitingCustomer__meta">
+                  <span>{archetype.demeanor}</span>
+                  <PatienceDots value={customer.patience} max={customer.patienceMax} />
+                </div>
+              </div>
+
+              {isNext && (
+                <button type="button" className="waitingCustomer__greet" onClick={greetCustomer}>
+                  Karşıla
+                </button>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
