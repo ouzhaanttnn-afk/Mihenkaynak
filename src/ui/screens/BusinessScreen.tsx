@@ -529,7 +529,19 @@ function WholesalerRoute({ onBack }: { onBack: () => void }) {
 function SupplyRow({ probe, today }: { probe: ItemInstance; today: number }) {
   const s = useGame();
   const suggested = affordableQuantity(probe, s.market, s.store);
-  const [quantity, setQuantity] = useState(suggested);
+  /*
+    VARSAYILAN 1 — eskiden ALINABİLECEK AZAMİ adetti (saha defteri B8).
+
+    Oynanışta ölçüldü: bu ekranın ilk satırı "Gram Altın (1 g) · 192.015 ₺"
+    diye açılıyor ve "Al" düğmesi hemen yanında duruyordu. Yeni bir oyuncunun
+    gördüğü ilk rakam buydu; tek dokunuşla sermayenin beşte biri gidiyordu.
+
+    Üstelik aynı ürünler Stok → Sarrafiye Al ekranında 1'den başlıyor. Aynı
+    malı satan iki ekranın farklı varsayılanı olması, hangisinin doğru
+    olduğunu oyuncuya sordurur. Azami adet bilgisi satırda zaten yazılı;
+    isteyen oraya kendisi çıkar.
+  */
+  const [quantity, setQuantity] = useState(1);
 
   const lot = supplyOffer(probe, quantity, s.market, s.store);
   if (!lot) return null;

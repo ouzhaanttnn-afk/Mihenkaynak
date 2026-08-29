@@ -10,7 +10,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useGame } from './gameStore';
-import { supplierCounterIds } from '@domain/sales-catalog';
+import { customerBuyDemandPool, supplierCounterIds } from '@domain/sales-catalog';
+import { START } from '@domain/balance';
 
 /** Stoğa gerçek bir kalem koyar — uydurma pozisyon enjekte edilmez. */
 function stockOneItem(): string {
@@ -70,15 +71,30 @@ describe('moveStock — konum değişikliği işlem DEĞİLDİR', () => {
     const s = useGame.getState();
     const templateId = supplierCounterIds(s.store.storeTier)[0]!;
 
+    /*
+      KONUM + ŞABLONA GÖRE ARANIR, "yeni kalem"e göre değil.
+
+      İki varsayım birden çürüdü: oyun artık boş dükkânla başlamıyor
+      (açılış vitrini) ve `resetGame` yalnız kaydı siliyor, bellekteki
+      durumu sıfırlamıyor — yani aynı dosyadaki önceki testlerin aldığı
+      mallar duruyor ve yeni alım onlara BİRLEŞİYOR. Yeni bir itemId
+      aramak bu yüzden boş dönüyordu.
+    */
+    const ofTemplate = (loc: 'display' | 'backStock') =>
+      useGame
+        .getState()
+        .inventory.filter(
+          (p) => p.location === loc && useGame.getState().items[p.itemId]?.templateId === templateId,
+        );
+
     s.buyFromWholesaler(templateId, 2);
-    const first = useGame.getState().inventory[0]!;
-    useGame.getState().moveStock(first.itemId, 'display');
+    const first = ofTemplate('backStock')[0];
+    expect(first, 'alım arka stoğa düşmedi').toBeDefined();
+    useGame.getState().moveStock(first!.itemId, 'display');
 
     // İkinci alım arka stoğa düşer: aynı ürün, farklı konum → ayrı yığın.
     useGame.getState().buyFromWholesaler(templateId, 3);
-    const back = useGame
-      .getState()
-      .inventory.find((p) => p.location === 'backStock' && p.itemId !== first.itemId);
+    const back = ofTemplate('backStock')[0];
     expect(back, 'ikinci alım arka stoğa düşmedi').toBeDefined();
 
     const totalBefore = useGame.getState().inventory.reduce((n, p) => n + p.quantity, 0);
@@ -87,8 +103,9 @@ describe('moveStock — konum değişikliği işlem DEĞİLDİR', () => {
     useGame.getState().moveStock(back!.itemId, 'display');
 
     const inv = useGame.getState().inventory;
-    const onDisplay = inv.filter((p) => p.location === 'display');
-    expect(onDisplay).toHaveLength(1);
+    // Bu şablonun vitrindeki yığını TEK olmalı; açılış vitrinindeki diğer
+    // ürünler sayılmaz, onlar farklı yığınlar.
+    expect(ofTemplate('display')).toHaveLength(1);
     // Adet ve maliyet KORUNUR — birleşme kaybetmez.
     expect(inv.reduce((n, p) => n + p.quantity, 0)).toBe(totalBefore);
     expect(inv.reduce((n, p) => n + p.costBasis, 0)).toBeCloseTo(costBefore, 6);
@@ -169,5 +186,51 @@ describe('§8 — satış rotası yalnız gezinmedir', () => {
     useGame.getState().openBusinessRoute('network');
     useGame.getState().consumeBusinessRoute();
     expect(useGame.getState().pendingBusinessRoute).toBeNull();
+  });
+});
+
+// ===========================================================================
+// SAHA DEFTERİ B9 — açılış vitrini
+// ===========================================================================
+
+describe('Dükkân boş açılmaz ama servet de değişmez', () => {
+  it('yeni oyunda vitrinde mal vardır', () => {
+    /*
+      Ölçüldü: on yeni oyunun ikisinde ilk müşteri "almak istiyorum" dedi ve
+      stok sıfırdı. Oyuncunun ilk eylemi müşteriyi geri çevirmek oluyordu.
+    */
+    const s = useGame.getState();
+    const vitrin = s.inventory.filter((p) => p.location === 'display');
+    expect(vitrin.length, 'açılış vitrini boş').toBeGreaterThan(0);
+    expect(vitrin.reduce((n, p) => n + p.quantity, 0)).toBeGreaterThan(0);
+  });
+
+  it('mal BEDAVA değil — bedeli başlangıç nakdinden düşülmüş', () => {
+    /*
+      Açılış stoğu sermayeyi ARTIRMAZ, biçimini değiştirir. Nakit + stok
+      maliyeti, eski başlangıç nakdine eşit kalmalı; aksi hâlde oyuncuya
+      sessizce para verilmiş olurdu.
+    */
+    const s = useGame.getState();
+    const stokMaliyeti = s.inventory.reduce((n, p) => n + p.costBasis, 0);
+    expect(s.store.cash + stokMaliyeti).toBeCloseTo(START.cash, 0);
+    expect(s.store.cash).toBeLessThan(START.cash);
+  });
+
+  it('açılış malı SATILABİLİR kataloğun içindedir', () => {
+    // Satılamayacak bir malla başlamak, ilk günü çözümsüz kılardı.
+    const s = useGame.getState();
+    const havuz = customerBuyDemandPool(s.store.storeTier);
+    for (const p of s.inventory) {
+      const templateId = s.items[p.itemId]?.templateId;
+      expect(havuz, `${templateId} satılabilir katalogda yok`).toContain(templateId);
+    }
+  });
+
+  it('açılış stoğu defterde İŞLEM olarak görünmez', () => {
+    // Kepenk açmak bir alım değildir; gerçekleşmiş kâr ve işlem sayısı sıfır.
+    const s = useGame.getState();
+    expect(s.ledger.realizedProfitTotal).toBe(0);
+    expect(s.ledger.deals).toHaveLength(0);
   });
 });

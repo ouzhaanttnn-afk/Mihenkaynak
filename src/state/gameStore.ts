@@ -514,6 +514,70 @@ function createInitialStore(): StoreState {
   };
 }
 
+/**
+ * AÇILIŞ VİTRİNİ — dükkân boş açılmaz (saha defteri B9).
+ *
+ * Oynanışta ölçüldü: oyun sıfır stokla başlıyor ve ilk müşteri bir ALIŞ
+ * müşterisi olabiliyor. On yeni oyun denendi, ikisinde ilk müşteri
+ * "10 gram altın almak istiyorum" dedi. Oyuncunun oyundaki ilk eylemi
+ * müşteriyi geri çevirmek oluyordu.
+ *
+ * SERVET DEĞİŞMEZ: mal bedava verilmez, başlangıç nakdinden DÜŞÜLÜR.
+ * Oyuncu aynı sermayeyle başlar, yalnız bir kısmı vitrinde durur — gerçek
+ * bir kuyumcunun kepenk açtığı hâl. Ekonomiye eklenen tek şey bu değil,
+ * sadece o sermayenin biçimi.
+ *
+ * Ürünler satış kataloğundan gelir, elle yazılmaz: katalog değişirse vitrin
+ * de değişir ve satılamayacak bir mal stoğa düşmez.
+ */
+function openingStock(
+  restored: ReturnType<typeof readSave>,
+  seed: number,
+  market: MarketState,
+): Pick<GameState, 'store' | 'inventory' | 'items'> {
+  const store = createInitialStore();
+  // Kayıttan gelen oyun kendi stoğunu taşır; açılış vitrini yalnız YENİ oyuna.
+  if (restored) return { store, inventory: [], items: {} };
+
+  const plan: { templateId: string; quantity: number }[] = [
+    { templateId: 'quarter_gold', quantity: 4 },
+    { templateId: 'half_gold', quantity: 2 },
+    { templateId: 'gram_gold_5', quantity: 2 },
+  ];
+
+  const items: Record<string, ItemInstance> = {};
+  const inventory: InventoryPosition[] = [];
+  let spent = 0;
+
+  plan.forEach((row, i) => {
+    const probe = spawnItem(seed, 900_100 + i, row.templateId);
+    // Maliyet piyasadan türer; uydurma bir alış fiyatı yazılmaz.
+    const unit = Math.round(trueValue(probe, market));
+    if (unit <= 0) return;
+
+    const total = unit * row.quantity;
+    spent += total;
+    items[probe.id] = { ...probe, buyCost: total, location: 'display' };
+    inventory.push({
+      itemId: probe.id,
+      quantity: row.quantity,
+      costBasis: total,
+      currentValue: total,
+      age: 0,
+      demand: 'steady',
+      thesis: null,
+      location: 'display',
+      expectedExitValues: {},
+    });
+  });
+
+  return {
+    store: { ...store, cash: Math.max(0, store.cash - spent) },
+    inventory,
+    items,
+  };
+}
+
 /** Yeni oyun için deterministik kök seed. */
 function freshSeed(): number {
   // Yeni oyun başlatılırken bir kez seçilir ve kaydedilir; oturum boyunca
@@ -532,9 +596,7 @@ export const useGame = create<GameState>((set, get) => {
     seed,
     spawnCounter: 0,
     market,
-    store: createInitialStore(),
-    inventory: [],
-    items: {},
+    ...openingStock(restored, seed, market),
     ledger: createLedger(),
 
     tab: 'shop',
