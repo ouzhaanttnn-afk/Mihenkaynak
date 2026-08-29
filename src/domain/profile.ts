@@ -15,10 +15,19 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-/** Asetv2 paketindeki 11 portre. Sıra paketin manifest.json sırasıdır. */
+/**
+ * Seçilebilir portreler. Sıra paketlerin kendi manifest sırasıdır:
+ * önce Asetv2'nin 11 erkek portresi, sonra V3 paketinin 6 kadın portresi.
+ *
+ * LİSTEYE EKLEME YAPILIR, SIRA DEĞİŞTİRİLMEZ: kayıtta duran avatar bir
+ * KİMLİKtir, indeks değil — ama yine de mevcut kimlikleri yerinde tutmak,
+ * bir gün indeks tabanlı bir şey yazılırsa eski oyuncunun yüzünün sessizce
+ * değişmesini önler.
+ */
 export const AVATAR_IDS = [
   'male-01', 'male-02', 'male-03', 'male-04', 'male-05', 'male-06',
   'male-07', 'male-08', 'male-09', 'male-10', 'male-11',
+  'female-01', 'female-02', 'female-03', 'female-04', 'female-05', 'female-06',
 ] as const;
 
 export type AvatarId = (typeof AVATAR_IDS)[number];

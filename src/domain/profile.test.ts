@@ -72,10 +72,32 @@ describe('kuyumcu adı doğrulaması', () => {
 });
 
 describe('avatar kimliği', () => {
-  it('paket 11 karakter içerir ve varsayılan male-01’dir', () => {
-    expect(AVATAR_IDS).toHaveLength(11);
+  it('iki paketin portrelerini de taşır ve varsayılan male-01’dir', () => {
+    // Asetv2'nin 11 erkek portresi + V3 paketinin 6 kadın portresi.
+    expect(AVATAR_IDS).toHaveLength(17);
+    expect(AVATAR_IDS.filter((id) => id.startsWith('male-'))).toHaveLength(11);
+    expect(AVATAR_IDS.filter((id) => id.startsWith('female-'))).toHaveLength(6);
+    // Varsayılan DEĞİŞMEDİ: yeni portreler eklemek, hiç seçim yapmamış
+    // eski bir oyuncunun yüzünü değiştirmemeli.
     expect(AVATAR_IDS[0]).toBe('male-01');
     expect(DEFAULT_AVATAR_ID).toBe('male-01');
+  });
+
+  it('kimlikler benzersizdir', () => {
+    expect(new Set(AVATAR_IDS).size).toBe(AVATAR_IDS.length);
+  });
+
+  it('her kimliğin dosyası vardır', async () => {
+    /*
+      Listeye bir kimlik yazıp dosyasını koymayı unutmak, seçim ızgarasında
+      SESSİZCE kırık bir görsel bırakır — ne derleyici ne çalışma zamanı
+      şikâyet eder. Kayıt defteri ile diskin aynı şeyi söylediği burada
+      denetlenir.
+    */
+    const { existsSync } = await import('node:fs');
+    for (const id of AVATAR_IDS) {
+      expect(existsSync(`public/assets/characters/${id}.webp`), `${id}.webp yok`).toBe(true);
+    }
   });
 
   it('bilinen kimlikleri korur', () => {
@@ -83,7 +105,9 @@ describe('avatar kimliği', () => {
   });
 
   it('bilinmeyen / bozuk kimliği varsayılana çeker — çökmez', () => {
-    for (const bad of ['female-01', 'male-99', '', null, undefined, 42, {}]) {
+    // NOT: 'female-01' eskiden burada geçersiz örnekti; V3 paketiyle
+    // gerçek bir kimlik oldu ve test bunu doğru yakaladı.
+    for (const bad of ['female-99', 'male-99', '', null, undefined, 42, {}]) {
       expect(normalizeAvatarId(bad)).toBe(DEFAULT_AVATAR_ID);
     }
   });
