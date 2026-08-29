@@ -1204,8 +1204,14 @@
 .idle__art {
   flex: 0 0 auto;
   width: auto;
-  max-width: 64px;
-  height: 56px;
+  /*
+   * 56 → 64 px'e geri alındı. §7'nin 72-88 px'lik kimlik bandı 64 px'lik
+   * görselle de tutuyor (64 + dolgu ≈ 72); asıl yer kazancı dikey
+   * ortalamanın kalkmasından ve başlığın küçülmesinden geldi, görselin
+   * kırpılmasından değil. Dükkânın kimlik görseli o ekranın tek markası.
+   */
+  max-width: 72px;
+  height: 64px;
 }
 
 .idle__headText {

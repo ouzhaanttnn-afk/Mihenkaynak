@@ -1167,10 +1167,21 @@
   background: var(--ink-800);
 }
 
+/*
+ * PORTRE 48 → 88 px.
+ *
+ * Paketin README'si portreleri 72-160 px'lik dairesel avatar için
+ * hazırlıyor; 48 px o bandın altındaydı ve yüz tanınmıyordu. Kartın altında
+ * zaten boş alan var (operasyon alanı içeriği kadar yer tutuyor), yani
+ * büyütmek hiçbir şeyi aşağı itmiyor.
+ *
+ * NOT: <Art> `size` propunu width/height ÖZNİTELİĞİ olarak yazar, bu kural
+ * onu ezer — ikisi ayrışmasın diye JSX'teki size da 88'e çekildi.
+ */
 .op__avatar {
   flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
+  width: 88px;
+  height: 88px;
   border-radius: var(--r-pill);
   border: 1px solid var(--brass-700);
   background: linear-gradient(160deg, var(--ink-600), var(--ink-900));
@@ -1182,7 +1193,7 @@
 
 .op__initial {
   font-family: var(--font-display);
-  font-size: var(--fs-body);
+  font-size: var(--fs-title);
   font-weight: var(--fw-semibold);
   color: var(--brass-400);
 }
@@ -1253,6 +1264,19 @@
 
   .op {
     padding: var(--sp-2) var(--sp-3);
+  }
+
+  /*
+   * Kısa ekranda portre 88 → 72 px.
+   *
+   * Dar olan durum SAKİN durumdur (video CTA'sı + açıklama satırı) ve orada
+   * portre zaten yok. Bekleyen müşteri kartı 390 × 600'de ölçüldü: 72 px'lik
+   * portreyle 98 px tutuyor, Karar Dock'una 60 px kalıyor. 72, paketin
+   * portre bandının (72-160 px) tam alt ucu.
+   */
+  .op__avatar {
+    width: 72px;
+    height: 72px;
   }
 }
 
