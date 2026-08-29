@@ -19,6 +19,7 @@ import { StockScreen } from '@ui/screens/StockScreen';
 import { WorkshopScreen } from '@ui/screens/WorkshopScreen';
 import { MarketPlaceholderScreen } from '@ui/screens/MarketPlaceholderScreen';
 import { ProfileDialog } from '@ui/shell/ProfileDialog';
+import { overdueJobs, readyJobs } from '@domain/service';
 
 import '@ui/tokens.css';
 import '@ui/shell/AppShell.css';
@@ -34,6 +35,13 @@ export function App() {
   const profileOpen = useGame((s) => s.profileOpen);
   const closeProfile = useGame((s) => s.closeProfile);
   const updateProfile = useGame((s) => s.updateProfile);
+  const workshopAttention = useGame((s) => {
+    const ids = new Set([
+      ...readyJobs(s.jobs).map((job) => job.jobId),
+      ...overdueJobs(s.jobs, s.market.day).map((job) => job.jobId),
+    ]);
+    return ids.size;
+  });
 
   // Toast'lar kısa geri bildirimdir; kendiliğinden kapanır.
   useEffect(() => {
@@ -56,7 +64,7 @@ export function App() {
           {tab === 'business' && <BusinessScreen />}
         </div>
 
-        <BottomNav active={tab} onSelect={setTab} />
+        <BottomNav active={tab} onSelect={setTab} workshopBadge={workshopAttention} />
 
         {/*
           Profil penceresi CİHAZ SEVİYESİNDE: ekranın değil, çerçevenin

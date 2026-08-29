@@ -25,9 +25,10 @@ const ROOTS: { id: RootTab; label: string; Icon: typeof IconShop }[] = [
 interface Props {
   active: RootTab;
   onSelect: (tab: RootTab) => void;
+  workshopBadge?: number;
 }
 
-export function BottomNav({ active, onSelect }: Props) {
+export function BottomNav({ active, onSelect, workshopBadge = 0 }: Props) {
   return (
     <nav className="bottomNav" aria-label="Ana navigasyon">
       {ROOTS.map(({ id, label, Icon }) => (
@@ -39,6 +40,11 @@ export function BottomNav({ active, onSelect }: Props) {
           aria-current={active === id ? 'page' : undefined}
         >
           <Icon size={21} />
+          {id === 'workshop' && workshopBadge > 0 && (
+            <span className="bottomNav__badge" aria-label={`${workshopBadge} teslim bekleyen iş`}>
+              {Math.min(9, workshopBadge)}
+            </span>
+          )}
           <span className="bottomNav__label">{label}</span>
         </button>
       ))}

@@ -6,7 +6,7 @@
  */
 
 import { SPEED_STEPS, type SpeedStep } from '@domain/balance';
-import { IconLock, IconPencil, IconVideo, BrandMark } from '@ui/icons';
+import { IconLock, IconPencil, BrandMark } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { avatarArt } from '@ui/assets';
 import { clock, tlBare } from '@ui/format';
@@ -110,9 +110,9 @@ export function StatusStrip({
 }
 
 /**
- * GDD 26.2 — "1x/2x temel erişimdir; 4x isteğe bağlı rewarded video ile
- * geçici açılır." Rewarded CTA'da oyun içi fayda adı kullanılır ve video
- * gerekliliği küçük bir simgeyle belirtilir.
+ * 1x/2x temel erişimdir; 4x isteğe bağlı açılır. Bu prototip gerçek bir
+ * reklam sağlayıcısına bağlı olmadığı için arayüz "video izle" iddiasında
+ * bulunmaz; kilit yalnız hızın henüz açılmadığını anlatır.
  */
 function SpeedControl({
   speed,
@@ -144,11 +144,11 @@ function SpeedControl({
               .join(' ')}
             onClick={() => (isLocked ? onUnlock() : onSpeed(step))}
             aria-pressed={isActive}
-            aria-label={isLocked ? `${step}x hızı aç — video izle` : `${step}x hız`}
-            title={isLocked ? `${step}x Hızı Aç · video` : `${step}x hız`}
+            aria-label={isLocked ? `${step}x hızı aç` : `${step}x hız`}
+            title={isLocked ? `${step}x Hızı Aç` : `${step}x hız`}
           >
             {step}x
-            {isLocked && (unlocked ? <IconLock size={9} /> : <IconVideo size={10} />)}
+            {isLocked && <IconLock size={9} />}
           </button>
         );
       })}

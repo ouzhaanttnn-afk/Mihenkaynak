@@ -829,6 +829,7 @@ export const useGame = create<GameState>((set, get) => {
 
       set({
         ...economyToState({ ...outcome.state, items, ledger }),
+        toasts: s.toasts.filter((toast) => !toast.text.includes('servis işi teslime hazır')),
         jobs: s.jobs.map((j) =>
           j.jobId === jobId ? { ...j, result: 'delivered' as const } : j,
         ),
@@ -1237,6 +1238,13 @@ export const useGame = create<GameState>((set, get) => {
     // -----------------------------------------------------------------------
     finishDeal: () => {
       const s = get();
+      if (
+        s.activeDeal?.flow === 'purchase' &&
+        s.activeDeal.purchase &&
+        s.activeDeal.purchase.lines.length === 0
+      ) {
+        pushToast(set, get, 'Talep karşılanamadı · stok ve nakit değişmedi.', 'info');
+      }
       // GDD 10.2 — ziyaret KAPANIRKEN deftere yazılır. İşlem içinde oynayan
       // güveni kaydetmeden müşteriyi göndermek, güveni ekonomik varlık değil
       // geçici bir sayı yapardı (GDD 10).

@@ -445,10 +445,19 @@ function deriveCounter(
   // Müşteri oyuncunun teklifine kısmen yaklaşır — ama asla eşiği geçmez.
   const meetInMiddle = anchored - (anchored - playerOffer) * 0.18;
 
-  if (sign === 1) {
-    return Math.max(threshold, Math.round(Math.max(meetInMiddle, playerOffer)));
+  const derived = sign === 1
+    ? Math.max(threshold, Math.round(Math.max(meetInMiddle, playerOffer)))
+    : Math.min(threshold, Math.round(Math.min(meetInMiddle, playerOffer)));
+
+  // Aynı pazarlık durumunda oyuncu müşteriye yaklaşırken karşı tarafın
+  // rakamı ters yöne kaçamaz. Sertleşme/son teklif durum geçişleri bu
+  // korumanın dışındadır; orada değişimin nedeni ekranda açıkça görünür.
+  if (session.activeCounter !== null && session.state === state) {
+    return sign === 1
+      ? Math.min(session.activeCounter, derived)
+      : Math.max(session.activeCounter, derived);
   }
-  return Math.min(threshold, Math.round(Math.min(meetInMiddle, playerOffer)));
+  return derived;
 }
 
 // ---------------------------------------------------------------------------

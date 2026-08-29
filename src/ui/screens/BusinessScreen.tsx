@@ -29,8 +29,10 @@ import { marketSignals } from '@domain/overnight';
 import { registrySummary } from '@domain/customer-memory';
 import { evaluateUpgrade, growthSnapshot } from '@domain/store-growth';
 import { intentAlarm } from '@domain/intent';
-import { isBullion } from '@data/bullion';
+import { bullionMeta, isBullion } from '@data/bullion';
+import { TEST_TOOLS } from '@data/tools';
 import { spawnItem } from '@domain/item-spawn';
+import { readSaveSummary } from '@state/save';
 import {
   creditLimit,
   creditTermDays,
@@ -81,7 +83,7 @@ export function BusinessScreen() {
   if (route === 'wholesaler') return <WholesalerRoute onBack={() => setRoute('root')} />;
   if (route === 'network') return <NetworkRoute onBack={() => setRoute('root')} />;
   if (route === 'store') return <StoreRoute onBack={() => setRoute('root')} />;
-  if (route === 'career') return <ComingSoonRoute title="Kariyer / Yetenekler" onBack={() => setRoute('root')} />;
+  if (route === 'career') return <CareerRoute onBack={() => setRoute('root')} />;
   if (route === 'save') return <SaveRoute onBack={() => setRoute('root')} />;
   return <BusinessRoot onOpen={setRoute} />;
 }
@@ -190,7 +192,7 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
             />
             <StatLine
               label="Tedarik limiti"
-              value={`${tl(s.store.supplier.limit)} · ${s.store.supplier.terms} gün vade`}
+              value={`${tl(Math.max(0, creditLimit(s.store) - usedLimit(s.store.supplier)))} kullanılabilir · ${creditTermDays(s.store)} gün vade`}
             />
           </div>
         </div>
@@ -248,20 +250,41 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
   );
 }
 
-function ComingSoonRoute({ title, onBack }: { title: string; onBack: () => void }) {
+function CareerRoute({ onBack }: { onBack: () => void }) {
+  const s = useGame();
+  const progress = Math.min(100, Math.round((s.store.xp / Math.max(1, s.store.xpToNext)) * 100));
   return (
     <div className="page">
       <header className="pageHead">
         <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
           ← İşletme
         </button>
-        <h1 className="pageHead__title">{title}</h1>
-        <p className="pageHead__sub">Yakında</p>
+        <h1 className="pageHead__title">Kariyer / Yetenekler</h1>
+        <p className="pageHead__sub">Seviye {s.store.level} · uzmanlık ilerlemesi</p>
       </header>
-      <div className="empty">
-        <span className="empty__icon"><IconBusiness size={30} /></span>
-        <h2 className="empty__title">Bu bölüm hazırlanıyor</h2>
-        <p className="empty__text">İlerleme ve yetenek ayrıntıları burada yer alacak.</p>
+      <div className="page__scroll">
+        <div className="group">
+          <h2 className="group__title">Seviye ilerlemesi</h2>
+          <div className="group__body">
+            <StatLine label="XP" value={`${s.store.xp} / ${s.store.xpToNext}`} />
+            <div className="careerProgress" aria-label={`Seviye ilerlemesi yüzde ${progress}`}>
+              <span style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+        </div>
+        <div className="group">
+          <h2 className="group__title">Araç yol haritası</h2>
+          <div className="group__body">
+            {TEST_TOOLS.map((tool) => (
+              <StatLine
+                key={tool.id}
+                label={tool.name}
+                value={tool.unlockLevel <= s.store.level ? 'Açık' : `Seviye ${tool.unlockLevel}`}
+                tone={tool.unlockLevel <= s.store.level ? 'positive' : undefined}
+              />
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -271,9 +294,11 @@ function SaveRoute({ onBack }: { onBack: () => void }) {
   const s = useGame();
   const [confirmLoad, setConfirmLoad] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
+  const [saved, setSaved] = useState(() => readSaveSummary());
 
   const save = () => {
     const ok = s.saveGame();
+    if (ok) setSaved(readSaveSummary());
     setLastAction(ok ? `Kaydedildi · Gün ${s.market.day}, ${clock(s.market.clockMinutes)}` : 'Kayıt oluşturulamadı.');
   };
 
@@ -297,6 +322,21 @@ function SaveRoute({ onBack }: { onBack: () => void }) {
             <StatLine label="Gün / Saat" value={`${s.market.day}. gün · ${clock(s.market.clockMinutes)}`} />
             <StatLine label="Nakit" value={tl(s.store.cash)} />
             <button type="button" className="cta" onClick={save}>Şimdi Kaydet</button>
+          </div>
+        </div>
+        <div className="group">
+          <h2 className="group__title">Son kayıt</h2>
+          <div className="group__body">
+            {saved ? (
+              <>
+                <StatLine label="Gün / Saat" value={`${saved.day}. gün · ${clock(saved.clockMinutes)}`} />
+                <StatLine label="Nakit / Stok" value={`${tl(saved.cash)} · ${saved.stockUnits} adet`} />
+                <StatLine
+                  label="Kayıt zamanı"
+                  value={saved.savedAt ? new Date(saved.savedAt).toLocaleString('tr-TR') : 'Eski kayıt'}
+                />
+              </>
+            ) : <p className="emptyNote">Henüz kayıt yok.</p>}
           </div>
         </div>
         <div className="group">
@@ -502,12 +542,25 @@ function WholesalerRoute({ onBack }: { onBack: () => void }) {
 function SupplyRow({ probe, today }: { probe: ItemInstance; today: number }) {
   const s = useGame();
   const suggested = affordableQuantity(probe, s.market, s.store);
-  const [quantity, setQuantity] = useState(suggested);
+  // Güvenli varsayılan: oyuncu açıkça artırmadıkça tek adet satın alınır.
+  const [quantity, setQuantity] = useState(1);
+  const [confirming, setConfirming] = useState(false);
 
   const lot = supplyOffer(probe, quantity, s.market, s.store);
   if (!lot) return null;
 
   const terms = financeTerms(s.store, lot.total, today);
+  const expensive = lot.total >= Math.max(100_000, Math.round(s.store.cash * 0.2));
+
+  const buy = () => {
+    if (expensive && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    s.buyFromWholesaler(lot.templateId, lot.quantity);
+    setConfirming(false);
+    setQuantity(1);
+  };
 
   return (
     <div className="lotRow">
@@ -537,23 +590,35 @@ function SupplyRow({ probe, today }: { probe: ItemInstance; today: number }) {
             min={1}
             max={lot.maxQuantity}
             value={quantity}
-            onChange={(e) => setQuantity(Number(e.target.value))}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setQuantity(Number.isFinite(next) ? Math.min(lot.maxQuantity, Math.max(1, next)) : 1);
+              setConfirming(false);
+            }}
           />
         </label>
         {suggested !== quantity && suggested > 0 && (
-          <button type="button" className="miniBtn" onClick={() => setQuantity(suggested)}>
+          <button type="button" className="miniBtn" onClick={() => {
+            setQuantity(suggested);
+            setConfirming(false);
+          }}>
             {suggested} adet sığar
           </button>
         )}
         <button
           type="button"
           className="lotRow__buy"
-          onClick={() => s.buyFromWholesaler(lot.templateId, lot.quantity)}
+          onClick={buy}
           disabled={!!terms.blockedReason}
         >
-          {terms.blockedReason ?? 'Al'}
+          {terms.blockedReason ?? (confirming ? `${tl(lot.total)} ödemeyi onayla` : 'Al')}
         </button>
       </div>
+      {confirming && (
+        <p className="lotRow__warning" role="status">
+          Bu alım yüksek tutarlı. Nakit/vadeli dağılımını kontrol edip bir kez daha onayla.
+        </p>
+      )}
     </div>
   );
 }
@@ -666,9 +731,19 @@ function networkSub(s: ReturnType<typeof useGame.getState>): string {
  */
 function NetworkRoute({ onBack }: { onBack: () => void }) {
   const s = useGame();
+  const [filter, setFilter] = useState<'all' | 'bullion' | 'credit'>('all');
   const today = s.market.day;
   const debt = networkDebt(s.network);
   const ceiling = networkDebtCeiling(s.network);
+  const visibleMembers = [...s.network]
+    .filter((member) =>
+      filter === 'bullion'
+        ? buysBullion(member)
+        : filter === 'credit'
+          ? networkLoanOffer(member, s.network, 0, today).maxAmount > 0
+          : true,
+    )
+    .sort((a, b) => b.trust - a.trust);
 
   return (
     <div className="page">
@@ -700,8 +775,16 @@ function NetworkRoute({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        {s.network.map((member) => (
-          <NetworkMemberCard key={member.id} member={member} today={today} />
+        <div className="networkFilters" role="tablist" aria-label="Esnaf ağı filtresi">
+          {([['all', 'Tümü'], ['bullion', 'Altın alan'], ['credit', 'Borç verebilen']] as const).map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={filter === id} className={`chip ${filter === id ? 'chip--active' : ''}`} onClick={() => setFilter(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {visibleMembers.map((member, index) => (
+          <NetworkMemberCard key={member.id} member={member} today={today} defaultOpen={index === 0} />
         ))}
       </div>
     </div>
@@ -711,12 +794,15 @@ function NetworkRoute({ onBack }: { onBack: () => void }) {
 function NetworkMemberCard({
   member,
   today,
+  defaultOpen,
 }: {
   member: TradeNetworkMember;
   today: number;
+  defaultOpen: boolean;
 }) {
   const s = useGame();
   const [amount, setAmount] = useState(0);
+  const [expanded, setExpanded] = useState(defaultOpen);
 
   const offer = networkLoanOffer(member, s.network, amount || 0, today);
   const canBuy = buysBullion(member);
@@ -732,13 +818,17 @@ function NetworkMemberCard({
     .filter((r) => r.offer !== null && r.offer.quantity > 0);
 
   return (
-    <div className="group">
+    <details
+      className="group networkMember"
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
       {/*
         §8 ağın tamamı ilişki üzerine kurulu: kimden borç alacağın, kime mal
         vereceğin ilişkiye bakıyor. Portre o ilişkinin muhatabını gösterir —
         72 px, paketin portre bandının alt ucu.
       */}
-      <h2 className="group__title group__title--withPortrait">
+      <summary className="group__title group__title--withPortrait">
         <Art
           art={merchantArt(member.id, member.displayName)}
           size={72}
@@ -748,7 +838,8 @@ function NetworkMemberCard({
         <span>
           {member.displayName} · ilişki {member.trust}/100
         </span>
-      </h2>
+        <span className="networkMember__summary">{tl(member.cashOnHand)} · {buysBullion(member) ? 'altın alır' : 'hizmet ağı'}</span>
+      </summary>
       <div className="group__body">
         <StatLine label="Kasasındaki nakit" value={tl(member.cashOnHand)} />
 
@@ -867,7 +958,7 @@ function NetworkMemberCard({
           ))
         )}
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -1060,6 +1151,21 @@ function MarketRoute({ onBack }: { onBack: () => void }) {
   // §5.2 — sinyaller karar desteğidir; yön garanti etmez.
   const signals = marketSignals(market, selectors.position(s));
   const alarm = intentAlarm(s.intentTelemetry);
+  const goldPosition = s.inventory.reduce(
+    (sum, position) => {
+      const item = s.items[position.itemId];
+      const meta = item ? bullionMeta(item.templateId) : null;
+      if (!meta || item?.metal !== 'gold') return sum;
+      return {
+        cost: sum.cost + position.costBasis,
+        grams: sum.grams + meta.unitWeightGrams * position.quantity,
+      };
+    },
+    { cost: 0, grams: 0 },
+  );
+  const averageGoldCost = goldPosition.grams > 0
+    ? Math.round(goldPosition.cost / goldPosition.grams)
+    : null;
 
   return (
     <div className="page">
@@ -1142,6 +1248,14 @@ function MarketRoute({ onBack }: { onBack: () => void }) {
                 <div>
                   <div className="assetRow__name">{asset.label}</div>
                   <div className="assetRow__unit">{asset.unit}</div>
+                  {asset.history.length > 1 && (
+                    <div className="assetRow__range num">
+                      Band {price(Math.min(...asset.history))}–{price(Math.max(...asset.history))}
+                    </div>
+                  )}
+                  {asset.id === 'goldGram' && averageGoldCost !== null && (
+                    <div className="assetRow__range num">Stok ort. {price(averageGoldCost)}/g</div>
+                  )}
                 </div>
 
                 <Sparkline points={asset.history} />

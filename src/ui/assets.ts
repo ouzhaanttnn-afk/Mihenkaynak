@@ -83,6 +83,15 @@ const BULLION_ART: Record<string, Art> = {
   full_gold: art('realistic/inventory/full-gold-v2.png', 'Tam altın'),
   republic_gold: art('realistic/inventory/full-gold-v2.png', 'Cumhuriyet altını'),
   ata_gold: art('realistic/inventory/ata-gold.png', 'Ata lira'),
+  ...Object.fromEntries(
+    [10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((weight) => [
+      `investment_bangle_22k_${weight}`,
+      art(
+        'realistic/inventory/investment-bangle-22k.png',
+        `${weight} gram 22 ayar işçiliksiz yatırım bileziği`,
+      ),
+    ]),
+  ),
 };
 
 /**

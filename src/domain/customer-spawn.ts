@@ -84,7 +84,7 @@ export function spawnCustomer(
   //     stoktan seçer (GDD 23.23). ---
   const demand: CustomerDemand | null =
     intent === 'buy'
-      ? spawnDemand(rootSeed, spawnIndex, archetypeId, character, store.storeTier)
+      ? spawnDemand(rootSeed, spawnIndex, archetypeId, character, store.storeTier, store, market)
       : null;
 
   // --- Kalem sayısı: çoklu ürün orta oyunda açılır (GDD 12) ---

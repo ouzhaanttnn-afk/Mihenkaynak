@@ -44,7 +44,8 @@
       { "id": "quarter-gold-v2", "file": "realistic/inventory/quarter-gold-v2.png", "usage": "Yeni gerçekçi ailede çeyrek altın" },
       { "id": "half-gold-v2", "file": "realistic/inventory/half-gold-v2.png", "usage": "Yeni gerçekçi ailede yarım altın" },
       { "id": "full-gold-v2", "file": "realistic/inventory/full-gold-v2.png", "usage": "Yeni gerçekçi ailede tam altın" },
-      { "id": "ata-gold", "file": "realistic/inventory/ata-gold.png", "usage": "Sarrafiye Ata Lira" }
+      { "id": "ata-gold", "file": "realistic/inventory/ata-gold.png", "usage": "Sarrafiye Ata Lira" },
+      { "id": "investment-bangle-22k", "file": "realistic/inventory/investment-bangle-22k.png", "usage": "10–100 g 22 ayar işçiliksiz yatırım bileziği" }
     ],
     "navigation": [
       { "id": "shop-realistic", "file": "realistic/navigation/shop.png", "usage": "Dükkan ana navigasyon/boş durum" },

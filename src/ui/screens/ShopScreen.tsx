@@ -36,7 +36,7 @@ import {
 import { isBullion } from '@data/bullion';
 import { CLASS_LABEL, flowPolicy, isToolRelevant, transactionClass } from '@domain/transaction-class';
 
-import { CustomerStrip, PatienceDots } from '@ui/shell/CustomerStrip';
+import { CustomerStrip } from '@ui/shell/CustomerStrip';
 import { DecisionDock } from '@ui/shell/DecisionDock';
 import { MarketStrip } from '@ui/shell/MarketStrip';
 import { CoachBar } from '@ui/shell/CoachBar';
@@ -63,7 +63,12 @@ import {
   QuoteStage,
 } from '@ui/workbench/ServiceStages';
 import { PackageStage, StockPickStage } from '@ui/workbench/PurchaseStages';
-import { OfferControl, liquidityImpact, type OfferImpact } from '@ui/workbench/OfferControl';
+import {
+  OfferControl,
+  liquidityImpact,
+  snapOffer,
+  type OfferImpact,
+} from '@ui/workbench/OfferControl';
 
 import {
   IconClock,
@@ -125,6 +130,7 @@ export function ShopScreen() {
   // Teklif tutarı — aşama değiştikçe alış tavanına göre yeniden konumlanır.
   const ceiling = line ? effectiveCeiling(line.thesisOptions, line.selectedThesis) : 0;
   const [offer, setOffer] = useState<Money>(0);
+  const [stageNotice, setStageNotice] = useState<string | null>(null);
 
   const offerBounds = useMemo(() => {
     if (!line?.band) return { min: 0, max: 0, step: 100 };
@@ -140,13 +146,14 @@ export function ShopScreen() {
   // Pazarlığa girildiğinde teklifi tavana yakın makul bir yerden başlat.
   useEffect(() => {
     if (deal?.stage === 'negotiate' && offer === 0 && ceiling > 0) {
-      setOffer(Math.round(ceiling * 0.9));
+      setOffer(snapOffer(ceiling * 0.9, offerBounds.min, offerBounds.max, offerBounds.step));
     }
-  }, [deal?.stage, ceiling, offer]);
+  }, [deal?.stage, ceiling, offer, offerBounds]);
 
   // Yeni kalem / yeni müşteri → teklif sıfırlanır.
   useEffect(() => {
     setOffer(0);
+    setStageNotice(null);
   }, [deal?.dealId, deal?.activeLineId]);
 
   // Gün akışı: aktif pazarlık yokken saat ilerler (store.tick bunu denetler).
@@ -186,11 +193,25 @@ export function ShopScreen() {
       />
 
       {deal && (
+        <>
         <StageStrip
           flow={deal.flow}
           current={stage}
           canEnter={(target) => canEnterStage(useGame.getState(), target)}
-          onSelect={s.setStage}
+          onSelect={(target) => {
+            if (
+              deal.flow === 'trade' &&
+              stage === 'inspect' &&
+              (target === 'thesis' || target === 'negotiate') &&
+              item &&
+              transactionClass(item) !== 'fast'
+            ) {
+              setStageNotice('Değerleme atlandı · teklif aralığı daha belirsiz ve riskli olabilir.');
+            } else {
+              setStageNotice(null);
+            }
+            s.setStage(target);
+          }}
           /*
             Standart sarrafiyede (Gram / Çeyrek / Yarım / Tam / Ata) rasyonel
             bir çıkış planı SEÇİMİ yoktur — çeyreğin nereye gideceği bellidir.
@@ -206,6 +227,8 @@ export function ShopScreen() {
           */
           skipStages={item && transactionClass(item) === 'fast' ? ['thesis'] : []}
         />
+        {stageNotice && <div className="stageNotice" role="status">{stageNotice}</div>}
+        </>
       )}
 
       <main className="workbench">
@@ -452,7 +475,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
   const stockCount = s.inventory.reduce((n, p) => n + p.quantity, 0);
 
   return (
-    <div className={`idle ${coaching ? 'idle--coaching' : ''}`}>
+    <div className={`idle ${coaching ? 'idle--coaching' : ''} ${s.queue.length > 0 ? 'idle--hasQueue' : ''}`}>
       {/*
         Dükkanın kimlik görseli, başlıkla AYNI SATIRDA.
         Bu ekranın "çok yer kapladığı" daha önce bildirilmişti; görsel bu
@@ -585,7 +608,7 @@ function WaitingCustomerQueue() {
                 <p>{customerIntentLine(customer, items)}</p>
                 <div className="waitingCustomer__meta">
                   <span>{archetype.demeanor}</span>
-                  <PatienceDots value={customer.patience} max={customer.patienceMax} />
+                  <span>Bekliyor</span>
                 </div>
               </div>
 
@@ -944,12 +967,37 @@ function ShopDock({
   liquidity: number;
 }) {
   const s = useGame();
+  const [dayEndConfirm, setDayEndConfirm] = useState(false);
   const deal = s.activeDeal;
   const line = deal ? activeLine(deal) : undefined;
 
   // --- IDLE ---
   if (!deal || !line) {
     const hasQueue = s.queue.length > 0;
+    const earlyClose = s.market.clockMinutes < DAY.closeMinutes - 60;
+
+    if (dayEndConfirm) {
+      const warnings = [
+        hasQueue ? `${s.queue.length} bekleyen müşteri kaybolacak` : null,
+        earlyClose ? 'dükkânı erken kapatıyorsun' : null,
+        `${tl(s.store.dailyOverhead)} günlük gider işlenecek`,
+      ].filter(Boolean);
+      return (
+        <DecisionDock
+          summaryLabel="Günü kapat"
+          summaryValue={warnings.join(' · ')}
+          primary={{
+            label: 'Evet, günü kapat',
+            onPress: () => {
+              setDayEndConfirm(false);
+              s.advanceDay();
+            },
+          }}
+          secondary={[{ label: 'Vazgeç', onPress: () => setDayEndConfirm(false) }]}
+        />
+      );
+    }
+
     return (
       <DecisionDock
         summaryLabel="Kuyruk"
@@ -959,7 +1007,7 @@ function ShopDock({
           onPress: s.greetCustomer,
           disabled: !hasQueue,
         }}
-        secondary={[{ label: 'Günü Bitir', onPress: s.advanceDay }]}
+        secondary={[{ label: 'Günü Bitir', onPress: () => setDayEndConfirm(true) }]}
       />
     );
   }

@@ -44,6 +44,8 @@ export const SAVE_VERSION = 1;
 
 export interface SaveFile {
   version: number;
+  /** Yazıldığı gerçek zaman; eski kayıtlarda bulunmayabilir. */
+  savedAt?: number;
   /** GDD 28.3 — RNG'nin tek kaynağı. Seed olmadan hiçbir şey türetilemez. */
   seed: number;
   /** Türetim anahtarının ikinci yarısı. */
@@ -215,10 +217,37 @@ const STORAGE_KEY = 'mihenkaynak.save.v1';
 /** Tarayıcı deposuna yazar. Depo yoksa sessizce atlar (SSR / test). */
 export function writeSave(state: GameState): boolean {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(serialize(state)));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...serialize(state), savedAt: Date.now() }));
     return true;
   } catch {
     return false;
+  }
+}
+
+export interface SaveSummary {
+  day: number;
+  clockMinutes: number;
+  cash: number;
+  stockUnits: number;
+  savedAt: number | null;
+}
+
+/** Kayıt yüklenmeden önce güvenli, kısa önizleme verir. */
+export function readSaveSummary(): SaveSummary | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const file = JSON.parse(raw) as SaveFile;
+    if (file.version > SAVE_VERSION || !file.store || !Array.isArray(file.inventory)) return null;
+    return {
+      day: file.day,
+      clockMinutes: file.clockMinutes,
+      cash: file.store.cash,
+      stockUnits: file.inventory.reduce((sum, position) => sum + position.quantity, 0),
+      savedAt: typeof file.savedAt === 'number' ? file.savedAt : null,
+    };
+  } catch {
+    return null;
   }
 }
 

@@ -28,6 +28,7 @@ import { bullionMeta, isBullion, RETAIL_BULLION_CATALOG } from '@data/bullion';
 import { getTemplate } from '@data/item-templates';
 import { bullionUnitValue, gramsFor, priceForChannel, CHANNEL_LABEL_TR } from './channels';
 import { trueValue } from './valuation';
+import { creditLimit, usedLimit } from './wholesaler';
 import { Rng, deriveSeed } from './rng';
 import type { DayCharacter } from './intent';
 import type {
@@ -64,6 +65,8 @@ export function spawnDemand(
    * dükkânının müşterisi flagship ürünü sormaz (GDD 19).
    */
   storeTier = 1,
+  store?: StoreState,
+  market?: MarketState,
 ): CustomerDemand {
   const rng = new Rng(deriveSeed(rootSeed, 'customer/demand', spawnIndex));
 
@@ -78,12 +81,41 @@ export function spawnDemand(
   let quantity = 1;
 
   if (wantsBullion) {
-    const sellable = RETAIL_BULLION_CATALOG.filter((id) => getTemplate(id).minTier <= storeTier);
+    const tierCatalog = RETAIL_BULLION_CATALOG.filter(
+      (id) => getTemplate(id).minTier <= storeTier,
+    );
+
+    // Talep yalnız satılabilir katalogdan gelir; ayrıca erken oyunda müşterinin
+    // sermayenin tamamını bağlayan 80–100 gramlık anlamsız siparişler vermesini
+    // önler. Bu bir fiyat motoru değildir: mevcut spot + ürün metadatasından
+    // yalnızca talep büyüklüğü için yaklaşık tedarik bütçesi türetilir.
+    const headroom = store
+      ? store.cash + Math.max(0, creditLimit(store) - usedLimit(store.supplier))
+      : Number.POSITIVE_INFINITY;
+    const budgetShare = isBulk ? 0.42 : 0.24 + Math.max(0, storeTier - 1) * 0.035;
+    const demandBudget = Math.max(60_000, headroom * budgetShare);
+    const estimatedUnit = (id: string) => {
+      const meta = bullionMeta(id);
+      if (!meta || !market) return 0;
+      return Math.round(
+        meta.unitWeightGrams *
+          meta.unitPurity *
+          market.goldSpot *
+          (1 + meta.premiumRatio),
+      );
+    };
+    const affordableCatalog = market
+      ? tierCatalog.filter((id) => estimatedUnit(id) <= demandBudget)
+      : tierCatalog;
+    const sellable = affordableCatalog.length > 0 ? affordableCatalog : tierCatalog;
     templateId = rng.pick(sellable);
     const meta = bullionMeta(templateId);
     const band = isBulk ? meta?.bulkVolumeBand : meta?.volumeBand;
     const [lo, hi] = band ?? [1, 2];
-    quantity = Math.max(1, Math.round(rng.range(lo, hi) * character.volumeScale));
+    const rolledQuantity = Math.max(1, Math.round(rng.range(lo, hi) * character.volumeScale));
+    const unitEstimate = estimatedUnit(templateId);
+    const affordableQuantity = unitEstimate > 0 ? Math.max(1, Math.floor(demandBudget / unitEstimate)) : rolledQuantity;
+    quantity = Math.min(rolledQuantity, affordableQuantity);
   }
 
   // §4.1 kısmi karşılama: toplu müşteri stok yetmezse azıyla da çıkabilir.

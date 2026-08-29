@@ -84,20 +84,24 @@ export const LESSONS: Lesson[] = [
     when: (c) => !c.hasCustomer && c.queueLength > 0,
   },
   {
-    id: 'inspect',
-    title: 'Gördüğün beyandır',
-    body:
-      'Müşterinin söylediği ağırlık ve ayar doğrulanmış değil. Raydaki araçlar bu belirsizliği ' +
-      'para ve müşteri sabrı karşılığında azaltır.',
-    when: (c) => c.stage === 'inspect' && c.flow === 'trade' && c.testsRun === 0,
-  },
-  {
     id: 'fastFlow',
     title: 'Sarrafiyede test şart değil',
     body:
       'Standart sarrafiyenin gramajı ve ayarı bellidir. Şüpheli bir hâli yoksa doğrudan ' +
       'fiyata geçebilirsin.',
     when: (c) => c.stage === 'inspect' && c.transactionClass === 'fast',
+  },
+  {
+    id: 'inspect',
+    title: 'Gördüğün beyandır',
+    body:
+      'Müşterinin söylediği ağırlık ve ayar doğrulanmış değil. Raydaki araçlar bu belirsizliği ' +
+      'para ve müşteri sabrı karşılığında azaltır.',
+    when: (c) =>
+      c.stage === 'inspect' &&
+      c.flow === 'trade' &&
+      c.transactionClass !== 'fast' &&
+      c.testsRun === 0,
   },
   {
     id: 'appraise',

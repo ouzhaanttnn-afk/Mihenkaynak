@@ -73,6 +73,11 @@ function collect(): Art[] {
     'gram_gold_1', 'gram_gold_2_5', 'gram_gold_5', 'gram_gold_10', 'gram_gold_20',
     'gram_gold_50', 'gram_gold_100', 'small_ingot', 'quarter_gold', 'half_gold',
     'full_gold', 'republic_gold', 'ata_gold',
+    'investment_bangle_22k_10', 'investment_bangle_22k_20',
+    'investment_bangle_22k_30', 'investment_bangle_22k_40',
+    'investment_bangle_22k_50', 'investment_bangle_22k_60',
+    'investment_bangle_22k_70', 'investment_bangle_22k_80',
+    'investment_bangle_22k_90', 'investment_bangle_22k_100',
   ]) {
     const found = productArt(templateId, 'bar');
     expect(found, `${templateId} için ürün görseli bulunamadı`).toBeDefined();

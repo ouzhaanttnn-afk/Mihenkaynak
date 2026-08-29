@@ -1194,6 +1194,11 @@
   .waitingCustomer__meta {
     display: none;
   }
+
+  .idle--coaching.idle--hasQueue .idle__head,
+  .idle--coaching.idle--hasQueue .position {
+    display: none;
+  }
 }
 
 /* En fazla 3 kompakt uyarı satırı; ayrı büyük kartlar kullanılmaz. */

@@ -182,6 +182,7 @@ export function StockScreen() {
  */
 function BullionCounter() {
   const s = useGame();
+  const [category, setCategory] = useState<'all' | 'gram' | 'coin' | 'bangle'>('all');
   // Tezgâhın açık/kapalı durumu ve adet seçimleri sekme değişince
   // KAYBOLMAMALI. StockScreen sekme değiştiğinde unmount olduğu için yerel
   // state sıfırlanıyordu: oyuncu 20 adet seçip nakde bakmaya gidince
@@ -207,11 +208,37 @@ function BullionCounter() {
       </button>
 
       {open && (
+        <>
+        <div className="counter__categories" role="tablist" aria-label="Sarrafiye kategorileri">
+          {([
+            ['all', 'Tümü'],
+            ['gram', 'Gram / Külçe'],
+            ['coin', 'Ziynet'],
+            ['bangle', 'Bilezik'],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              className={`chip ${category === id ? 'chip--active' : ''}`}
+              onClick={() => setCategory(id)}
+              aria-selected={category === id}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="counter__list">
-          {RETAIL_BULLION_CATALOG.map((templateId) => (
+          {RETAIL_BULLION_CATALOG.filter((templateId) => {
+            if (category === 'all') return true;
+            if (category === 'bangle') return templateId.startsWith('investment_bangle_');
+            if (category === 'gram') return templateId.startsWith('gram_gold_') || templateId === 'small_ingot';
+            return !templateId.startsWith('gram_gold_') && !templateId.startsWith('investment_bangle_') && templateId !== 'small_ingot';
+          }).map((templateId) => (
             <BullionOffer key={templateId} templateId={templateId} />
           ))}
         </div>
+        </>
       )}
     </div>
   );
@@ -220,9 +247,11 @@ function BullionCounter() {
 function BullionOffer({ templateId }: { templateId: string }) {
   const s = useGame();
   const [qty, setQtyState] = useState(counterMemory.qty[templateId] ?? 1);
+  const [confirming, setConfirming] = useState(false);
   const setQty = (next: number) => {
     counterMemory.qty[templateId] = next;
     setQtyState(next);
+    setConfirming(false);
   };
 
   // Sonda sabit: fiyat ürünün ŞABLONUNA bağlıdır, örneğin kimliğine değil.
@@ -237,6 +266,16 @@ function BullionOffer({ templateId }: { templateId: string }) {
     .reduce((sum, p) => sum + p.quantity, 0);
 
   const affordable = lot.total <= s.store.cash;
+  const expensive = lot.total >= Math.max(100_000, Math.round(s.store.cash * 0.2));
+  const buy = () => {
+    if (expensive && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    s.buyFromWholesaler(templateId, lot.quantity);
+    setConfirming(false);
+    setQty(1);
+  };
 
   return (
     <div className="offerRow">
@@ -279,12 +318,17 @@ function BullionOffer({ templateId }: { templateId: string }) {
         <button
           type="button"
           className="offerRow__buy"
-          onClick={() => s.buyFromWholesaler(templateId, lot.quantity)}
+          onClick={buy}
           disabled={!affordable}
         >
-          {affordable ? 'Al' : 'Nakit yok'}
+          {affordable ? (confirming ? 'Onayla' : 'Al') : 'Nakit yok'}
         </button>
       </div>
+      {confirming && (
+        <p className="offerRow__confirm" role="status">
+          Yüksek tutar: {tl(lot.total)}. Satın almak için tekrar onayla.
+        </p>
+      )}
       {!affordable && (
         <p className="offerRow__shortfall" role="status">
           Mevcut nakit {tl(s.store.cash)} · eksik {tl(lot.total - s.store.cash)}
