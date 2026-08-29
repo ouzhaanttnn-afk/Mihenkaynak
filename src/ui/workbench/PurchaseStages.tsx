@@ -289,7 +289,12 @@ function Figure({
   );
 }
 
-function fulfilmentText(purchase: PurchaseSession, demand: CustomerDemand): string {
+/**
+ * Paketin talebi ne kadar karşıladığı. Dock'taki kilit gerekçesi de BURADAN
+ * okunur: aynı cümle iki yerde ayrı yazılsaydı, biri güncellenip diğeri
+ * unutulduğunda oyuncu sahnede bir şey, düğmede başka bir şey görürdü.
+ */
+export function fulfilmentText(purchase: PurchaseSession, demand: CustomerDemand): string {
   switch (purchase.fulfilment) {
     case 'full':
       return 'Talep tam karşılandı.';

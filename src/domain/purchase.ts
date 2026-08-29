@@ -27,7 +27,7 @@ import { costBasisForUnits } from './settlement';
 import { bullionMeta, isBullion } from '@data/bullion';
 import { getArchetype } from '@data/archetypes';
 import { templatesForTier } from './item-spawn';
-import { customerBuyDemandPool } from './sales-catalog';
+import { weightedBuyDemandPool } from './sales-catalog';
 import { FAMILY_LABEL, getTemplate } from '@data/item-templates';
 import { bullionUnitValue, gramsFor, priceForChannel, CHANNEL_LABEL_TR } from './channels';
 import { trueValue } from './valuation';
@@ -86,7 +86,7 @@ export function spawnDemand(
    * müşteri üretirdi. Sonucu artık talebin AİLESİNİ değil, yalnız hacim
    * eğilimini besliyor — havuz zaten tek aile taşıyor.
    */
-  const catalog = customerBuyDemandPool(storeTier);
+  const catalog = weightedBuyDemandPool(storeTier);
   rng.chance(character.bullionBias); // akış konumu korunur (bkz. yukarı)
 
   const wantsBullion = catalog.length > 0;
@@ -98,7 +98,9 @@ export function spawnDemand(
   let quantity = 1;
 
   if (wantsBullion) {
-    templateId = rng.pick(catalog);
+    // Ağırlıklı çekiliş: talep çeyrekte yığılır, 100 g külçede seyrelir.
+    // `pickWeighted` de tek çekiliş harcar; akış konumu korunur.
+    templateId = rng.pickWeighted(catalog);
     const meta = bullionMeta(templateId);
     const band = isBulk ? meta?.bulkVolumeBand : meta?.volumeBand;
     const [lo, hi] = band ?? [1, 2];
@@ -367,6 +369,17 @@ export function quotePackage(
  * hesaplanabilir; ama oranı ve bütçesi spawn anında sabittir. Oyuncu paketi
  * değiştirip tavanı "yeniden zar atarak" yükseltemez.
  */
+/**
+ * SATIŞ TEKLİFİNİN TABANI (§2 ikinci katman).
+ *
+ * Arayüzdeki slider'ın `min`i de buradan okunur; iki yerde ayrı hesaplanan
+ * bir taban, biri değişip diğeri unutulduğunda sessizce ayrışırdı.
+ */
+export function minSaleOffer(packageCost: Money, packageFairValue: Money): Money {
+  const taban = Math.min(packageCost, packageFairValue);
+  return Math.max(0, Math.round(taban * PURCHASE.minSaleOfferRatio));
+}
+
 export function purchaseCeiling(customer: Customer, fair: Money): Money {
   return Math.min(customer.budget, Math.round(fair * customer.purchaseCeilingRatio));
 }

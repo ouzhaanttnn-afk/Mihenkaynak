@@ -20,6 +20,7 @@ import { dayCharacter } from './intent';
 import { createMarketForDay } from './market';
 import {
   customerBuyDemandPool,
+  weightedBuyDemandPool,
   demandIsSellable,
   sellableTemplates,
   supplierCatalogHas,
@@ -240,5 +241,58 @@ describe('katalog tutarlılığı', () => {
       expect(supplierCatalogHas(t.id), `${t.id} katalogda görünüyor`).toBe(false);
       expect(demandIsSellable(t.id, 3), `${t.id} satılabilir görünüyor`).toBe(false);
     }
+  });
+});
+
+/**
+ * TALEP AĞIRLIKLARI — ölçülmüş bir denge hatasının bekçisi.
+ *
+ * Bulunan hata: talep 22 SKU'ya neredeyse DÜZGÜN dağılıyordu (SKU başına
+ * 38–78 istek) ve alıcıların %63'ü eli boş dönüyordu. Düzgün dağılım, küçük
+ * bir dükkândan 22 kalemi aynı anda vitrinde tutmasını istiyordu.
+ */
+describe('talep ağırlıkları', () => {
+  it('havuzdaki her kalem bir ağırlık taşır ve hiçbiri sıfır değildir', () => {
+    const havuz = weightedBuyDemandPool(1);
+    expect(havuz.length).toBe(customerBuyDemandPool(1).length);
+    for (const satır of havuz) expect(satır.weight).toBeGreaterThan(0);
+  });
+
+  it('çeyrek en sık sorulandır', () => {
+    const havuz = weightedBuyDemandPool(1);
+    const ceyrek = havuz.find((r) => r.value === 'quarter_gold');
+    expect(ceyrek).toBeDefined();
+    for (const satır of havuz) {
+      if (satır.value !== 'quarter_gold') {
+        expect(satır.weight).toBeLessThan(ceyrek!.weight);
+      }
+    }
+  });
+
+  it('ağır bilezik ve büyük külçe seyrek kalır', () => {
+    const agirlik = (id: string) =>
+      weightedBuyDemandPool(1).find((r) => r.value === id)?.weight ?? 0;
+    // Gramaj büyüdükçe alıcı azalır.
+    expect(agirlik('bracelet_22k_plain_100')).toBeLessThan(agirlik('bracelet_22k_plain_10'));
+    expect(agirlik('gram_gold_100')).toBeLessThan(agirlik('gram_gold_1'));
+  });
+
+  it('birkaç doğru kalem talebin çoğunu karşılar', () => {
+    /*
+     * ASIL REGRESYON: düzgün dağılımda en iyi 5 kalem talebin ancak
+     * %23'ünü (5/22) karşılıyordu — yani doğru stok tutmak imkânsızdı.
+     * Ağırlıklardan sonra aynı 5 kalem çoğunluğu karşılamalı.
+     */
+    const havuz = weightedBuyDemandPool(1);
+    const toplam = havuz.reduce((n, r) => n + r.weight, 0);
+    const enIyi5 = [...havuz].sort((a, b) => b.weight - a.weight).slice(0, 5);
+    const pay = enIyi5.reduce((n, r) => n + r.weight, 0) / toplam;
+    expect(pay).toBeGreaterThan(0.5);
+  });
+
+  it('bilinmeyen bir SKU havuzdan düşmez, yalnız nadir kalır', () => {
+    // Yeni bir ürün eklendiğinde sessizce talep dışı kalmamalı.
+    const havuz = weightedBuyDemandPool(1);
+    expect(havuz.every((r) => Number.isFinite(r.weight) && r.weight > 0)).toBe(true);
   });
 });

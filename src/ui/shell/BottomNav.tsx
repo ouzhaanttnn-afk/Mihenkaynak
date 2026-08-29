@@ -37,23 +37,46 @@ const ROOTS: { id: RootTab; key: string; label: string; Icon: typeof IconShop }[
 interface Props {
   active: RootTab;
   onSelect: (tab: RootTab) => void;
+  /**
+   * Sekme başına bekleyen iş sayısı. Ölçüldü: 30 günde 224 servis işi kabul
+   * edildi, parça maliyeti kasadan çıktı, hiçbiri teslim edilmedi ve oyun
+   * bunu HİÇ haber vermedi — `overdueJobs()` yalnız Atölye ekranı açıkken
+   * okunuyordu. Rozet, o bilgiyi ekranı açmadan görünür kılar.
+   */
+  badges?: Partial<Record<RootTab, { count: number; urgent: boolean }>>;
 }
 
-export function BottomNav({ active, onSelect }: Props) {
+export function BottomNav({ active, onSelect, badges }: Props) {
   return (
     <nav className="bottomNav" aria-label="Ana navigasyon">
-      {ROOTS.map(({ id, key, label, Icon }) => (
-        <button
-          key={id}
-          type="button"
-          className={`bottomNav__item ${active === id ? 'bottomNav__item--active' : ''}`}
-          onClick={() => onSelect(id)}
-          aria-current={active === id ? 'page' : undefined}
-        >
-          <Icon size={21} />
-          <span className="bottomNav__label">{t(key, label)}</span>
-        </button>
-      ))}
+      {ROOTS.map(({ id, key, label, Icon }) => {
+        const badge = badges?.[id];
+        const name = t(key, label);
+        return (
+          <button
+            key={id}
+            type="button"
+            className={`bottomNav__item ${active === id ? 'bottomNav__item--active' : ''}`}
+            onClick={() => onSelect(id)}
+            aria-current={active === id ? 'page' : undefined}
+            // Rozet salt görsel kalmasın: ekran okuyucu da sayıyı duysun.
+            aria-label={badge ? `${name} · ${badge.count} bekleyen` : undefined}
+          >
+            <span className="bottomNav__iconWrap">
+              <Icon size={21} />
+              {badge && badge.count > 0 && (
+                <span
+                  className={`bottomNav__badge num ${badge.urgent ? 'bottomNav__badge--urgent' : ''}`}
+                  aria-hidden="true"
+                >
+                  {badge.count > 9 ? '9+' : badge.count}
+                </span>
+              )}
+            </span>
+            <span className="bottomNav__label">{name}</span>
+          </button>
+        );
+      })}
     </nav>
   );
 }

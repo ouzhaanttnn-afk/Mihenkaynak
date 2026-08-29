@@ -16,6 +16,7 @@ import {
   createPurchaseSession,
   isProductCompatible,
   matchDemand,
+  minSaleOffer,
   offerableStock,
   repricePackage,
 } from './purchase';
@@ -174,5 +175,36 @@ describe('Gerçek oyunda üretilen talepler bu kuralla tutarlı', () => {
       }
     }
     expect(checked).toBeGreaterThan(50);
+  });
+});
+
+/**
+ * SATIŞ TEKLİFİ TABANI (§2 ikinci katman).
+ *
+ * Ölçüldü: taban yalnız arayüz slider'ındaydı. `submitOffer` doğrudan
+ * çağrıldığında 768.000 ₺'lik bir altın pozisyonu 3 ₺'ye tertemiz settle
+ * oldu — ne uyarı, ne invariant. §2: "yalnızca kullanıcı arayüzünde filtre
+ * uygulama."
+ */
+describe('satış teklifi tabanı', () => {
+  it('maliyet ile adil değerin KÜÇÜĞÜNDEN türer', () => {
+    // Maliyetin altına düşmüş bir mal, adil değerinden fiyatlanmalı;
+    // tersi durumda oyuncu zararını taban sanardı.
+    expect(minSaleOffer(1000, 500)).toBe(minSaleOffer(500, 1000));
+  });
+
+  it('zararına satma hakkı durur — taban maliyetin ALTINDADIR', () => {
+    const maliyet = 10_000;
+    expect(minSaleOffer(maliyet, maliyet)).toBeLessThan(maliyet);
+    expect(minSaleOffer(maliyet, maliyet)).toBeGreaterThan(0);
+  });
+
+  it('bir kuruşluk satışı eler', () => {
+    // Asıl regresyon: 768.000 ₺'lik pozisyon 3 ₺'ye gitmişti.
+    expect(minSaleOffer(768_000, 768_000)).toBeGreaterThan(3);
+  });
+
+  it('değersiz pakette negatife düşmez', () => {
+    expect(minSaleOffer(0, 0)).toBe(0);
   });
 });

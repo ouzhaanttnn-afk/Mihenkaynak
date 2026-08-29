@@ -14,6 +14,7 @@ import { rollIntent, type DayCharacter } from './intent';
 import { applyBulkProfile, spawnDemand } from './purchase';
 import {
   applyMemory,
+  arrivalTrust,
   pickReturningCustomer,
   type CustomerRecord,
   type CustomerRegistry,
@@ -201,7 +202,9 @@ export function spawnCustomer(
     demand,
     patience: patienceMax,
     // Yeni müşteride mağaza güveni semt itibarından türer (GDD 10.1).
-    trust: clamp(Math.round(store.reputation * 0.6 + rng.range(-8, 12)), 5, 95),
+    // Formül `arrivalTrust`ta: dönen müşteriyle AYNI çıpayı (MEMORY.baseTrust)
+    // paylaşsın diye. Çekiliş burada kalır; determinizm bozulmaz.
+    trust: arrivalTrust(store.reputation, rng.range(-8, 12)),
     suspicion: 0,
     visitHistory: [],
     preferences: archetype.preferredFamilies,

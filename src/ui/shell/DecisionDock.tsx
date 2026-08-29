@@ -28,6 +28,22 @@ export interface DockAction {
    * NİÇİN olduğunu hiç öğrenemezdi.
    */
   disabledReason?: string;
+
+  /**
+   * KİLİTLİ — pasiften farkı: DOKUNULABİLİR.
+   *
+   * `disabled` bir düğme tıklama olayı üretmez; `disabledReason` yalnız
+   * `title` ile, yani FARE ÜSTÜNE GELİNCE görünür. Dokunmatikte hover
+   * yoktur, dolayısıyla telefonda oynayan biri düğmenin niye çalışmadığını
+   * hiç öğrenemiyordu (ölçüldü: paketi kurup "Pazarlığa Geç"e basan
+   * oyuncuların ~%15'i bu duvara toslar).
+   *
+   * `locked` düğmeyi pasif GÖSTERİR ama basılabilir bırakır; basınca
+   * `onLockedPress` sebebi söyler. Araç şeridinde (ToolRail) aynı desen
+   * zaten kullanılıyor; dock da ona hizalanır.
+   */
+  locked?: boolean;
+  onLockedPress?: () => void;
 }
 
 interface Props {
@@ -57,15 +73,17 @@ export function DecisionDock({ summaryLabel, summaryValue, children, primary, se
       <div className="dock__actions">
         <button
           type="button"
-          className="cta"
-          onClick={primary.onPress}
+          className={`cta ${primary.locked ? 'cta--locked' : ''}`}
+          onClick={primary.locked ? primary.onLockedPress : primary.onPress}
           disabled={primary.disabled}
+          // Kilitli düğme pasif DEĞİL, engellidir: ekran okuyucu da öyle duysun.
+          aria-disabled={primary.locked || undefined}
           aria-label={
-            primary.disabled && primary.disabledReason
+            (primary.disabled || primary.locked) && primary.disabledReason
               ? `${primary.label} — ${primary.disabledReason}`
               : undefined
           }
-          title={primary.disabled ? primary.disabledReason : undefined}
+          title={primary.disabled || primary.locked ? primary.disabledReason : undefined}
         >
           {primary.icon}
           {primary.label}

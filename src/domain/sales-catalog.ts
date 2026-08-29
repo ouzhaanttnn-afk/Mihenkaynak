@@ -112,6 +112,71 @@ export function customerBuyDemandPool(storeTier: number): string[] {
 }
 
 /**
+ * TALEP AĞIRLIKLARI — hangi sarrafiye ne sıklıkta sorulur.
+ *
+ * NEDEN VAR: ölçüldü — talep 22 SKU'ya neredeyse DÜZGÜN dağılıyordu (SKU
+ * başına 38–78 istek) ve satın almaya gelenlerin %63'ü eli boş dönüyordu.
+ * Düzgün dağılım hem gerçek dışıydı hem de dükkânı imkânsız bir göreve
+ * sokuyordu: 22 kalemin hepsini aynı anda vitrinde tutmak.
+ *
+ * Gerçek bir semt sarrafında talep çeyrekte yığılır; 100 g külçe ya da 90 g
+ * bilezik ayda bir sorulur. Ağırlıklar bunu yansıtır. Dükkânın taşıyabileceği
+ * kalem sayısı değişmedi — DEĞİŞEN, o kalemlerin doğru olanları tutunca
+ * talebin çoğunu karşılayabilmesi.
+ *
+ * Listede olmayan bir kimlik `DEFAULT_DEMAND_WEIGHT` alır: yeni bir SKU
+ * eklendiğinde talep havuzundan sessizce düşmez, yalnız nadir kalır.
+ */
+const DEMAND_WEIGHTS: Record<string, number> = {
+  // Semtin ekmeği: çeyrek. Düğün, doğum, bayram — hepsi buradan döner.
+  quarter_gold: 30,
+  half_gold: 12,
+  full_gold: 8,
+
+  // Küçük gramaj tasarruf alışkanlığı; çeyrekten sonraki en sık istek.
+  gram_gold_1: 10,
+  gram_gold_2_5: 9,
+  gram_gold_5: 7,
+  gram_gold_10: 5,
+  gram_gold_20: 3,
+  // Büyük külçe yatırımcı işidir, vitrin müşterisi değil.
+  gram_gold_50: 1.5,
+  gram_gold_100: 1,
+
+  // Ziynet/koleksiyon: hediye amaçlı, düzenli ama seyrek.
+  republic_gold: 3,
+  ata_gold: 2.5,
+
+  // 22 ayar işçiliksiz yatırım bileziği (UPDATEv3 §1). Gramaj büyüdükçe
+  // alıcı azalır: 10–30 g takılır ve hediye edilir, 90–100 g yatırımdır.
+  bracelet_22k_plain_10: 6,
+  bracelet_22k_plain_20: 5,
+  bracelet_22k_plain_30: 4,
+  bracelet_22k_plain_40: 2.5,
+  bracelet_22k_plain_50: 2,
+  bracelet_22k_plain_60: 1.5,
+  bracelet_22k_plain_70: 1,
+  bracelet_22k_plain_80: 0.8,
+  bracelet_22k_plain_90: 0.6,
+  bracelet_22k_plain_100: 0.5,
+};
+
+const DEFAULT_DEMAND_WEIGHT = 1;
+
+/**
+ * Talep havuzu, ağırlıklarıyla. `Rng.pickWeighted` tek çekiliş harcar —
+ * `pick` ile aynı — yani determinizm akışı (GDD 28.3) kaymaz.
+ */
+export function weightedBuyDemandPool(
+  storeTier: number,
+): { value: string; weight: number }[] {
+  return customerBuyDemandPool(storeTier).map((id) => ({
+    value: id,
+    weight: DEMAND_WEIGHTS[id] ?? DEFAULT_DEMAND_WEIGHT,
+  }));
+}
+
+/**
  * Tedarik tezgâhında gösterilecek sıra. Katalog sırası korunur ki tezgâh
  * her açılışta aynı düzende görünsün.
  */

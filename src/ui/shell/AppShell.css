@@ -910,10 +910,21 @@
   transform: translateY(1px);
 }
 
-.cta:disabled {
+.cta:disabled,
+/*
+  Kilitli düğme pasif GÖRÜNÜR ama basılabilir kalır: dokunmatikte `title`
+  okunmadığı için sebebi ancak dokunuşla söyleyebiliyoruz. Görünüm pasifle
+  aynı olmalı, yoksa oyuncu basılabilir sanıp gerçekten çalışmasını bekler.
+*/
+.cta--locked {
   background: var(--stone-300);
   color: var(--text-light-3);
   box-shadow: none;
+}
+
+/* Kilitli düğme basılınca "çalıştı" hissi vermemeli. */
+.cta--locked:active {
+  transform: none;
 }
 
 /* İkincil eylem — en fazla 2 (GDD 23.9.2). */
@@ -1057,6 +1068,45 @@
   height: 2px;
   border-radius: var(--r-pill);
   background: var(--brass-500);
+}
+
+/*
+  Rozet ikonun sağ üstüne oturur. `iconWrap` sarmalı ŞART: rozet mutlak
+  konumlanır ve konumlanacağı bir kutu ister; doğrudan `bottomNav__item`e
+  yaslamak, öğe yüksekliği şerit yüksekliğine eşit olduğu için rozeti
+  etiketin yanına kaydırırdı.
+*/
+.bottomNav__iconWrap {
+  position: relative;
+  display: inline-flex;
+  /* Rozet taştığı için kırpılmamalı; kutu ikon boyunda kalır. */
+  overflow: visible;
+}
+
+.bottomNav__badge {
+  position: absolute;
+  top: -5px;
+  left: 100%;
+  /* Tam sağ üste değil, biraz içeri: 5 sekmede komşu etiketin üstüne binmesin. */
+  transform: translateX(-6px);
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--brass-500);
+  color: var(--ink-900);
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  line-height: 15px;
+  text-align: center;
+  /* Koyu şerit üzerinde rozetin kenarı okunur kalsın. */
+  box-shadow: 0 0 0 1.5px var(--ink-800);
+}
+
+/* Sözü geçmiş iş bekleyen bir sayı değil, geciken bir borçtur. */
+.bottomNav__badge--urgent {
+  background: var(--negative-soft);
+  color: #fff;
 }
 
 .bottomNav__label {

@@ -333,6 +333,86 @@ export function reputationDelta(trustDelta: number): number {
   return Math.round(trustDelta * TRUST.reputationTransfer);
 }
 
+/**
+ * BİR ZİYARETİN SEMT İTİBARINA KATKISI (GDD 10.1 / 10.4).
+ *
+ * ÖLÇÜLMÜŞ HATA: eskiden bu, ziyaretteki güven değişiminin DÜZ transferiydi.
+ * Sonuç, 20 günlük simülasyonda iyi oynayan bir oyuncu için şuydu:
+ *
+ *     231 kabul  →  +58 itibar
+ *     410 red    →  -249 itibar
+ *
+ * Yani "anlaşamamak", "anlaşmaktan" 2,4 kat ağır basıyordu. Oysa fiyatta
+ * buluşamamak bu mesleğin NORMALİDİR: kuyumcunun asıl becerisi doğru eleme
+ * yapmaktır, her mala evet demek değil. Her "hayır"ı itibar kaybı saymak,
+ * oyunun ödüllendirmesi gereken davranışı cezalandırıyordu.
+ *
+ * Düzeltme, cezayı kaldırmaz — HANGİ reddin konuşulduğunu ayırır:
+ *
+ *   • Kibarca anlaşamamak (güven kaybı eşiğin altında) → itibar KONUŞMAZ.
+ *   • Aşağılayıcı teklif, sabır tüketme, çıkıp gitme  → tam ağırlık.
+ *   • Kapanan işlem                                   → tam ağırlık.
+ *
+ * Eşik `MEMORY.smallGainThreshold`tir: "bu büyüklüğün altındaki değişim
+ * küçüktür" kuralı zaten bu dosyada tanımlı; ikinci bir sabit uydurmak
+ * aynı fikri iki yere yazmak olurdu.
+ */
+export function visitReputationDelta(
+  trustGained: number,
+  outcome: VisitRecord['outcome'],
+): number {
+  if (outcome !== 'rejected') return reputationDelta(trustGained);
+
+  /*
+   * Anlaşamamanın KENDİSİ oyuncunun kusuru değildir; `TRUST.rejectPenalty`
+   * müşterinin hayal kırıklığıdır, kötü hizmetin ölçüsü değil. Semt için
+   * konuşulur hâle gelmesi, bu standart hayal kırıklığının ÜSTÜNE çıkan bir
+   * davranış ister — üst üste aşağılayıcı teklif gibi.
+   *
+   * Bu ayrım kişisel hafızayı DEĞİŞTİRMEZ: müşterinin kendi `record.trust`u
+   * kaybın tamamını taşır ve o kişi bunu hatırlar (GDD 10.2). Yumuşayan
+   * yalnız semte yansıyan paydır (GDD 10.4 "tek işlem itibarı uçurmaz").
+   */
+  const beyondNormal = trustGained + TRUST.rejectPenalty;
+  if (beyondNormal > -MEMORY.smallGainThreshold) return 0;
+  return reputationDelta(beyondNormal);
+}
+
+/**
+ * YENİ MÜŞTERİNİN MAĞAZAYA GELİŞ GÜVENİ (GDD 10.1 — "semt itibarından türer").
+ *
+ * `MEMORY.baseTrust` çıpasının etrafında oynar; dönen müşterinin
+ * `trustFromHistory(MEMORY.baseTrust, ...)` yolu ile AYNI çıpayı paylaşır.
+ * `noise` çağıranın RNG çekilişidir — determinizm (GDD 28.3) için çekiliş
+ * sayısı burada DEĞİŞMEZ, yalnız nereye eklendiği tanımlıdır.
+ */
+export function arrivalTrust(reputation: number, noise: number): number {
+  return clamp(
+    Math.round(
+      MEMORY.baseTrust + (reputation - MEMORY.baseTrust) * TRUST.reputationTrustWeight + noise,
+    ),
+    5,
+    95,
+  );
+}
+
+/**
+ * BİR İŞLEMİN SEMT İTİBARINA KATKISI — tek kural, tek yer.
+ *
+ * Alış ve satış settlement'ı bu formülü eskiden AYRI AYRI yazıyordu
+ * (`gameStore.ts` iki nokta). Kopyalanan kural, biri düzeltilip diğeri
+ * unutulduğunda sessizce ayrışır; §2'nin "kural tek yerde yaşasın"
+ * ilkesi burada da geçerli.
+ *
+ * Müşteri masadan NASIL kalktığı ölçülür: `customer.trust` pazarlık boyunca
+ * canlı güncellendiği için bu değer geliş güvenini DE, oyuncunun bu işlemde
+ * yaptıklarını DA içerir. GDD 10.4 gereği tek işlem itibarı uçurmaz:
+ * sonuç -2 ile +2 arasındadır.
+ */
+export function dealReputationDelta(trustAtClose: number): number {
+  return Math.round(((trustAtClose - MEMORY.baseTrust) / 50) * 2);
+}
+
 function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }

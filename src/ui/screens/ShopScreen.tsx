@@ -24,7 +24,8 @@ import { toolsForLevel } from '@data/tools';
 import { getServiceType } from '@data/service-types';
 import { expectedCompletionDay, findQuote } from '@domain/service';
 import { activeLine, canEnterStage, selectors, useGame } from '@state/gameStore';
-import { offerableStock } from '@domain/purchase';
+import { minSaleOffer, offerableStock } from '@domain/purchase';
+import { FAMILY_LABEL, TEMPLATE_BY_ID } from '@data/item-templates';
 import {
   bullionUnitValue,
   marketReferenceBuy,
@@ -60,7 +61,7 @@ import {
   PromiseStage,
   QuoteStage,
 } from '@ui/workbench/ServiceStages';
-import { PackageStage, StockPickStage } from '@ui/workbench/PurchaseStages';
+import { PackageStage, StockPickStage, fulfilmentText } from '@ui/workbench/PurchaseStages';
 import { OfferControl, liquidityImpact, type OfferImpact } from '@ui/workbench/OfferControl';
 
 import {
@@ -1441,7 +1442,14 @@ function PurchaseDock({
               setOffer(purchase.suggestedPrice);
               s.setStage('negotiate');
             },
-            disabled: !ready,
+            /*
+              Pasif değil KİLİTLİ: sebep sahne gövdesinde yazıyor ama düğmeye
+              basan oyuncu oraya bakmıyor ve telefonda `title` da okunmuyor.
+              Ölçüldü: paketi kuran alıcıların ~%15'i tam burada takılıyor.
+            */
+            locked: !ready,
+            disabledReason: fulfilmentBlockReason(purchase),
+            onLockedPress: () => s.notify(fulfilmentBlockReason(purchase), 'info'),
           }}
           secondary={[
             { label: 'Paketi Düzenle', onPress: () => s.setStage('stockPick') },
@@ -1549,10 +1557,18 @@ function PurchaseDock({
  * üstüne. Oyuncu zararına da satabilir — sistem "şu fiyattan sat" demez
  * (GDD 6.6), yalnız sonucunu gösterir.
  */
+/** Dock kilidinin gerekçesi — sahne gövdesiyle AYNI cümle. */
+function fulfilmentBlockReason(purchase: NonNullable<GameStateDeal>['purchase']): string {
+  if (!purchase) return 'Pakete önce bir kalem koyun.';
+  return fulfilmentText(purchase, purchase.demand);
+}
+
 function purchaseBounds(purchase: NonNullable<GameStateDeal>['purchase']) {
   const fair = purchase?.packageFairValue ?? 0;
   const cost = purchase?.packageCost ?? 0;
-  const min = Math.max(0, Math.round(Math.min(cost, fair) * 0.6));
+  // Taban domain'den okunur; slider ile `negotiationMove`un kapısı aynı
+  // sayıyı kullansın diye (ikisi ayrışırsa slider'ın sonu reddedilirdi).
+  const min = minSaleOffer(cost, fair);
   const max = Math.max(min + 1000, Math.round(fair * 1.6));
   const span = max - min;
   return { min, max, step: span > 200_000 ? 500 : span > 40_000 ? 100 : 50 };
@@ -1977,6 +1993,19 @@ function DayCloseConfirm() {
  * ikisi duruyordu; gecikmiş vade ya da esnaf borcu sessizce düşebiliyordu.
  * Uyarılar bu yüzden panelin EN ÜSTÜNDE: düşen haberler onlardı.
  */
+/**
+ * Kaçan talep satırının etiketi. Anahtar bir ŞABLON olabilir (sarrafiyede
+ * sık) ya da bir AİLE (esnek müşteride). İkisi de bulunamazsa ham anahtar
+ * gösterilir — rapor, tanımadığı bir kimlik yüzünden çökmemeli.
+ */
+function demandLabel(key: string): string {
+  return (
+    TEMPLATE_BY_ID.get(key)?.displayName ??
+    FAMILY_LABEL[key as keyof typeof FAMILY_LABEL] ??
+    key
+  );
+}
+
 function DayCloseReport() {
   const s = useGame();
   const r = s.lastDayClose;
@@ -2017,6 +2046,25 @@ function DayCloseReport() {
             {r.upcoming.slice(0, 3).map((u) => (
               <p key={`${u.label}-${u.dueDay}`} className="dayReport__upcomingRow">
                 {u.label} · {tl(u.amount)} · gün {u.dueDay}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/*
+          KAÇAN TALEP — ölçüldü: satın almaya gelenlerin büyük bölümü,
+          talebine uyan stok olmadığı için eli boş dönüyor ve oyuncunun
+          bunu öğrenebileceği hiçbir yüzey yoktu. Gün raporu, yarınki stok
+          kararının verildiği yer olduğu için doğru adres burası.
+        */}
+        {r.missedDemand.length > 0 && (
+          <div className="dayReport__upcoming">
+            <span className="dayReport__upcomingHead">
+              Stok yokluğundan çevrilen {r.missedDemandTotal} talep
+            </span>
+            {r.missedDemand.map((m) => (
+              <p key={m.templateId} className="dayReport__upcomingRow">
+                {demandLabel(m.templateId)} · bugün {m.today} · toplam {m.total}
               </p>
             ))}
           </div>

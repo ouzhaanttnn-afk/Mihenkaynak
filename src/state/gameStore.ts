@@ -34,6 +34,8 @@ import {
   createPurchaseSession,
   isProductCompatible,
   maxPackageLines,
+  minSaleOffer,
+  offerableStock,
   packageFitPenalty,
   packageGrams,
   purchaseCeiling,
@@ -104,10 +106,20 @@ import { getTool } from '@data/tools';
 import { makeId } from '@domain/rng';
 import {
   createRecord,
+  dealReputationDelta,
   recordVisit,
-  reputationDelta,
+  visitReputationDelta as visitReputation,
   type CustomerRegistry,
 } from '@domain/customer-memory';
+import {
+  createDemandLog,
+  missedToday,
+  recordMissedDemand,
+  rolloverDemandLog,
+  topMissedDemand,
+  type DemandLog,
+  type MissedDemandRow,
+} from '@domain/demand-log';
 import { flowPolicy, stageUnlocked, transactionClass } from '@domain/transaction-class';
 import {
   nextLesson,
@@ -155,6 +167,14 @@ export interface DayCloseSummary {
   /** Vade ve esnaf gecikmeleri gibi, düşerse kaybolacak satırlar. */
   warnings: string[];
   upcoming: { label: string; amount: Money; dueDay: number }[];
+  /**
+   * Bugün stok yokluğundan geri çevrilen talepler (en çok üçü). Gün raporu,
+   * oyuncunun yarınki stok kararını verdiği yerdir; kaçan talebi burada
+   * görmezse karar körlemesine kalır.
+   */
+  missedDemand: MissedDemandRow[];
+  /** Bugün toplam kaç talep karşılanamadı. */
+  missedDemandTotal: number;
 }
 
 /**
@@ -370,6 +390,13 @@ export interface GameState {
   triggerCustomerRush: () => void;
 
   tick: (deltaRealSeconds: number) => void;
+  /**
+   * Karşılanamayan talep defteri (ölçüm, ekonomi değil). Satın almaya gelen
+   * müşterinin talebine uyan stok yoksa buraya yazılır; oyuncu "ne istediler
+   * de bende yoktu" sorusunu ancak böyle sorabiliyor.
+   */
+  missedDemand: DemandLog;
+
   greetCustomer: () => void;
   setStage: (stage: WorkbenchStage) => void;
   setActiveLine: (lineId: string) => void;
@@ -616,6 +643,7 @@ export const useGame = create<GameState>((set, get) => {
     dayCharacter: dayCharacter(seed, 1, market),
     intentTelemetry: emptyTelemetry(),
     customers: {},
+    missedDemand: createDemandLog(),
     network: spawnNetwork(seed, START.reputation),
     overnight: null,
     lastOvernight: null,
@@ -873,6 +901,27 @@ export const useGame = create<GameState>((set, get) => {
       const intent = head.customer.intent;
       const isService = intent === 'service';
       const isPurchase = intent === 'buy' && !!head.customer.demand;
+
+      /*
+       * KAÇAN TALEP ÖLÇÜMÜ — müşteri karşılanırken, talebine uyan stok var mı?
+       *
+       * Burada ölçülür çünkü talebin AKTİF İŞLEME dönüştüğü tek yer burası;
+       * ve tam bu anda envanter neyse odur. Sonra ölçmek, oyuncunun pazarlık
+       * sırasında sattığı malı "vardı" saymak olurdu.
+       *
+       * Yalnız SAYAR: ne para, ne stok, ne güven, ne itibar, ne XP.
+       */
+      let missedDemand = s.missedDemand;
+      if (isPurchase && head.customer.demand) {
+        const uyan = offerableStock(head.customer.demand, s.inventory, items);
+        if (uyan.length === 0) {
+          // Şablonsuz (aile bazlı) talepte aile adı anahtardır; ikisi de
+          // yoksa yazacak bir şey yok demektir ve `recordMissedDemand` eler.
+          const anahtar =
+            head.customer.demand.templateId ?? head.customer.demand.families[0] ?? '';
+          missedDemand = recordMissedDemand(missedDemand, anahtar);
+        }
+      }
       // GDD 23.23 beşinci akış — ekspertiz. Müşteri ürününü satmaya değil,
       // ne ettiğini öğrenmeye gelir; ürün hiçbir an dükkânın olmaz.
       const isAppraisal = intent === 'appraisal';
@@ -920,6 +969,7 @@ export const useGame = create<GameState>((set, get) => {
       set({
         items,
         customers,
+        missedDemand,
         queue: s.queue.slice(1),
         activeCustomer: head.customer,
         activeDeal: {
@@ -1502,6 +1552,25 @@ export const useGame = create<GameState>((set, get) => {
         fairValue: haggle.fairValue,
         haggleRoom: haggle.room,
       };
+
+      /*
+       * KATMAN 2 (§2) — SATIŞ TEKLİFİNİN TABANI DOMAIN'DE DE VAR.
+       *
+       * Arayüzdeki slider zaten bu tabanın altına inmiyor; ama §2'nin kuralı
+       * "yalnız arayüzde filtre uygulama"dır. Ölçüldü: `submitOffer` doğrudan
+       * çağrıldığında hiçbir kapı yoktu ve 768.000 ₺'lik bir pozisyon 3 ₺'ye
+       * tertemiz settle oldu — ne uyarı, ne invariant.
+       *
+       * Oyuncunun ZARARINA satma hakkı durur: taban maliyetin ALTINDADIR.
+       * Kapatılan, kaza ve bozuk çağrı yolu.
+       */
+      if (isPurchase && move.kind === 'offer' && deal.purchase && move.amount !== undefined) {
+        const taban = minSaleOffer(deal.purchase.packageCost, deal.purchase.packageFairValue);
+        if (move.amount < taban) {
+          pushToast(set, get, `Bu fiyat çok düşük; taban ${fmt(taban)}.`, 'negative');
+          return;
+        }
+      }
 
       const { session, response } = applyMove(line.negotiation, ctx, move);
 
@@ -2179,6 +2248,9 @@ export const useGame = create<GameState>((set, get) => {
         activeDeal: null,
         nextCustomerAtMinutes: DAY.openMinutes + 3,
         customerRushUntilMinutes: null,
+        // "Bugün" penceresi kapanır, toplam korunur; gün raporu aşağıda
+        // kapanmadan ÖNCEKİ defteri (`s.missedDemand`) okur.
+        missedDemand: rolloverDemandLog(s.missedDemand),
       });
 
       /*
@@ -2220,6 +2292,8 @@ export const useGame = create<GameState>((set, get) => {
             Math.abs(overnightOutcome.spotChange) >= 0.0005 ? overnightOutcome.summary : null,
           warnings,
           upcoming: report.upcomingLiabilities,
+          missedDemand: topMissedDemand(s.missedDemand, 3).filter((r) => r.today > 0),
+          missedDemandTotal: missedToday(s.missedDemand),
         },
       });
 
@@ -2380,9 +2454,7 @@ function settleLine(
       itemsIn: [stored],
       itemsOut: [],
       trustDelta: 0,
-      reputationDelta: Math.round(
-        (customer.trust - 50) / 50 * 2,
-      ),
+      reputationDelta: dealReputationDelta(customer.trust),
       xpDelta: xpForDeal({
         testsUsed: line.testResults.length,
         confidence: band.confidence,
@@ -2567,7 +2639,7 @@ function settlePurchase(
       itemsIn: [],
       itemsOut: purchase.lines.map((l) => ({ itemId: l.itemId, quantity: l.quantity })),
       trustDelta: 0,
-      reputationDelta: Math.round(((customer.trust - 50) / 50) * 2),
+      reputationDelta: dealReputationDelta(customer.trust),
       xpDelta: xpForDeal({
         testsUsed: 0,
         confidence: 'high',
@@ -2675,8 +2747,9 @@ function commitVisit(s: GameState): CustomerRegistry {
 function visitReputationDelta(s: GameState): number {
   const customer = s.activeCustomer;
   const record = customer ? s.customers[customer.id] : undefined;
-  if (!customer || !record) return 0;
-  return reputationDelta(customer.trust - record.trust);
+  if (!customer || !record || !s.activeDeal) return 0;
+  // Kural domain'de yaşıyor: hangi reddin konuşulduğunu orası bilir.
+  return visitReputation(customer.trust - record.trust, visitOutcome(s.activeDeal, customer));
 }
 
 function visitOutcome(deal: ActiveDeal, customer: Customer): VisitRecord['outcome'] {

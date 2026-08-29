@@ -9,7 +9,7 @@
  * `overflow: hidden`; ikincil ekranlar kendi scroll'unu yönetir.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { activeLine, useGame } from '@state/gameStore';
 import { getTemplate } from '@data/item-templates';
@@ -17,6 +17,7 @@ import { syncAudioSettings, unlockAudio } from '@ui/audio';
 import { setLocale } from '@ui/i18n';
 import { stageLabel } from '@ui/shell/StageStrip';
 import { BottomNav } from '@ui/shell/BottomNav';
+import { overdueJobs, readyJobs } from '@domain/service';
 import { BusinessScreen } from '@ui/screens/BusinessScreen';
 import { ShopScreen } from '@ui/screens/ShopScreen';
 import { MarketScreen } from '@ui/screens/MarketScreen';
@@ -38,6 +39,27 @@ export function App() {
   const profileOpen = useGame((s) => s.profileOpen);
   const closeProfile = useGame((s) => s.closeProfile);
   const updateProfile = useGame((s) => s.updateProfile);
+
+  /*
+    ATÖLYE ROZETİ — teslime hazır ve sözü geçmiş işler.
+
+    Ölçüldü: 30 günde 224 iş kabul edildi, parça maliyeti kabulde kasadan
+    çıktı, ücret teslimde gelecekti ve hiçbiri teslim edilmedi çünkü oyun
+    bunu hiç haber vermiyordu; `overdueJobs()` yalnız Atölye ekranı açıkken
+    okunuyordu. Gecikme cezası da yalnız teslim anında işlediği için,
+    teslim edilmeyen iş hem bedava hem görünmezdi.
+
+    Rozet SAYAR, ekonomiye dokunmaz.
+  */
+  const jobs = useGame((s) => s.jobs);
+  const day = useGame((s) => s.market.day);
+  const navBadges = useMemo(() => {
+    const hazir = readyJobs(jobs).length;
+    const geciken = overdueJobs(jobs, day).length;
+    if (hazir === 0 && geciken === 0) return undefined;
+    // Geciken iş varsa aciliyet rengi kazanır; sayı yine bekleyen toplamıdır.
+    return { workshop: { count: Math.max(hazir, geciken), urgent: geciken > 0 } };
+  }, [jobs, day]);
 
   /*
     AYARLARI AÇILIŞTA UYGULA.
@@ -103,7 +125,7 @@ export function App() {
         */}
         {tab !== 'shop' && <ResumeDealBar onResume={() => setTab('shop')} />}
 
-        <BottomNav active={tab} onSelect={setTab} />
+        <BottomNav active={tab} onSelect={setTab} badges={navBadges} />
 
         {/*
           Profil penceresi CİHAZ SEVİYESİNDE: ekranın değil, çerçevenin

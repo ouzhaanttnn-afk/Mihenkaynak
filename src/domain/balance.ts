@@ -300,6 +300,21 @@ export const PURCHASE = {
    * (republic_gold talep havuzundaydı ama tezgâhta yoktu).
    */
 
+  /*
+   * SATIŞ TEKLİFİ TABANI — maliyetin (ya da adil değerin, hangisi küçükse)
+   * bu katından aşağısı kabul edilmez.
+   *
+   * NEDEN VAR: taban eskiden YALNIZ arayüz slider'ının `min` değerindeydi.
+   * `submitOffer` doğrudan çağrıldığında hiçbir kapı yoktu; ölçüldü —
+   * 768.000 ₺'lik bir altın pozisyonu 3 ₺'ye tertemiz settle oldu, hiçbir
+   * invariant itiraz etmedi. Bu, projenin kendi §2 standardıyla çelişiyordu:
+   * "arayüz filtresine güvenmek yetmez, kapı domain'de de olmalı."
+   *
+   * Oyuncunun zararına satma HAKKI durur — taban maliyetin ALTINDADIR.
+   * Engellenen, kaza ve bozuk çağrı; kötü ticaret kararı değil.
+   */
+  minSaleOfferRatio: 0.6,
+
   /** Bu adetten itibaren toplu müşteri kanal profili kullanılır (§4.1). */
   bulkChannelThreshold: 8,
 
@@ -843,6 +858,22 @@ export const TRUST = {
   rejectPenalty: 4,
   /** Semt itibarına yansıma oranı — tek işlem itibarı uçurmaz (GDD 10.4). */
   reputationTransfer: 0.12,
+  /*
+   * İTİBARIN YENİ MÜŞTERİ GÜVENİNE ETKİSİ (GDD 10.1).
+   *
+   * ÖLÇÜLMÜŞ HATA: eskiden spawn güveni `itibar * 0.6` idi, yani MUTLAK bir
+   * çarpandı. Oysa dönen müşteri `trustFromHistory(MEMORY.baseTrust, ...)`
+   * ile 50 çıpasından geliyordu; iki yol 23 puan çelişiyordu. İtibar 42'de
+   * yeni müşteri 27 güvenle geliyor, işlem sonu itibar payı
+   * `(güven-50)/25` olduğu için HER ticaret itibarı düşürüyordu — 30 günlük
+   * simülasyonda itibar 42'den 2 günde 0'a iniyor ve orada kalıyordu.
+   * Kademe 2 için gereken 52'ye ticaretle ulaşmak imkânsızdı.
+   *
+   * Doğrusu: itibar çıpayı DEĞİŞTİRMEZ, çıpanın ETRAFINDA oynatır. 0 itibarda
+   * ortalama 30, 50'de 50, 100 itibarda 70 güvenle gelinir; yön oyuncunun
+   * işidir, taban değil.
+   */
+  reputationTrustWeight: 0.4,
 } as const;
 
 /**

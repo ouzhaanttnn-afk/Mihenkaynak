@@ -31,6 +31,7 @@ import { createLedger, type Ledger } from '@domain/settlement';
 import type { GameState } from './gameStore';
 import { normalizeProfile, type PlayerProfile } from '@domain/profile';
 import type { CustomerRegistry } from '@domain/customer-memory';
+import { normalizeDemandLog, type DemandLog } from '@domain/demand-log';
 import type {
   InventoryPosition,
   ItemInstance,
@@ -67,6 +68,13 @@ export interface SaveFile {
    * yeniden yabancı olurdu ve güven "ekonomik varlık" olmaktan çıkardı.
    */
   customers: CustomerRegistry;
+
+  /**
+   * Karşılanamayan talep defteri. Kaydedilmezse oyuncunun "neyi sürekli
+   * kaçırıyorum" birikimi her yüklemede silinir ve stok kararı yeniden
+   * körleşir. Eski kayıtlarda alan YOK; boş defterle açılır.
+   */
+  missedDemand?: DemandLog;
 
   speed4xUnlocked: boolean;
 
@@ -117,6 +125,7 @@ export function serialize(state: GameState): SaveFile {
     jobs: state.jobs,
     network: state.network,
     customers: state.customers,
+    missedDemand: state.missedDemand,
     speed4xUnlocked: state.speed4xUnlocked,
     seenLessons: state.seenLessons,
     profile: state.profile,
@@ -138,6 +147,7 @@ export type LoadedState = Pick<
   | 'jobs'
   | 'network'
   | 'customers'
+  | 'missedDemand'
   | 'dayCharacter'
   | 'intentTelemetry'
   | 'speed4xUnlocked'
@@ -179,6 +189,8 @@ export function deserialize(file: SaveFile): LoadedState {
     network: save.network,
     // Eski kayıtta defter yoksa boş başlar; çökmez.
     customers: save.customers ?? {},
+    // Eski kayıtta defter yok; boş başlar ve ölçüm bugünden birikir.
+    missedDemand: normalizeDemandLog(save.missedDemand),
     dayCharacter: dayCharacter(save.seed, save.day, market),
     // Telemetri bir ÖLÇÜMdür, bir durum değil: yüklemede sıfırlanır ve
     // yeni örneklem penceresi başlar (§3 "uygun örneklem penceresinde").
