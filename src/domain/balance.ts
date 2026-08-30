@@ -939,6 +939,45 @@ export const DAY = {
   minutesPerRealSecond: 1.2,
   /** Müşteri geliş aralığı (oyun dakikası). PLAYTEST. */
   customerIntervalMinutes: [12, 26] as [number, number],
+
+  /*
+   * İTİBAR → MÜŞTERİ TRAFİĞİ (GDD 10.1 "Semt/Marka İtibarı → müşteri
+   * trafiği, premium segment").
+   *
+   * GDD bunu zaten söylüyordu ama yalnız YARISI yazılmıştı: itibar premium
+   * arketip havuzunu (VIP, koleksiyoncu) eğiyor, trafiğe hiç dokunmuyordu.
+   * Ölçüldü — itibar 20 ile 40 arasında müşteri akışı BİREBİR aynıydı.
+   *
+   * Çarpan `START.reputation`da tam 1,0'dir. Bu bilinçli: yeni oyuncu ve
+   * eski kayıtlar bugünkü dengeyi aynen görür, değişen yalnız itibarın
+   * SONRAKİ yolculuğudur. Sıfır itibarda dükkâna kimse uğramaz olmaz —
+   * taban 0,7 — çünkü kapanmış bir dükkân oyun değildir; tavan 1,4, çünkü
+   * trafiği sınırsız büyütmek oyunu değil angaryayı büyütür.
+   *
+   * NOT: kuyruk 3 kişiyle sınırlı ve doluyken spawn durur. Yani yüksek
+   * trafik oyuncunun hızıyla kendiliğinden tavanlanır; bu çarpan bir
+   * "fırsat üst sınırı"dır, zorunlu iş yükü değil.
+   */
+  reputationTrafficWeight: 0.6,
+  reputationTrafficRange: [0.7, 1.4] as [number, number],
+
+  /*
+   * İTİBAR → TALEBİN STOĞA UYMA EĞİLİMİ.
+   *
+   * Trafiği tek başına artırmak angaryayı artırır: ölçüldü, günlük
+   * müşterinin %72'si RUTİN (oyuncunun bilgisinin sonucu değiştirmediği
+   * etkileşimler) ve en büyük kova "istediğim mal dükkânda yok" (%26).
+   * İtibar yalnız sayıyı büyütseydi, itibar 100'de günde 71 rutin müşteri
+   * çıkardı — daha uzun değil, daha yorucu bir oyun.
+   *
+   * Tanınan dükkâna insanlar NE SATTIĞINI BİLEREK gelir. Bu ağırlık,
+   * itibar yükseldikçe talebin oyuncunun elindeki mala kaymasını sağlar:
+   * müşteri sayısı artarken boşa gelen oranı düşer.
+   *
+   * `START.reputation`da 0'dır — yani oyunun başında talep havuzu bugünkü
+   * gibi kör dağılır ve mevcut denge kaymaz. Kayırma yukarı doğru büyür.
+   */
+  reputationStockAffinity: 2.2,
 } as const;
 
 /** Hız kontrolü — 1x/2x temel, 4x rewarded (GDD 23.9.2 / 26.2). */

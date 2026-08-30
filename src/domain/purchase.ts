@@ -22,7 +22,7 @@
  * yeniden yazılmaz.
  */
 
-import { PURCHASE } from './balance';
+import { DAY, PURCHASE, START } from './balance';
 import { costBasisForUnits } from './settlement';
 import { bullionMeta, isBullion } from '@data/bullion';
 import { getArchetype } from '@data/archetypes';
@@ -68,6 +68,14 @@ export function spawnDemand(
    * dükkânının müşterisi flagship ürünü sormaz (GDD 19).
    */
   storeTier = 1,
+  /**
+   * Dükkânda ŞU AN bulunan şablon kimlikleri ve semt itibarı.
+   *
+   * İtibar yükseldikçe talep bunlara kayar: tanınan dükkâna insanlar ne
+   * sattığını bilerek gelir. Verilmezse kayırma yoktur ve havuz bugünkü
+   * gibi kör dağılır — eski çağrılar ve testler etkilenmez.
+   */
+  stocked?: { templateIds: readonly string[]; reputation: number },
 ): CustomerDemand {
   const rng = new Rng(deriveSeed(rootSeed, 'customer/demand', spawnIndex));
   const archetype = getArchetype(archetypeId);
@@ -86,7 +94,7 @@ export function spawnDemand(
    * müşteri üretirdi. Sonucu artık talebin AİLESİNİ değil, yalnız hacim
    * eğilimini besliyor — havuz zaten tek aile taşıyor.
    */
-  const catalog = weightedBuyDemandPool(storeTier);
+  const catalog = stockAffinityPool(weightedBuyDemandPool(storeTier), stocked);
   rng.chance(character.bullionBias); // akış konumu korunur (bkz. yukarı)
 
   const wantsBullion = catalog.length > 0;
@@ -378,6 +386,27 @@ export function quotePackage(
 export function minSaleOffer(packageCost: Money, packageFairValue: Money): Money {
   const taban = Math.min(packageCost, packageFairValue);
   return Math.max(0, Math.round(taban * PURCHASE.minSaleOfferRatio));
+}
+
+/**
+ * Talep havuzunu dükkânın stoğuna doğru eğer — itibar kadar.
+ *
+ * Saf ve RNG'SİZ: yalnız ağırlıkları yeniden ölçekler, çekiliş sayısına
+ * dokunmaz (GDD 28.3). `START.reputation`da kayırma sıfırdır.
+ */
+export function stockAffinityPool(
+  pool: { value: string; weight: number }[],
+  stocked?: { templateIds: readonly string[]; reputation: number },
+): { value: string; weight: number }[] {
+  if (!stocked || stocked.templateIds.length === 0) return pool;
+
+  // İtibar başlangıcın altındaysa kayırma yok — dükkân henüz tanınmıyor.
+  const üstünlük = Math.max(0, stocked.reputation - START.reputation) / 100;
+  if (üstünlük <= 0) return pool;
+
+  const elde = new Set(stocked.templateIds);
+  const kat = 1 + üstünlük * DAY.reputationStockAffinity;
+  return pool.map((r) => (elde.has(r.value) ? { ...r, weight: r.weight * kat } : r));
 }
 
 export function purchaseCeiling(customer: Customer, fair: Money): Money {

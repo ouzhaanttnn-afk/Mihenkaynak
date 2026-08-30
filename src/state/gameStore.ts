@@ -799,6 +799,13 @@ export const useGame = create<GameState>((set, get) => {
             ...queue.map((q) => q.customer.displayName),
             ...(s.activeCustomer ? [s.activeCustomer.displayName] : []),
           ],
+          /*
+            GDD 10.1 — itibar yükseldikçe talep dükkânın ELİNDEKİ mala kayar.
+            Ölçüldü: günlük müşterinin %26'sı "istediğim mal burada yok" diye
+            dönüyordu; trafiği itibara bağlarken bu kovayı da küçültmezsek
+            oyun uzamaz, yorulur.
+          */
+          stockedTemplateIds(s),
         );
         queue = [...queue, spawned];
         spawnCounter += 1;
@@ -809,7 +816,15 @@ export const useGame = create<GameState>((set, get) => {
         // §3: dinamik havuz "gün içi yoğunluk" karakterini belirler.
         nextCustomerAtMinutes =
           clock +
-          nextCustomerDelay(s.seed, spawnCounter, DAY.customerIntervalMinutes, rushActive) *
+          nextCustomerDelay(
+            s.seed,
+            spawnCounter,
+            DAY.customerIntervalMinutes,
+            rushActive,
+            // GDD 10.1 — itibar müşteri TRAFİĞİNİ de belirler, yalnız
+            // premium segmenti değil.
+            s.store.reputation,
+          ) *
             s.dayCharacter.tempo;
       }
 
@@ -2509,6 +2524,20 @@ function settleLine(
 
   const revalued = revalueInventory(economy.inventory, economy.items, thesisContext(get()));
   set({ ...economyToState({ ...economy, inventory: revalued }), lastReview: review });
+}
+
+/**
+ * Dükkânda o an satılabilir durumda bulunan şablon kimlikleri — benzersiz.
+ * Yalnız vitrin ve arka stok sayılır; satılmış kalem stokta değildir.
+ */
+function stockedTemplateIds(s: GameState): string[] {
+  const ids = new Set<string>();
+  for (const p of s.inventory) {
+    if (p.location !== 'display' && p.location !== 'backStock') continue;
+    const item = s.items[p.itemId];
+    if (item) ids.add(item.templateId);
+  }
+  return [...ids];
 }
 
 /** Pazarlık başladıysa paket kilitlidir (GDD 34.2 tavanı yeniden zar atılamaz). */

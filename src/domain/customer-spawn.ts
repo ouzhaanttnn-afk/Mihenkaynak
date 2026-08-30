@@ -9,7 +9,7 @@
  */
 
 import { ARCHETYPES, FIRST_NAMES_F, FIRST_NAMES_M, HONORIFIC_F, HONORIFIC_M, getArchetype } from '@data/archetypes';
-import { PURCHASE } from './balance';
+import { DAY, PURCHASE, START } from './balance';
 import { rollIntent, type DayCharacter } from './intent';
 import { applyBulkProfile, spawnDemand } from './purchase';
 import {
@@ -67,6 +67,13 @@ export function spawnCustomer(
    * Boş bırakılırsa davranış eskisiyle birebir aynıdır.
    */
   takenNames: readonly string[] = [],
+  /**
+   * Dükkânda o an bulunan ürün şablonları (vitrin + arka stok).
+   *
+   * İtibar yükseldikçe satın alma talebi bunlara kayar — tanınan dükkâna
+   * insanlar ne sattığını bilerek gelir. Verilmezse kayırma olmaz.
+   */
+  stockedTemplateIds?: readonly string[],
 ): SpawnedCustomer {
   const rng = new Rng(deriveSeed(rootSeed, 'customer', spawnIndex));
 
@@ -96,7 +103,9 @@ export function spawnCustomer(
   //     stoktan seçer (GDD 23.23). ---
   const demand: CustomerDemand | null =
     intent === 'buy'
-      ? spawnDemand(rootSeed, spawnIndex, archetypeId, character, store.storeTier)
+      ? spawnDemand(rootSeed, spawnIndex, archetypeId, character, store.storeTier, stockedTemplateIds
+          ? { templateIds: stockedTemplateIds, reputation: store.reputation }
+          : undefined)
       : null;
 
   // --- Kalem sayısı: çoklu ürün orta oyunda açılır (GDD 12) ---
@@ -281,10 +290,35 @@ export function nextCustomerDelay(
   spawnIndex: number,
   band: readonly [number, number],
   rushActive: boolean,
+  /**
+   * Semt itibarı. Verilmezse trafik çarpanı uygulanmaz — eski çağrılar ve
+   * testler bugünkü davranışı aynen görür.
+   */
+  reputation?: number,
 ): number {
   const rng = new Rng(deriveSeed(rootSeed, 'customer/delay', spawnIndex));
   const base = rng.range(band[0], band[1]);
-  return Math.round(rushActive ? base * 0.4 : base);
+  const rushed = rushActive ? base * 0.4 : base;
+  // Bölme: trafik çarpanı büyüdükçe ARALIK kısalır, yani müşteri sıklaşır.
+  // Çekiliş sayısı DEĞİŞMEZ; determinizm (GDD 28.3) korunur.
+  return Math.max(1, Math.round(rushed / trafficFactor(reputation)));
+}
+
+/**
+ * İTİBARIN MÜŞTERİ TRAFİĞİNE ETKİSİ.
+ *
+ * 1,0 = bugünkü akış. `START.reputation` noktasında tam 1,0 döner, yani
+ * oyunun başındaki denge kaymaz; itibar oradan yukarı çıktıkça dükkâna
+ * daha sık, aşağı düştükçe daha seyrek uğranır.
+ *
+ * Saf ve RNG'siz: aynı itibar her zaman aynı çarpanı verir.
+ */
+export function trafficFactor(reputation: number | undefined): number {
+  if (reputation === undefined) return 1;
+  const [lo, hi] = DAY.reputationTrafficRange;
+  const raw =
+    1 + ((reputation - START.reputation) / 100) * DAY.reputationTrafficWeight;
+  return Math.min(hi, Math.max(lo, raw));
 }
 
 /**
