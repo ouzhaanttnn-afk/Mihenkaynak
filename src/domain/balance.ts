@@ -333,8 +333,16 @@ export const PURCHASE = {
   /** Ödeme tavanı oranı bandı — spawn anında sabitlenir (GDD 34.2). */
   ceilingRatioBand: [1.04, 1.34] as [number, number],
 
-  /** Mağaza kademesine göre paketteki azami kalem sayısı. */
-  maxPackageLinesByTier: { 1: 2, 2: 3, 3: 4, 4: 5 } as Record<number, number>,
+  /*
+   * Mağaza kademesine göre paketteki azami kalem sayısı.
+   *
+   * KADEME 5 EKSİKTİ ve `?? 3` varsayılanına düşüyordu: kademe 5 dükkânı
+   * kademe 3'ten AZ kalem paketleyebiliyordu (5 -> 3). Kademe 5 bugün
+   * `inScope: false` olduğu için oyuncu bu duvara çarpmıyor — hata gizli,
+   * ama kademe 5'i açacak kişiyi bekliyordu. Tablo artık her kademeyi
+   * taşıyor ve testi bunu tek yönlü artan olarak kilitliyor.
+   */
+  maxPackageLinesByTier: { 1: 2, 2: 3, 3: 4, 4: 5, 5: 6 } as Record<number, number>,
 
   /**
    * §4.1 — TOPLU MÜŞTERİ PROFİLİ.
