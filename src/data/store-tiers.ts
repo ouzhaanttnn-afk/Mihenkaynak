@@ -49,6 +49,23 @@ export interface StoreTierDef {
   name: string;
   theme: string;
   /** GDD 19.1 "Ana açılım" sütunu. */
+  /*
+   * KADEME NE AÇIYOR — oyuncuya yükseltme ekranında gösterilen liste.
+   *
+   * BU LİSTE BİR VAATTİR ve 220.000 ile 850.000 ₺'lik kararların verildiği
+   * yerde durur. Ölçüldüğünde dördü karşılıksızdı:
+   *   · "Randevu"            — kodda hiç yok
+   *   · "İlk çalışan"        — sistem yok, yalnız bir görsel dosyası var
+   *   · "VIP müşteri havuzu" — kademeye değil İTİBARA (60) bağlı; kademe
+   *                            1'de bile açılıyor
+   *   · "Taşlı ürün"         — müşteriden alınabiliyor ama satılamıyor;
+   *                            `sellableToCustomer` tedarik kataloğunu şart
+   *                            koşuyor, o da yalnız sarrafiye
+   *
+   * Liste artık kademenin GERÇEKTEN verdiğini anlatır. Yol haritasındaki
+   * fikirler silinmiş değil; yalnız yapılmadan önce vaat edilmiyorlar.
+   * Yapıldıklarında buraya geri gelirler.
+   */
   unlocks: string[];
   /** Bu kademeye geçmek için ödenen yatırım (GDD 18.1 "mağaza yatırımı"). */
   investment: Money;
@@ -65,7 +82,7 @@ export const STORE_TIERS: StoreTierDef[] = [
     tier: 1,
     name: 'Semt Kuyumcusu',
     theme: 'Dar, sıcak, güven odaklı',
-    unlocks: ['Temel al-sat', 'Terazi ve mihenk', 'Sınırlı vitrin'],
+    unlocks: ['Temel al-sat', 'Terazi ve mihenk', 'Vitrin 8 · arka stok 16', 'Pakete 2 kalem'],
     investment: 0,
     requires: null,
     grants: { displaySlots: 8, backStockSlots: 16, workshopCapacity: 2, dailyOverhead: 1_200 },
@@ -75,7 +92,16 @@ export const STORE_TIERS: StoreTierDef[] = [
     tier: 2,
     name: 'Cadde Mağazası',
     theme: 'Daha geniş vitrin ve operasyon',
-    unlocks: ['Toptancı ilişkisi derinleşir', 'Servis tezgâhı', 'İlk çalışan'],
+    // Ölçüldü: +5 ürün türü (18 ayar kolye, 22 ayar set, gümüş obje,
+    // küçük külçe, ilk taşlı yüzük). Koleksiyoncu müşteri bu kademede açılır.
+    unlocks: [
+      'Vitrin 14 · arka stok 28',
+      'Atölyede 3 iş birden',
+      'Pakete 3 kalem',
+      'Yeni ürün türleri gelir: kolye, set, gümüş obje, taşlı yüzük',
+      'Koleksiyoncu müşteri (itibar 55+)',
+      'Toptancı limiti büyür',
+    ],
     investment: 220_000,
     requires: {
       netWorth: 600_000,
@@ -92,7 +118,15 @@ export const STORE_TIERS: StoreTierDef[] = [
     tier: 3,
     name: 'AVM / Premium Butik',
     theme: 'Premium sunum',
-    unlocks: ['VIP müşteri havuzu', 'Taşlı ürün', 'Randevu', 'İleri servis'],
+    // Ölçüldü: +3 ürün (premium taşlı yüzük, vintage broş, koleksiyon
+    // parası). Taşlı ürün sayısı 2'den 4'e çıkar — taş isteyen servisin şartı.
+    unlocks: [
+      'Vitrin 22 · arka stok 44',
+      'Atölyede 4 iş birden',
+      'Pakete 4 kalem',
+      'Premium taşlı ürün, vintage broş ve koleksiyon parası gelir',
+      'Taş işçiliği isteyen servisler için daha çok mal',
+    ],
     investment: 850_000,
     requires: {
       netWorth: 2_200_000,
@@ -109,7 +143,7 @@ export const STORE_TIERS: StoreTierDef[] = [
     tier: 4,
     name: 'Şehir Flagship',
     theme: 'Yüksek hacim ve uzmanlık',
-    unlocks: ['Müzayede / özel tedarik', 'Ekspertiz laboratuvarı'],
+    unlocks: ['Vitrin 32 · arka stok 70', 'Atölyede 6 iş birden', 'Pakete 5 kalem'],
     investment: 2_600_000,
     requires: {
       netWorth: 7_000_000,
@@ -126,6 +160,7 @@ export const STORE_TIERS: StoreTierDef[] = [
     tier: 5,
     name: 'Marka Ağı',
     theme: 'Yönetim katmanı',
+    // `inScope: false` — bu sürümde açılmaz (GDD 19.3, post-1.0).
     unlocks: ['İkinci şube', 'Bölgesel hedefler'],
     investment: 0,
     requires: null,

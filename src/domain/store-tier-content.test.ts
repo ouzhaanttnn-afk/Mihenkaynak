@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { PURCHASE } from './balance';
 import { STORE_TIERS } from '@data/store-tiers';
 import { templatesForTier } from './item-spawn';
+import { SERVICE_TYPES } from '@data/service-types';
 
 const TIERS = STORE_TIERS.map((t) => t.tier);
 
@@ -70,5 +71,82 @@ describe('kademe 2 ve 3 gerçekten içerik açıyor', () => {
     const taşlı = (tier: number) => templatesForTier(tier).filter((t) => t.hasStone).length;
     expect(taşlı(2)).toBeGreaterThan(taşlı(1));
     expect(taşlı(3)).toBeGreaterThan(taşlı(2));
+  });
+});
+
+/**
+ * VAAT EDİLEN İLE VERİLEN AYNI OLMALI.
+ *
+ * Yükseltme ekranındaki `unlocks` listesi 220.000 ve 850.000 ₺'lik
+ * kararların verildiği yerde durur. Ölçüldüğünde dördü karşılıksızdı:
+ * "Randevu" (kodda yok), "İlk çalışan" (sistem yok), "VIP müşteri havuzu"
+ * (kademeye değil itibara bağlı) ve "Taşlı ürün" (alınabiliyor ama
+ * satılamıyor).
+ *
+ * Metin serbesttir — ama içindeki SAYILAR kademenin gerçekten verdiğiyle
+ * tutmalı. Aşağıdaki testler o bağı kurar: biri değişip diğeri unutulursa
+ * test düşer.
+ */
+describe('kademe vaatleri gerçekle tutuyor', () => {
+  const sayilar = (metinler: string[]) =>
+    metinler.flatMap((m) => [...m.matchAll(/\d+/g)].map((x) => Number(x[0])));
+
+  it('listede geçen vitrin ve arka stok sayıları gerçek grants ile aynı', () => {
+    for (const t of STORE_TIERS) {
+      if (!t.inScope) continue;
+      const n = sayilar(t.unlocks);
+      const vitrinVar = t.unlocks.some((u) => u.includes('Vitrin'));
+      if (!vitrinVar) continue;
+      expect(n, `kademe ${t.tier}: vitrin ${t.grants.displaySlots} listede yok`).toContain(
+        t.grants.displaySlots,
+      );
+      expect(n, `kademe ${t.tier}: arka stok ${t.grants.backStockSlots} listede yok`).toContain(
+        t.grants.backStockSlots,
+      );
+    }
+  });
+
+  it('atölye kapasitesi anıldığı yerde doğru sayıyı taşır', () => {
+    for (const t of STORE_TIERS) {
+      if (!t.inScope) continue;
+      const satır = t.unlocks.find((u) => u.includes('Atölyede'));
+      if (!satır) continue;
+      expect(satır, `kademe ${t.tier}`).toContain(String(t.grants.workshopCapacity));
+    }
+  });
+
+  it('paket satırı anıldığı yerde doğru sayıyı taşır', () => {
+    for (const t of STORE_TIERS) {
+      if (!t.inScope) continue;
+      const satır = t.unlocks.find((u) => u.includes('Pakete'));
+      if (!satır) continue;
+      expect(satır, `kademe ${t.tier}`).toContain(String(PURCHASE.maxPackageLinesByTier[t.tier]));
+    }
+  });
+
+  it('olmayan sistem vaat edilmez', () => {
+    /*
+      Bu üç kelime kodda karşılığı olmayan sistemleri anlatıyordu. Biri
+      yapılırsa buraya geri konabilir — ama YAPILMADAN ÖNCE değil.
+    */
+    const yok = ['Randevu', 'çalışan', 'Müzayede', 'laboratuvar'];
+    for (const t of STORE_TIERS) {
+      if (!t.inScope) continue;
+      for (const u of t.unlocks) {
+        for (const k of yok) {
+          expect(u.toLowerCase(), `kademe ${t.tier}: "${u}"`).not.toContain(k.toLowerCase());
+        }
+      }
+    }
+  });
+
+  it('servis türleri kademeye değil SEVİYEYE bağlıdır', () => {
+    // "İleri servis" bir kademe açılımı gibi yazılmıştı; gerçekte kapı
+    // oyuncu seviyesidir. Liste bu yüzden servis vaat etmez.
+    expect(SERVICE_TYPES.every((s) => typeof s.unlockLevel === 'number')).toBe(true);
+    for (const t of STORE_TIERS) {
+      if (!t.inScope) continue;
+      for (const u of t.unlocks) expect(u.toLowerCase()).not.toContain('ileri servis');
+    }
   });
 });
