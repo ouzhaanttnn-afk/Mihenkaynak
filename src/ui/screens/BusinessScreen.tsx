@@ -18,7 +18,7 @@ import { isHapticsSupported, vibrate } from '@ui/haptics';
 import { t } from '@ui/i18n';
 import { useEffect, useState } from 'react';
 
-import { MARKET_REGIME } from '@domain/balance';
+import { MARKET_REGIME, WHOLESALE } from '@domain/balance';
 import {
   LIQUIDITY_BAND_LABEL,
   channelMetrics,
@@ -995,8 +995,23 @@ function StoreRoute({ onBack }: { onBack: () => void }) {
     ),
   );
 
+  /*
+    "42 / 52" BİR KESİR GİBİ OKUNUYORDU.
+
+    İtibar ve toptancı güveni kodda 0-100 ölçeğinde (`Scale100`, 0-100'e
+    clamp) ama satır bunu söylemiyordu: oyuncu "52 üzerinden 42" sanıyor,
+    oysa "şu an 42, gereken 52, tavan 100" demek.
+
+    Puan kapılarında ok kullanılıyor — "şu an → gereken" olarak okunur ve
+    kesirle karıştırılamaz. Para kapıları "/" ile kalıyor: orada "₺" zaten
+    kesir okumasını engelliyor ve iki tutar arasındaki oran anlamlı.
+  */
   const fmtGate = (g: (typeof evaluation.gates)[number]) =>
-    g.unit === 'money' ? `${tl(g.current)} / ${tl(g.needed)}` : `${g.current} / ${g.needed}`;
+    g.unit === 'money'
+      ? `${tl(g.current)} / ${tl(g.needed)}`
+      : g.unit === 'points'
+        ? `${g.current} → ${g.needed}`
+        : `${g.current} / ${g.needed}`;
 
   return (
     <div className="page">
@@ -1052,6 +1067,32 @@ function StoreRoute({ onBack }: { onBack: () => void }) {
                   />
                 ))}
               </div>
+
+              {/*
+                İKİ PUANIN NASIL BÜYÜDÜĞÜ HİÇBİR YERDE YAZMIYORDU.
+
+                Oyuncu "toptancı güveni 50 → 58" satırını görüyor ama ne
+                yaparsa büyüyeceğini bilmiyordu. Özellikle NAKİTLE çalışan
+                oyuncu için kritik: düzenli alışveriş güveni büyütür ama
+                bir tavana kadar; ondan sonrası vade alıp zamanında ödemeyi
+                gerektirir. Bu kısıt görünmezse oyuncu neden ilerleyemediğini
+                anlayamaz.
+
+                Not yalnız İLGİLİ KAPI KAPALIYKEN çıkar; açıkken gereksiz
+                gürültüdür.
+              */}
+              {evaluation.gates.some((g) => !g.met && g.key === 'supplierTrust') && (
+                <p className="emptyNote">
+                  Toptancı güveni (100 üzerinden): düzenli alışveriş {WHOLESALE.tradeTrustCap}
+                  {'\u2019'}e kadar büyütür. Üstü için vade alıp zamanında ödemek gerekir.
+                </p>
+              )}
+              {evaluation.gates.some((g) => !g.met && g.key === 'reputation') && (
+                <p className="emptyNote">
+                  Semt itibarı (100 üzerinden): iyi kapanan işlem yükseltir; kırıcı teklif ve
+                  sabrı tüketip müşteriyi kaçırmak düşürür.
+                </p>
+              )}
             </div>
 
             <div className="group">
