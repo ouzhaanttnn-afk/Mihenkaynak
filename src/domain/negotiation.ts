@@ -115,6 +115,22 @@ export interface NegotiationContext {
    * dükkânın meşru satış fiyatıdır.
    */
   retailSpread?: number;
+  /**
+   * ALIŞ yönünde pazarlığın çıpası: `marketReferenceBuy` — yani ekranda
+   * "Piyasa referans alış" olarak YAZAN fiyat.
+   *
+   * ÖLÇÜLMÜŞ HATA (bkz. scaleToFair): alış yönünde çıpa adil değerdi.
+   * `haggleRoom` sarrafiyede 0,06 olduğu için kabul eşiği arketip ne olursa
+   * olsun adil değere yapışıyordu (ölçüm: eşik/adil ortalama 0,996) —
+   * yani müşteri gram altını SPOT fiyattan satmak istiyordu; ilk karşı
+   * teklif ise spot'un %8-9 üstüne çıkıyordu. Dükkânın tavanı ~0,95 adil
+   * olduğundan alış < spot < satış ilişkisi kırılıyor, sarrafiye alımı
+   * matematiksel olarak kapanamıyordu (ölçüm: kapanabilir vakaların oranı
+   * ata/tam/cumhuriyet/gram_1'de %0).
+   *
+   * Verilmezse davranış eskisiyle birebir aynıdır (çıpa = adil değer).
+   */
+  referenceBuy?: Money;
 }
 
 /**
@@ -198,10 +214,15 @@ function scaleToFair(threshold: number, ctx: NegotiationContext): number {
   if (fair === undefined || fair <= 0 || room === 1) return threshold;
 
   /*
-   * ÇIPA YÖNE GÖRE DEĞİŞİR — ölçülmüş bir hatanın düzeltmesi.
+   * ÇIPA YÖNE GÖRE DEĞİŞİR — ölçülmüş iki hatanın düzeltmesi.
    *
-   * ALIŞTA çıpa adil değerdir ve bu doğrudur: çeyreğin fiyatı kamuya açık,
-   * dükkân onu gerçek değerinin çok altına alamamalı.
+   * ALIŞTA çıpa, dükkânın TABELA ALIŞ fiyatıdır (`referenceBuy`), adil değer
+   * değil. Sarraf gram altını spottan almaz, spotun makas kadar altından
+   * alır; satarken de makas kadar üstüne koyar. Çıpa adil değer bırakılınca
+   * `haggleRoom` sıkıştırması eşiği spota yapıştırıyor, üstüne karşı teklif
+   * marjı (%14 → %9) biniyor ve müşteri gram altını spotun %10 üstüne
+   * satmak istiyordu. Referans alış zaten ekranda yazıyor; pazarlık artık
+   * oyuncuya gösterilen fiyatın etrafında dönüyor.
    *
    * SATIŞTA adil değere sıkıştırmak, pazarlık payını değil DÜKKÂNIN
    * PERAKENDE KÂRINI siliyordu. Sarrafiyede room 0,06 olduğu için müşterinin
@@ -213,7 +234,12 @@ function scaleToFair(threshold: number, ctx: NegotiationContext): number {
    * Pazarlık payı DARALMAYA DEVAM EDER — değişen tek şey, pazarlığın
    * etrafında döndüğü merkez.
    */
-  const anchor = dirSign(ctx) === -1 ? fair * (1 + (ctx.retailSpread ?? 0)) : fair;
+  const anchor =
+    dirSign(ctx) === -1
+      ? fair * (1 + (ctx.retailSpread ?? 0))
+      : ctx.referenceBuy && ctx.referenceBuy > 0
+        ? ctx.referenceBuy
+        : fair;
   const scaled = anchor + (threshold - anchor) * Math.max(0, room);
 
   /*
@@ -511,12 +537,27 @@ function deriveCounter(
   const key = state === 'FINAL_OFFER' ? 'FINAL_OFFER' : state === 'HARDENING' ? 'HARDENING' : 'OPEN';
   const [startMargin, endMargin] = NEGOTIATION.counterMarginByState[key];
 
+  /*
+   * MARJ DA ÜRÜNÜN MAKASINA OTURUR — ölçülmüş hata.
+   *
+   * Karşı teklif marjı (%14 → %9) ürüne kördü. İkinci el bir bilezikte
+   * doğrudur; gram altında değildir: sarrafiyenin TÜM alış-satış farkı %4
+   * iken açılış isteğini eşiğin %14 üstüne koymak, müşteriyi gram altını
+   * spotun %10 üstüne satmaya çalışır hâle getiriyordu. Ölçüm: ilk karşı
+   * teklif ortalama adil değerin 1,09 katı — dükkânın tavanı ise 0,95 katı.
+   *
+   * Ölçek `haggleRoom`tur; yeni bir sabit uydurulmaz. `min(1, room)` ile
+   * TEK YÖNLÜDÜR: dar makaslı üründe marjı daraltır, işçilikli üründe
+   * (room 1,5) hiçbir şeyi genişletmez — orada davranış birebir aynıdır.
+   */
+  const marginScale = Math.min(1, ctx.haggleRoom ?? 1);
+
   // Tur ilerledikçe marj startMargin → endMargin arasında iner.
   // Fiyat hassasiyeti yüksek müşteri marjını daha yavaş bırakır — karşı teklif
   // "kendi profilinden" türer (GDD 11.4).
   const stickiness = 0.6 + (ctx.customer.priceSensitivity / 100) * 0.8;
   const progress = Math.min(1, session.round / (4 * stickiness));
-  const margin = startMargin + (endMargin - startMargin) * progress;
+  const margin = (startMargin + (endMargin - startMargin) * progress) * marginScale;
 
   // Marj her zaman MÜŞTERİNİN lehine konur: satarken eşiğin üstünü ister,
   // alırken eşiğin altını teklif eder.

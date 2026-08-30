@@ -9,6 +9,9 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { isBullion } from '@data/bullion';
+import { effectiveCeiling } from '@domain/thesis';
+import { trueValue } from '@domain/valuation';
 import { useGame } from './gameStore';
 
 /*
@@ -218,5 +221,65 @@ describe('Gün kapanışı onay ister ve raporu kalıcıdır', () => {
     */
     const eklenen = useGame.getState().toasts.length - oncekiToast;
     expect(eklenen).toBeLessThanOrEqual(1);
+  });
+});
+
+/**
+ * "GRAM ALTINA BU KADAR İSTENMESİ MANTIKLI MI?" — UÇTAN UCA BAĞLANTI.
+ *
+ * `bullion-spread.test.ts` pazarlık matematiğini domain katmanında kilitler;
+ * bu test o matematiğin GERÇEKTEN store üzerinden bağlandığını doğrular.
+ * İkisi ayrı sorulara cevap verir: "formül doğru mu" ve "formül devrede mi".
+ * Store'da `referenceBuy` bağlanmayı unutulsaydı domain testleri yine geçerdi.
+ */
+describe('Sarrafiye alışında karşı teklif adil değeri aşmaz (store yolu)', () => {
+  it('gerçek müşteri akışında hiçbir sarrafiye karşı teklifi adil değerin üstüne çıkmaz', () => {
+    useGame.getState().resetGame();
+    useGame.setState({ pauseDepth: 0 });
+
+    let checked = 0;
+    for (let step = 0; step < 6000 && checked < 12; step += 1) {
+      useGame.getState().tick(1);
+
+      const s = useGame.getState();
+      if (s.activeDeal || s.queue.length === 0) continue;
+
+      useGame.getState().greetCustomer();
+      const deal = useGame.getState().activeDeal;
+      const customer = useGame.getState().activeCustomer;
+
+      if (deal && customer && deal.flow === 'trade') {
+        // Tez seçenekleri (ve dolayısıyla alış tavanı) pazarlık aşamasında
+        // türer; 'inspect'te henüz boştur. Ekranda oyuncunun yaptığı da bu.
+        useGame.getState().setStage('thesis');
+        useGame.getState().setStage('negotiate');
+
+        const line = useGame.getState().activeDeal?.lines[0];
+        const item = line ? useGame.getState().items[line.itemId] : undefined;
+
+        if (line && item && isBullion(item.templateId)) {
+          const fair = trueValue(item, useGame.getState().market);
+          const ceiling = effectiveCeiling(line.thesisOptions, line.selectedThesis);
+
+          if (fair > 0 && ceiling > 0) {
+            useGame.getState().submitOffer(Math.round(ceiling * 0.92));
+            const after = useGame.getState().activeDeal?.lines[0]?.negotiation;
+            const counter = after?.activeCounter ?? null;
+
+            if (counter !== null) {
+              expect(
+                counter,
+                `${item.templateId}: karşı teklif ${counter} > adil değer ${fair}`,
+              ).toBeLessThanOrEqual(fair);
+              checked += 1;
+            }
+          }
+        }
+      }
+
+      useGame.getState().finishDeal();
+    }
+
+    expect(checked, 'hiç sarrafiye pazarlığı üretilemedi').toBeGreaterThan(3);
   });
 });

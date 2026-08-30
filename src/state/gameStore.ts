@@ -41,7 +41,12 @@ import {
   purchaseCeiling,
   repricePackage,
 } from '@domain/purchase';
-import { CHANNEL_LABEL_TR, gramsFor } from '@domain/channels';
+import {
+  CHANNEL_LABEL_TR,
+  bullionUnitValue,
+  gramsFor,
+  marketReferenceBuy,
+} from '@domain/channels';
 import {
   measurePosition,
   resolveOvernight,
@@ -1572,6 +1577,7 @@ export const useGame = create<GameState>((set, get) => {
         fairValue: haggle.fairValue,
         haggleRoom: haggle.room,
         retailSpread: haggle.retailSpread,
+        referenceBuy: haggle.referenceBuy,
       };
 
       /*
@@ -2946,7 +2952,12 @@ function haggleContext(
   deal: ActiveDeal,
   line: DealLine,
   s: GameState,
-): { fairValue: Money | undefined; room: number; retailSpread: number } {
+): {
+  fairValue: Money | undefined;
+  room: number;
+  retailSpread: number;
+  referenceBuy: Money | undefined;
+} {
   const pkg = deal.purchase?.lines ?? [];
 
   if (deal.flow === 'purchase' && pkg.length > 0) {
@@ -2963,19 +2974,55 @@ function haggleContext(
       room = Math.min(room, rules.haggleRoom);
       retailSpread = Math.min(retailSpread, rules.retailSpread);
     }
+    // Paket akışı SATIŞ yönündedir; çıpasını `retailSpread` belirler.
+    // Alış referansı orada kullanılmaz, hesaplanmaz.
     return fair > 0
-      ? { fairValue: fair, room, retailSpread: Number.isFinite(retailSpread) ? retailSpread : 0 }
-      : { fairValue: undefined, room: 1, retailSpread: 0 };
+      ? {
+          fairValue: fair,
+          room,
+          retailSpread: Number.isFinite(retailSpread) ? retailSpread : 0,
+          referenceBuy: undefined,
+        }
+      : { fairValue: undefined, room: 1, retailSpread: 0, referenceBuy: undefined };
   }
 
   const item = s.items[line.itemId];
-  if (!item) return { fairValue: undefined, room: 1, retailSpread: 0 };
+  if (!item) return { fairValue: undefined, room: 1, retailSpread: 0, referenceBuy: undefined };
   const rules = rulesFor(getTemplate(item.templateId));
   return {
     fairValue: trueValue(item, s.market),
     room: rules.haggleRoom,
     retailSpread: rules.retailSpread,
+    referenceBuy: referenceBuyFor(item, s.market),
   };
+}
+
+/**
+ * Pazarlığın ALIŞ çıpası — ekranda "Piyasa referans alış" olarak yazan
+ * fiyatın MAKASI, bu kalemin gerçek değerine uygulanmış hâli.
+ *
+ * YALNIZ SARRAFİYEDE vardır ve bu kasıtlıdır: işçilikli üründe tipik bir
+ * alış fiyatı yoktur (ShopScreen · buildReference aynı sınırı çizer), orada
+ * referans uydurmak olmayan bir kesinlik göstermek olurdu. Referans yoksa
+ * `negotiation.ts` eski çıpaya (adil değer) düşer.
+ *
+ * NEDEN ORAN, NEDEN HAM FİYAT DEĞİL — ölçülmüş tuzak: `marketReferenceBuy`
+ * KONDİSYONA KÖRDÜR, tabela fiyatıdır (ölçüm: referans/birim değeri her
+ * kondisyonda sabit 0,951–0,969). Ham hâliyle çıpa yapılsaydı, sinyal
+ * taşıyan hasarlı bir yarım altınla gelen müşteri gerçek değerinin 1,79
+ * katını isteyebilirdi. Makas oranı kalemin ADİL DEĞERİNE uygulanır:
+ * tabelanın alış-satış farkı korunur, ürünün hasarı da fiyata geçer —
+ * ölçmenin karşılığı ödenmeye devam eder.
+ */
+function referenceBuyFor(item: ItemInstance, market: MarketState): Money | undefined {
+  const base = bullionUnitValue(item, market);
+  if (base <= 0) return undefined;
+  const reference = marketReferenceBuy(item, market, base, 1);
+  if (reference <= 0) return undefined;
+
+  const fair = trueValue(item, market);
+  if (fair <= 0) return undefined;
+  return Math.round(fair * (reference / base));
 }
 
 function refreshLine(s: GameState, line: DealLine): DealLine {
