@@ -60,11 +60,13 @@ import {
 } from '@domain/trade-network';
 import {
   accrueOverdue,
+  creditLimit,
   financeTerms,
   openInvoice,
   quoteLiquidation,
   repayInvoice,
   supplyOffer,
+  tradeTrustAfterPurchase,
 } from '@domain/wholesaler';
 import { applyMove, createSession, effectiveReservation, isTerminal } from '@domain/negotiation';
 import { applyTest, estimateBand, initialKnowledge, trueValue } from '@domain/valuation';
@@ -1935,7 +1937,7 @@ export const useGame = create<GameState>((set, get) => {
         return;
       }
 
-      const supplier =
+      const withInvoice =
         terms.totalDue > 0
           ? openInvoice(outcome.state.store.supplier, {
               id: invoiceId,
@@ -1943,6 +1945,17 @@ export const useGame = create<GameState>((set, get) => {
               dueDay: terms.dueDay,
             })
           : outcome.state.store.supplier;
+
+      /*
+        §7 — DÜZENLİ TİCARET DE İLİŞKİ KURAR.
+
+        Ölçüldü: güven yalnız vadeli borcun ödenmesiyle büyüdüğü ve
+        `financeTerms` nakdi önce harcadığı için, parası olan oyuncunun
+        toptancı güveni başlangıç değerinde SONSUZA DEK donuyordu — 120
+        günde 7 kademe kapısından 6'sı açılıp yalnız bu kapalı kaldı.
+        Katkı küçük ve tavanlıdır; kredi ilişkisinin yerine geçmez.
+      */
+      const supplier = tradeTrustAfterPurchase(withInvoice, amount, creditLimit(s.store));
 
       const revalued = revalueInventory(
         outcome.state.inventory,

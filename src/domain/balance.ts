@@ -379,6 +379,36 @@ export const WHOLESALE = {
   onTimeTrustGain: 4,
   /** Geciken ödemenin güven cezası. */
   lateTrustPenalty: 9,
+
+  /*
+   * DÜZENLİ TİCARETİN GÜVENE KATKISI.
+   *
+   * ÖLÇÜLMÜŞ HATA: toptancı güveni YALNIZ vadeli borcu zamanında ödeyince
+   * büyüyordu. Ama `financeTerms` nakdi ÖNCE harcıyor: parası olan oyuncu
+   * hiç vade açmaz, fatura oluşmaz, `repayInvoice` hiç çalışmaz ve güven
+   * başlangıç değeri 50'de SONSUZA DEK donar. Kademe 2 ise 58 istiyor.
+   *
+   * Sonuç tersine dönmüştü: oyuncu ne kadar iyi oynarsa o kadar çok nakdi
+   * olur, o kadar hiç borçlanmaz, o kadar kalıcı olarak kilitli kalırdı.
+   * 120 günlük simülasyonda net servet 5,4 milyona çıktı, 7 kapıdan 6'sı
+   * açıldı ve kademe 1'de kalındı — tek sebep buydu.
+   *
+   * Esnaf ağında bu zaten çözülmüştü (`NETWORK.tradeTrustGain`): "Ticaret
+   * ilişkiyi bir tık büyütür." Toptancıda eksikti; kod kendi içinde
+   * çelişiyordu.
+   *
+   * TAVAN NEDEN VAR: nakitle iş yapmak toptancıyı memnun eder ama gerçek
+   * kredi güveni yerine geçmez. Kademe eşikleri 58 / 70 / 82; tavan 65
+   * olunca kademe 2'ye nakitle ulaşılır, üstü için gerçekten vade alıp
+   * zamanında ödemek gerekir. Yani kredi mekaniği değerini korur.
+   *
+   * ASGARİ TUTAR: 1 gram altını 15 kez alıp güven biriktirmek bir strateji
+   * değil, sömürüdür. Katkı yalnız limitin anlamlı bir payını aşan
+   * alışverişte doğar.
+   */
+  tradeTrustGain: 1,
+  tradeTrustCap: 65,
+  tradeTrustMinShare: 0.25,
   /** Zamanında ödemede limit büyüme katsayısı. */
   onTimeLimitGrowth: 1.06,
   /** Gecikmede limit daralma katsayısı. */

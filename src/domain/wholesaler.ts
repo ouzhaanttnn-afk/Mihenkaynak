@@ -290,6 +290,35 @@ export function financeTerms(store: StoreState, amount: Money, today: GameDay): 
   };
 }
 
+/**
+ * DÜZENLİ TİCARETİN GÜVENE KATKISI (§7 ilişki sermayesi).
+ *
+ * Toptancı, kendisinden düzenli mal alan kuyumcuya güvenir — parayı nasıl
+ * ödediğinden bağımsız olarak. Eskiden güven yalnız vadeli borcun
+ * zamanında ödenmesiyle büyüyordu ve `financeTerms` nakdi önce harcadığı
+ * için parası olan oyuncu hiç vade açmıyor, güveni hiç büyümüyordu.
+ *
+ * Katkı KÜÇÜKTÜR ve TAVANLIDIR: nakit ilişkisi kredi güveninin yerine
+ * geçmez, yalnız kapıyı kilitli bırakmaz.
+ *
+ * Saf fonksiyon; girdi mutasyona uğramaz.
+ */
+export function tradeTrustAfterPurchase(
+  supplier: SupplierAccount,
+  amount: Money,
+  creditLimitNow: Money,
+): SupplierAccount {
+  // Sömürü kapısı: küçük alışverişleri tekrarlayarak güven biriktirilemez.
+  if (amount < creditLimitNow * WHOLESALE.tradeTrustMinShare) return supplier;
+  // Tavana ulaşmış ilişki ticaretle daha ileri gitmez; oradan sonrası kredidir.
+  if (supplier.trust >= WHOLESALE.tradeTrustCap) return supplier;
+
+  return {
+    ...supplier,
+    trust: Math.min(WHOLESALE.tradeTrustCap, supplier.trust + WHOLESALE.tradeTrustGain),
+  };
+}
+
 /** Vade kaydı — settlement sonrası hesaba yazılır. */
 export function openInvoice(
   supplier: SupplierAccount,
