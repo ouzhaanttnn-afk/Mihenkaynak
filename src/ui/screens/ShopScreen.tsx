@@ -17,6 +17,7 @@ import { TERM } from '@ui/terms';
 import { useEffect, useMemo, useState } from 'react';
 
 import { DAY, NEGOTIATION } from '@domain/balance';
+import { isShopOpen, weekdayLabel } from '@domain/calendar';
 import { effectiveCeiling, suggestedChannel } from '@domain/thesis';
 import { isTerminal } from '@domain/negotiation';
 import { liquidityRatio } from '@domain/settlement';
@@ -512,7 +513,8 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
           */}
           <h2 className="idle__title">{shopDisplayName(s.profile.jewelerName)}</h2>
           <p className="idle__sub">
-            Gün {s.market.day} · Semt itibarı {Math.round(s.store.reputation)}
+            Gün {s.market.day} · {weekdayLabel(s.market.day)} · Semt itibarı{' '}
+            {Math.round(s.store.reputation)}
           </p>
         </div>
 
@@ -682,6 +684,32 @@ function OperationArea({ nextIn }: { nextIn: number }) {
             <span className="op__queuePos">{i + 2}. sıra</span>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  /*
+    PAZAR — DÜKKÂN KAPALI (calendar.ts · isShopOpen).
+
+    "Sonraki müşteri ~1 dk" pazar günü DÜZ YALANDI: kimse gelmeyecek ve
+    oyuncu ekranın en büyük kartına bakıp bekliyordu. "Dükkânı Canlandır"
+    da burada anlamsız — canlandırılacak bir akış yok, para vermeyen bir
+    CTA'yı çalışmadığı yerde göstermek güveni yer.
+
+    Kart pazar günü ne olduğunu söyler ve günün gerçek işini işaret eder:
+    stok, atölye ve toptancı. Pazar kayıp bir gün değil, planlama günüdür.
+  */
+  if (!isShopOpen(s.market.day)) {
+    return (
+      <div className="op op--calm">
+        <span className="op__title">Dükkân bugün kapalı</span>
+        <span className="op__line">
+          {weekdayLabel(s.market.day)} · müşteri gelmez. Piyasa da kapalı; fiyat cuma
+          kapanışında donuk duruyor.
+        </span>
+        <span className="op__note">
+          Stok, atölye ve toptancı açık — haftaya hazırlanmak için gün bugün.
+        </span>
       </div>
     );
   }
@@ -1076,6 +1104,27 @@ function ShopDock({
   // --- IDLE ---
   if (!deal || !line) {
     const hasQueue = s.queue.length > 0;
+
+    /*
+      PAZAR — DÜKKÂN KAPALI (calendar.ts · isShopOpen).
+
+      Dock'un "Müşteri bekleniyor" demesi pazar günü YALAN olurdu: kimse
+      gelmeyecek ve oyuncu boşuna bekler. Kapalı günde dock ne olduğunu
+      söyler ve tek anlamlı eylemi öne çıkarır — günü bitirmek. Stok,
+      atölye ve toptancı sekmeleri açık kalır; pazar bir planlama günüdür.
+    */
+    const shopOpen = isShopOpen(s.market.day);
+    if (!shopOpen) {
+      return (
+        <DecisionDock
+          summaryLabel={weekdayLabel(s.market.day)}
+          summaryValue="Dükkân kapalı"
+          primary={{ label: 'Günü Bitir', onPress: s.askDayClose }}
+          secondary={[{ label: 'Stok', onPress: () => s.setTab('stock') }]}
+        />
+      );
+    }
+
     return (
       <DecisionDock
         summaryLabel="Kuyruk"
@@ -2015,8 +2064,30 @@ function DayCloseReport() {
     <div className="confirmScrim" role="presentation">
       <div className="dayReport" role="dialog" aria-modal="true" aria-labelledby="dayreport-title">
         <h2 className="dayReport__title" id="dayreport-title">
-          Gün {r.day} kapandı
+          Gün {r.day} · {r.weekday} kapandı
         </h2>
+
+        {/*
+          CUMA KAPANIŞI — HAFTANIN EN PAHALI KARARI.
+
+          Uyarı listenin ÜSTÜNDE duruyor çünkü oyuncunun buna göre yapacağı
+          şey (toptancıya satıp nakde geçmek) rapor kapandıktan sonra artık
+          yapılamaz: cumartesi piyasa donuk açar. Kâr satırının altına
+          konsaydı kararın kendisini kaçıran bir bilgi olurdu.
+        */}
+        {r.weekendNote && (
+          <p className="dayReport__weekend">
+            <IconWarning size={14} />
+            {r.weekendNote}
+          </p>
+        )}
+
+        {!r.tomorrowMarketOpen && (
+          <p className="dayReport__calendar">
+            Yarın {r.tomorrow}: piyasa kapalı, fiyat bugünkü kapanışta donuk kalır
+            {r.tomorrowShopOpen ? ' — dükkân açık.' : ' ve dükkân kapalı.'}
+          </p>
+        )}
 
         {r.warnings.length > 0 && (
           <div className="dayReport__warnings">

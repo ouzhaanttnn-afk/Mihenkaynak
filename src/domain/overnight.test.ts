@@ -262,6 +262,9 @@ describe('§5 — Kapanış dağılımı bir pozisyondur', () => {
       'spotChange',
       'metalDelta',
       'cashOpportunityCost',
+      // Hafta sonu boşluğu kaç günlük geldi — rapor metnini belirler,
+      // muhasebeye girmez (calendar.ts · market.ts).
+      'gapDays',
       'summary',
     ]);
   });

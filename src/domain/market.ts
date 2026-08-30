@@ -20,6 +20,7 @@ import {
   REGIME_TRANSITIONS,
   REGIME_WEIGHTS,
 } from './balance';
+import { closedDaysBefore, isMarketOpen } from './calendar';
 import { Rng, deriveSeed } from './rng';
 import type { MarketAsset, MarketEvent, MarketState, GameDay } from './types';
 
@@ -65,6 +66,18 @@ const EVENT_POOL: Omit<MarketEvent, 'startedDay'>[] = [
  * avantajı imkânsızdır (GDD 13.4 / 28.3).
  */
 export function createMarketForDay(rootSeed: number, day: GameDay, prev?: MarketState): MarketState {
+  /*
+    HAFTA SONU: PİYASA KAPALI, KOTASYON DONUK (calendar.ts).
+
+    Kapalı günde HİÇ RNG ÇEKİLMEZ. Bu bir tasarım kararı değil, determinizm
+    şartı: kapalı gün bir çekiliş tüketseydi hafta sonunun kendisi fiyatı
+    oynatmış olurdu — oysa donduran şey tam olarak budur.
+
+    `prev` yoksa (yalnız QA bir hafta sonu gününü tek başına üretirse olur)
+    normal yol işler; ilk gün zaten pazartesidir.
+  */
+  if (!isMarketOpen(day) && prev) return frozenMarket(day, prev);
+
   const rng = new Rng(deriveSeed(rootSeed, 'market/day', day));
 
   // --- 1. REJİM: bir DURUM, günlük çekiliş değil (§5.1) ---
@@ -91,6 +104,31 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
   // §5.1 DEĞİŞMEZ: "Ertesi gün fiyatı basit ve BAĞIMSIZ bir 50/50 yükseliş-
   // düşüş çekilişiyle belirlenmez." Dört bileşenin ağırlıklı sonucudur ve
   // hiçbiri tek başına yönü belirlemez:
+  /*
+    AÇILIŞ BOŞLUĞU — KAÇ GÜNLÜK HABER BİRİKTİ (calendar.ts · closedDaysBefore).
+
+    Hafta içi `span` 1'dir; pazartesi 3'tür (cumartesi + pazar + pazartesi).
+
+    NEDEN √span, NEDEN "3 KEZ ÇEK" DEĞİL — ölçülerek seçildi.
+
+    Önce üç günü üç ayrı adımda çektim. Sonuç: pazartesi std sapması %4,52,
+    en kötüsü −%8,73, pazartesilerin %48,8'i %3'ten fazla oynuyordu. Sebep
+    açık: üç adım da AYNI rejim ve AYNI trendden türüyordu, yani üç bağımsız
+    gün değil üç kez tekrarlanan tek bir gündü. O hâliyle pazartesi, oyuncunun
+    bütün hafta verdiği kararların önüne geçerdi — mekaniğin amacı risk
+    eklemek, oyunu zar atışına çevirmek değil.
+
+    Hafta sonu boşluğu zaten ÜÇ AYRI GÜN DEĞİLDİR: piyasa kapalıyken biriken
+    haberin tek seferde fiyatlanmasıdır. Bunun standart ölçeği √t'dir.
+    √3 ≈ 1,73 → pazartesi sapması %1,52 × 1,73 ≈ %2,6, tavanı ±%5,2.
+
+    İKİNCİ KAZANÇ — DETERMİNİZM: çekiliş sayısı DEĞİŞMEZ (tek composeDailyMove
+    + tek rng.range). Hafta içi günler bu değişiklikten önceki fiyatın
+    birebir aynısını üretir; yalnız pazartesi farklıdır.
+  */
+  const span = closedDaysBefore(day) + 1;
+  const spanScale = Math.sqrt(span);
+
   const move = composeDailyMove(rng, { regime, trend, volatility, activeEvent, day });
 
   /*
@@ -100,13 +138,19 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
     sakin günü ayıran şey bileşenlerin oranıdır. Toplamı kırpmak sıralamayı
     korur, yalnız uçları keser.
 
+    Tavan da √span ile büyür: bir günün tavanını üç günlük boşluğa uygulamak,
+    hafta sonunu hafta içi bir günden DAHA GÜVENLİ yapardı.
+
     Gümüş ve kur altının hareketinden TÜRETİLDİĞİ için ayrı ayrı kırpılır:
     gümüş çarpanı 1.6'ya kadar çıkabiliyor ve kırpılmamış hâlde altın %3'te
     dururken gümüş %4.8'e gidebilirdi.
   */
-  const goldSpot = bandedPrice(prevGold * (1 + move.total), prevGold);
-  const silverSpot = bandedPrice(prevSilver * (1 + move.total * rng.range(0.8, 1.6)), prevSilver);
-  const fxIndex = bandedPrice(prevFx * (1 + move.total * 0.3), prevFx);
+  const cap = MARKET_DAILY_CAP * spanScale;
+  const total = move.total * spanScale;
+
+  const goldSpot = bandedPrice(prevGold * (1 + total), prevGold, cap);
+  const silverSpot = bandedPrice(prevSilver * (1 + total * rng.range(0.8, 1.6)), prevSilver, cap);
+  const fxIndex = bandedPrice(prevFx * (1 + total * 0.3), prevFx, cap);
 
   const dayOpen = { goldSpot, silverSpot, fxIndex };
 
@@ -128,12 +172,47 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
     activeEvent,
     assets,
     dayOpen,
+    marketOpen: true,
+    gapDays: span - 1,
     seed: rootSeed,
   };
 }
 
 /**
- * Fiyatı yuvarlar ve çapasına göre ±%3 bandına çeker.
+ * PİYASANIN KAPALI OLDUĞU GÜN — kotasyon cuma kapanışında donar.
+ *
+ * Rejim, trend ve oynaklık da dünden aynen taşınır: bunlar piyasanın
+ * DURUMUdur ve piyasa çalışmadıysa değişmemiştir. Yeniden çekmek, kapalı
+ * günün gizli bir zar attığı anlamına gelirdi.
+ *
+ * Olay yalnız SÜRESİ dolduysa düşer — yeni olay çekilmez (çekiliş, RNG
+ * tüketmek demekti). Varlık şeridi donuk gösterilir: hareket yok, yüzde yok.
+ */
+function frozenMarket(day: GameDay, prev: MarketState): MarketState {
+  const quote = { goldSpot: prev.goldSpot, silverSpot: prev.silverSpot, fxIndex: prev.fxIndex };
+  const activeEvent =
+    prev.activeEvent && day - prev.activeEvent.startedDay < prev.activeEvent.durationDays
+      ? prev.activeEvent
+      : null;
+
+  return {
+    ...prev,
+    day,
+    clockMinutes: 9 * 60,
+    ...quote,
+    activeEvent,
+    assets: prev.assets.map((asset) => ({ ...asset, changePct: 0 })),
+    dayOpen: quote,
+    marketOpen: false,
+    gapDays: 0,
+  };
+}
+
+/**
+ * Fiyatı yuvarlar ve çapasına göre ±cap bandına çeker (varsayılan %3).
+ *
+ * Tavan yalnız hafta sonu boşluğunda büyür (√span ile): bir GÜNÜN tavanını
+ * üç günlük boşluğa uygulamak, hafta sonunu hafta içinden GÜVENLİ yapardı.
  *
  * SIRA ÖNEMLİ: önce yuvarla, SONRA kırp. Ters sırada denendi ve test
  * yakaladı — `round2` kırpılmış değeri bir kuruş yukarı iterek bandı
@@ -143,11 +222,11 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
  *
  * RNG TÜKETMEZ — aynı tohum aynı oyunu üretmeye devam eder (GDD 28.3).
  */
-function bandedPrice(raw: number, anchor: number): number {
+function bandedPrice(raw: number, anchor: number, cap: number = MARKET_DAILY_CAP): number {
   const price = round2(raw);
   if (!(anchor > 0)) return price;
-  const lo = Math.ceil(anchor * (1 - MARKET_DAILY_CAP) * 100) / 100;
-  const hi = Math.floor(anchor * (1 + MARKET_DAILY_CAP) * 100) / 100;
+  const lo = Math.ceil(anchor * (1 - cap) * 100) / 100;
+  const hi = Math.floor(anchor * (1 + cap) * 100) / 100;
   return Math.max(lo, Math.min(hi, price));
 }
 
@@ -266,6 +345,16 @@ export function carryEvent(
  * sınırları içinde hareket eder". Adım da (day, clock) ile deterministiktir.
  */
 export function stepMarketIntraday(market: MarketState, newClockMinutes: number): MarketState {
+  /*
+    PİYASA KAPALIYSA GÜN İÇİ ADIM DA YOKTUR (calendar.ts).
+
+    Yalnız günlük fiyatı dondurup gün içi adımı açık bırakmak, hafta sonunu
+    "yavaş hareket eden bir gün" yapardı. Cumartesi tezgâhtaki fiyat cuma
+    kapanışının fiyatıdır ve gün boyu kıpırdamaz — mekaniğin bütün mesele
+    ettiği şey bu.
+  */
+  if (market.marketOpen === false) return { ...market, clockMinutes: newClockMinutes };
+
   const stepIndex = Math.floor(newClockMinutes / 15);
   const rng = new Rng(deriveSeed(market.seed, `market/intraday/${market.day}`, stepIndex));
 

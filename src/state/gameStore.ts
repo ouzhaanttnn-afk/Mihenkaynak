@@ -22,6 +22,12 @@ import {
 } from '@domain/balance';
 import { spawnItem } from '@domain/item-spawn';
 import { createMarketForDay, stepMarketIntraday } from '@domain/market';
+import {
+  isBlindTradingDay,
+  isMarketOpen,
+  isShopOpen,
+  weekdayLabel,
+} from '@domain/calendar';
 import { nextCustomerDelay, spawnCustomer } from '@domain/customer-spawn';
 import {
   dayCharacter,
@@ -50,6 +56,7 @@ import {
 import {
   measurePosition,
   resolveOvernight,
+  weekendRisk,
   type OvernightOutcome,
   type OvernightPosition,
 } from '@domain/overnight';
@@ -164,6 +171,21 @@ export type BusinessRoute = 'wholesaler' | 'network' | 'settings';
 /** Gün kapanışının oyuncuya gösterilecek özeti (§B4). */
 export interface DayCloseSummary {
   day: number;
+  /** Kapanan günün haftalık adı — "Gün 12 · Cuma". */
+  weekday: string;
+  /** Yarının adı; piyasa kapalıysa oyuncu bunu kapanışta görmelidir. */
+  tomorrow: string;
+  /** Yarın piyasa çalışıyor mu (cumartesi–pazar hayır). */
+  tomorrowMarketOpen: boolean;
+  /** Yarın dükkân açık mı (pazar hayır — planlama günü). */
+  tomorrowShopOpen: boolean;
+  /**
+   * CUMA KAPANIŞI UYARISI — yalnız cuma günü doludur.
+   *
+   * Yön söylemez (§5.2): kaç gün kapalı kalacağını, altında ne kadar
+   * taşındığını ve bandın izin verdiği en büyük oynamayı söyler.
+   */
+  weekendNote: string | null;
   realizedProfit: Money;
   overhead: Money;
   netCashChange: Money;
@@ -792,7 +814,15 @@ export const useGame = create<GameState>((set, get) => {
       let { queue, nextCustomerAtMinutes, spawnCounter } = s;
       let telemetry = s.intentTelemetry;
 
-      if (clock >= nextCustomerAtMinutes && queue.length < 3) {
+      /*
+        PAZAR DÜKKÂN KAPALI (calendar.ts · isShopOpen).
+
+        Kapı spawn'ın hemen önünde: saat akmaya, stok yeniden değerlenmeye ve
+        gün devretmeye devam eder — yalnız müşteri gelmez. Günü tamamen
+        atlamak, oyuncunun stok/atölye/toptancı kararlarını da elinden almak
+        olurdu; pazar bir PLANLAMA günüdür, kayıp bir gün değil.
+      */
+      if (isShopOpen(s.market.day) && clock >= nextCustomerAtMinutes && queue.length < 3) {
         const spawned = spawnCustomer(
           s.seed,
           spawnCounter,
@@ -2389,6 +2419,12 @@ export const useGame = create<GameState>((set, get) => {
         dayCloseAsk: false,
         lastDayClose: {
           day: report.day,
+          weekday: weekdayLabel(report.day),
+          tomorrow: weekdayLabel(nextDay),
+          tomorrowMarketOpen: isMarketOpen(nextDay),
+          tomorrowShopOpen: isShopOpen(nextDay),
+          // Cuma dışında null — uyarı ancak karar verilebilecek gün anlamlı.
+          weekendNote: weekendRisk(report.day, position)?.note ?? null,
           realizedProfit: report.realizedTradeProfit,
           overhead: report.overhead,
           netCashChange: report.netCashChange,
@@ -2413,6 +2449,27 @@ export const useGame = create<GameState>((set, get) => {
         `Gün ${report.day} kapandı`,
         report.netCashChange >= 0 ? 'positive' : 'negative',
       );
+
+      /*
+        CUMARTESİ SABAHI TEK BİR TOAST — ve başka gün YOK.
+
+        Toast bütçesi dar: §B4 notu gereği en fazla ikisi çizilir ve fazlası
+        geciken vade gibi haberleri sessizce düşürür. Bu yüzden takvim
+        haberi yalnız KÖR TİCARET gününde verilir — cumartesi, oyuncunun
+        cuma kapanış fiyatıyla alım satım yaptığı tek gün.
+
+        Pazar için toast YOK: kapalı olduğunu dock ("Dükkân kapalı"), ana
+        kart ve piyasa şeridi zaten söylüyor; dördüncü bir yüzey bilgi değil
+        gürültü olurdu (ölçüldü: tarayıcıda üç kutu üst üste biniyordu).
+      */
+      if (isBlindTradingDay(nextDay)) {
+        pushToast(
+          set,
+          get,
+          `${weekdayLabel(nextDay)}: piyasa kapalı, fiyat cuma kapanışında donuk. Pazartesi birikmiş hareketle açacak.`,
+          'negative',
+        );
+      }
 
       // GDD 28.1 — gün sonu checkpoint. Kaydın §11'e göre taşıdığı şeyler:
       // rejim (seed'den yeniden türetilir), açık borçlar, vadeler, limitler

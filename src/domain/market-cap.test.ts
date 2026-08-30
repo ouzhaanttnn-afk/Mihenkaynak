@@ -6,11 +6,18 @@
  *
  * Bu testler tavanın İKİ AYRI yerde tutulduğunu bağlar — biri düzeltilip
  * diğeri unutulursa oyuncu yine dengesiz bir kur görür.
+ *
+ * HAFTA SONU BOŞLUĞU TAVANI BÜYÜTÜR, KALDIRMAZ (calendar.ts · market.ts).
+ * Piyasa cumartesi–pazar kapalıdır; pazartesi üç günlük hareketi birden
+ * fiyatlar ve bandı √3 ile genişler (%3 → %5,2). Test artık günün kaç
+ * günlük boşluk taşıdığını hesaplayıp O günün tavanını sınar — sabit %3
+ * yazmak, boşluğu ya yasaklar ya da sınırsız bırakırdı.
  */
 
 import { describe, expect, it } from 'vitest';
 
 import { MARKET_DAILY_CAP } from './balance';
+import { closedDaysBefore, isMarketOpen, weekdayShort } from './calendar';
 import { createMarketForDay, stepMarketIntraday } from './market';
 
 const SEEDS = [1, 7, 555, 20260829];
@@ -18,13 +25,19 @@ const DAYS = 40;
 /** Kayan nokta yuvarlaması tavanı bir kıl payı aşabilir. */
 const EPS = 1e-6;
 
-describe('Gün-güne hareket ±%3ü aşmaz', () => {
+/** O günün tavanı: hafta içi %3, pazartesi %3 × √3 ≈ %5,2. */
+function capFor(day: number): number {
+  return MARKET_DAILY_CAP * Math.sqrt(closedDaysBefore(day) + 1);
+}
+
+describe('Gün-güne hareket o günün tavanını aşmaz', () => {
   it('altın, gümüş ve kur — 4 tohum × 40 gün', () => {
     for (const seed of SEEDS) {
       let prev = createMarketForDay(seed, 1);
 
       for (let day = 2; day <= DAYS; day += 1) {
         const next = createMarketForDay(seed, day, prev);
+        const cap = capFor(day);
 
         for (const [label, a, b] of [
           ['altın', next.goldSpot, prev.goldSpot],
@@ -32,11 +45,48 @@ describe('Gün-güne hareket ±%3ü aşmaz', () => {
           ['kur', next.fxIndex, prev.fxIndex],
         ] as const) {
           const move = Math.abs((a - b) / b);
-          expect(move, `${label} · tohum ${seed} · gün ${day}: %${(move * 100).toFixed(2)}`)
-            .toBeLessThanOrEqual(MARKET_DAILY_CAP + EPS);
+          expect(
+            move,
+            `${label} · tohum ${seed} · gün ${day} (${weekdayShort(day)}): %${(move * 100).toFixed(2)} > tavan %${(cap * 100).toFixed(2)}`,
+          ).toBeLessThanOrEqual(cap + EPS);
         }
         prev = next;
       }
+    }
+  });
+
+  it('piyasa kapalı günde fiyat HİÇ kıpırdamaz', () => {
+    let checked = 0;
+
+    for (const seed of SEEDS) {
+      let prev = createMarketForDay(seed, 1);
+
+      for (let day = 2; day <= DAYS; day += 1) {
+        const next = createMarketForDay(seed, day, prev);
+
+        if (!isMarketOpen(day)) {
+          checked += 1;
+          expect(next.marketOpen, `gün ${day} açık işaretlenmiş`).toBe(false);
+          expect(next.goldSpot, `gün ${day} (${weekdayShort(day)}) altın oynadı`).toBe(prev.goldSpot);
+          expect(next.silverSpot).toBe(prev.silverSpot);
+          expect(next.fxIndex).toBe(prev.fxIndex);
+          // Gün içi adım da donuktur: yavaş hareket eden bir gün değil.
+          expect(stepMarketIntraday(next, 15 * 60).goldSpot).toBe(prev.goldSpot);
+        }
+        prev = next;
+      }
+    }
+
+    expect(checked, 'kapalı gün üretilmedi').toBeGreaterThan(20);
+  });
+
+  it('boşluk yalnız piyasanın açıldığı güne biner', () => {
+    // Pazartesi 2 gün boşluk taşır; diğer açık günler 0.
+    for (let day = 1; day <= 28; day += 1) {
+      const expected = day % 7 === 1 && day > 1 ? 2 : 0;
+      expect(closedDaysBefore(day), `gün ${day} (${weekdayShort(day)})`).toBe(
+        isMarketOpen(day) ? expected : 0,
+      );
     }
   });
 });

@@ -514,6 +514,21 @@ export interface MarketState {
    * Eski kayıtlarda YOKTUR; okuyan taraf o günün mevcut fiyatına düşer.
    */
   dayOpen?: { goldSpot: number; silverSpot: number; fxIndex: number };
+  /**
+   * Piyasa bugün çalışıyor mu (calendar.ts · isMarketOpen).
+   *
+   * Cumartesi–pazar `false`: kotasyon cuma kapanışında donar, gün içi adım
+   * da atılmaz. Eski kayıtlarda YOKTUR — piyasa (seed, gün) çiftinden her
+   * açılışta yeniden türetildiği için okuyan taraf hiçbir zaman eski bir
+   * MarketState görmez; yine de `=== false` ile sınanır, `!x` ile değil.
+   */
+  marketOpen?: boolean;
+  /**
+   * Bu açılışta kaç GÜNLÜK hareket birikmiş geldi. Hafta içi 0; pazartesi 2
+   * (cumartesi + pazar). Gün raporu "gece" mi "hafta sonu" mu dediğini
+   * buradan bilir.
+   */
+  gapDays?: number;
   /** QA aynı günü tekrar oynayabilsin diye (GDD 28.3). */
   seed: number;
 }

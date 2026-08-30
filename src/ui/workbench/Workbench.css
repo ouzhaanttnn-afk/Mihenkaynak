@@ -3090,6 +3090,35 @@
   color: var(--text-light-2);
 }
 
+/*
+  CUMA KAPANIŞI — HAFTA SONU POZİSYON UYARISI.
+
+  Uyarı görünümünü `dayReport__warning`den ödünç alır ama ONUN KOPYASI
+  DEĞİLDİR: uyarılar geciken borçtur, bu ise bir KARARDIR ve pirinç
+  (brass) rengiyle ayrılır. Kırmızı yapılsaydı oyuncu "bir şey yanlış
+  gitti" diye okurdu; oysa hiçbir şey olmadı — verilecek bir karar var.
+*/
+.dayReport__weekend {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  border-left: 2px solid var(--brass-400);
+  background: rgba(176, 141, 63, 0.1);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  color: var(--text-light-1);
+}
+
+.dayReport__calendar {
+  margin: 0;
+  font-size: var(--fs-micro);
+  line-height: 1.45;
+  color: var(--text-light-2);
+}
+
 .dayReport__upcoming {
   display: flex;
   flex-direction: column;

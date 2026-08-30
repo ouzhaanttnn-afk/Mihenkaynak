@@ -552,6 +552,27 @@
   color: var(--brass-400);
 }
 
+/*
+  PİYASA KAPALI (cumartesi–pazar).
+
+  Şerit soluklaşır ve rejim kutusu pirinç yerine nötr renge düşer. Amaç
+  dekoratif değil: canlı fiyatla donuk fiyat aynı görünürse oyuncu
+  haftanın en riskli işlemini fark etmeden yapar. Fiyatlar OKUNUR kalır —
+  cumartesi ticaret o fiyatlarla yapılıyor; solan şey canlılık iddiasıdır.
+*/
+.marketStrip--closed .marketStrip__price {
+  opacity: 0.72;
+}
+
+.marketStrip--closed .marketStrip__regimeValue {
+  color: var(--text-light-2);
+}
+
+.marketStrip--closed .marketStrip__change {
+  color: var(--text-light-2);
+  font-style: italic;
+}
+
 /* ------------------------------------------------------------------ */
 /* C — Müşteri / Kuyruk Şeridi · 50 px (GDD 23.9.2)                   */
 /* ------------------------------------------------------------------ */

@@ -20,6 +20,8 @@
  */
 
 import { isBullion } from '@data/bullion';
+import { MARKET_DAILY_CAP } from './balance';
+import { isLastTradingDay, nextMarketOpenDay, weekdayLabel } from './calendar';
 import type { GameDay, InventoryPosition, ItemInstance, MarketState, Money } from './types';
 
 /** Gün kapanışında alınan pozisyon. */
@@ -50,6 +52,11 @@ export interface OvernightOutcome {
    * FIRSAT MALİYETİ. Bu para hiç var olmadı; kaybedilmiş bir kazançtır.
    */
   cashOpportunityCost: Money;
+  /**
+   * Bu açılışta kaç GÜNLÜK hareket birikmişti. Hafta içi 0; pazartesi 2
+   * (cumartesi + pazar). Özetin "gece" mi "hafta sonu" mu dediğini belirler.
+   */
+  gapDays: number;
   /** Oyuncuya gösterilecek tarafsız özet — kesinlik dili YOK. */
   summary: string;
 }
@@ -122,12 +129,15 @@ export function resolveOvernight(
   // onu "kâr" gibi göstermek nakdi sürekli üstün gösterirdi.
   const cashOpportunityCost = spotChange > 0 ? Math.round(position.cash * spotChange) : 0;
 
+  const gapDays = nextMarket.gapDays ?? 0;
+
   return {
     position,
     spotChange,
     metalDelta,
     cashOpportunityCost,
-    summary: describeOutcome(position, spotChange, metalDelta, cashOpportunityCost),
+    gapDays,
+    summary: describeOutcome(position, spotChange, metalDelta, cashOpportunityCost, gapDays),
   };
 }
 
@@ -140,18 +150,88 @@ function describeOutcome(
   spotChange: number,
   metalDelta: Money,
   opportunityCost: Money,
+  gapDays: number,
 ): string {
-  if (Math.abs(spotChange) < 0.0005) return 'Gecelik fiyat neredeyse yerinde kaldı.';
+  /*
+    HAFTA SONU BOŞLUĞU AYRI BİR CÜMLEDİR.
+
+    Pazartesi açılışı "gece" değildir: üç günlük haber tek seferde
+    fiyatlanır ve oyuncunun cuma günü verdiği kararın sonucudur. Aynı
+    cümleyi kullanmak, oyuncuya haftanın en pahalı kararının sonucunu
+    sıradan bir gece gibi okuturdu.
+  */
+  const gap = gapDays > 0;
+  const when = gap ? 'Hafta sonu' : 'Gecelik';
+
+  if (Math.abs(spotChange) < 0.0005) {
+    return gap
+      ? 'Piyasa hafta sonunu neredeyse yerinde açtı.'
+      : 'Gecelik fiyat neredeyse yerinde kaldı.';
+  }
+
+  const pct = `%${Math.abs(spotChange * 100).toFixed(2).replace('.', ',')}`;
+  const opened = gap
+    ? `Piyasa hafta sonunu ${spotChange > 0 ? '+' : '−'}${pct} ile açtı; `
+    : '';
 
   if (spotChange > 0) {
     return position.metalShare >= 0.5
-      ? 'Fiyat yükseldi; ağırlığı altında taşımak bu gece işe yaradı.'
-      : `Fiyat yükseldi; nakitte kalan kısım ${money(Math.abs(opportunityCost))} ₺'lik fırsatı kaçırdı.`;
+      ? `${opened}${gap ? 'ağırlığı' : 'Fiyat yükseldi; ağırlığı'} altında taşımak işe yaradı — pozisyon ${money(Math.abs(metalDelta))} ₺ arttı.`
+      : `${opened}${gap ? 'nakitte' : 'Fiyat yükseldi; nakitte'} kalan kısım ${money(Math.abs(opportunityCost))} ₺'lik fırsatı kaçırdı.`;
   }
 
   return position.metalShare >= 0.5
-    ? `Fiyat düştü; altında kalan pozisyon ${money(Math.abs(metalDelta))} ₺ geriledi.`
-    : 'Fiyat düştü; nakit ağırlığı bu gece zararı sınırladı.';
+    ? `${opened}${gap ? 'altında' : 'Fiyat düştü; altında'} kalan pozisyon ${money(Math.abs(metalDelta))} ₺ geriledi.`
+    : `${opened}${gap ? 'nakit' : 'Fiyat düştü; nakit'} ağırlığı ${when.toLowerCase()} zararı sınırladı.`;
+}
+
+// ---------------------------------------------------------------------------
+// HAFTA SONU POZİSYON UYARISI (cuma kapanışı)
+// ---------------------------------------------------------------------------
+
+export interface WeekendRisk {
+  /** Piyasanın kapalı kalacağı gün sayısı (cumartesi + pazar = 2). */
+  closedDays: number;
+  /** Piyasanın yeniden açılacağı gün. */
+  reopensOnDay: GameDay;
+  reopensOnLabel: string;
+  /** Metale bağlı pozisyon — riskin taşındığı tutar. */
+  metalValue: Money;
+  /** En kötü/en iyi hâlde pozisyonun oynayabileceği tutar (bant tavanı). */
+  worstCase: Money;
+  /** Oyuncuya gösterilecek tek cümle — YÖN SÖYLEMEZ (§5.2). */
+  note: string;
+}
+
+/**
+ * §5.2 — "Sinyaller karar desteğidir; ertesi gün YÖNÜNÜ VEYA BÜYÜKLÜĞÜNÜ
+ * GARANTİ ETMEZ." Bu yüzden burada da yön yoktur: yalnız kapalı gün sayısı,
+ * taşınan tutar ve bandın izin verdiği EN BÜYÜK oynama söylenir.
+ *
+ * `worstCase` bir tahmin değil, bir TAVANDIR: market.ts hafta sonu bandını
+ * √span ile büyütür (%3 × √3 ≈ %5,2) ve fiyat o bandın dışına çıkamaz.
+ * Tahmin vermek, olmayan bir kesinlik göstermek olurdu.
+ *
+ * Cuma dışında `null` döner — uyarı ancak karar verilebilecek gün anlamlıdır.
+ */
+export function weekendRisk(day: GameDay, position: OvernightPosition): WeekendRisk | null {
+  if (!isLastTradingDay(day)) return null;
+
+  const reopensOnDay = nextMarketOpenDay(day);
+  const closedDays = reopensOnDay - day - 1;
+  const worstCase = Math.round(position.metalValue * MARKET_DAILY_CAP * Math.sqrt(closedDays + 1));
+
+  return {
+    closedDays,
+    reopensOnDay,
+    reopensOnLabel: weekdayLabel(reopensOnDay),
+    metalValue: position.metalValue,
+    worstCase,
+    note:
+      position.metalValue <= 0
+        ? `Piyasa ${closedDays} gün kapalı. Nakitte olduğun için açılış boşluğu pozisyonunu taşımıyor; yükselirse fırsat maliyeti doğar.`
+        : `Piyasa ${closedDays} gün kapalı; ${weekdayLabel(reopensOnDay)} birikmiş hareketle açılacak. Altında taşıdığın ${money(position.metalValue)} ₺ için açılış boşluğu ${money(worstCase)} ₺'ye kadar iki yöne de oynayabilir.`,
+  };
 }
 
 // ---------------------------------------------------------------------------
