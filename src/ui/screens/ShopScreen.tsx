@@ -2057,6 +2057,17 @@ function DayCloseReport() {
           bunu öğrenebileceği hiçbir yüzey yoktu. Gün raporu, yarınki stok
           kararının verildiği yer olduğu için doğru adres burası.
         */}
+        {r.retailSales.length > 0 && (
+          <div className="dayReport__upcoming">
+            <span className="dayReport__upcomingHead">
+              Vitrinden satılan {r.retailSales.length} kalem
+            </span>
+            {r.retailSales.slice(0, 3).map((t) => (
+              <p key={t} className="dayReport__upcomingRow">{t}</p>
+            ))}
+          </div>
+        )}
+
         {r.missedDemand.length > 0 && (
           <div className="dayReport__upcoming">
             <span className="dayReport__upcomingHead">

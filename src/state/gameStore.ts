@@ -58,6 +58,7 @@ import {
   replenishNetwork,
   spawnNetwork,
 } from '@domain/trade-network';
+import { resolveRetailDay } from '@domain/retail';
 import {
   accrueOverdue,
   creditLimit,
@@ -169,6 +170,8 @@ export interface DayCloseSummary {
   /** Vade ve esnaf gecikmeleri gibi, düşerse kaybolacak satırlar. */
   warnings: string[];
   upcoming: { label: string; amount: Money; dueDay: number }[];
+  /** Bugün vitrinden satılanlar — kanal artık gerçekten çalışıyor. */
+  retailSales: string[];
   /**
    * Bugün stok yokluğundan geri çevrilen talepler (en çok üçü). Gün raporu,
    * oyuncunun yarınki stok kararını verdiği yerdir; kaçan talebi burada
@@ -2227,7 +2230,78 @@ export const useGame = create<GameState>((set, get) => {
       */
       if (s.dayCloseAsk) s.popPause();
 
-      const { state: closed, report } = closeDay(economyOf(s), s.market.day);
+      /*
+        VİTRİN SATIŞI — gün kapanmadan ÖNCE çözülür.
+
+        `retail` kanalı tam modellenmişti ve İşlem Tezinde oyuncuya en
+        yüksek alış tavanını veriyordu, ama uygulanacak yolu yoktu:
+        ölçüldü, oyuncuya sunulan en iyi tez %99,9 oranında uygulanamaz
+        olandı ve her işçilikli alımda ~%21 fazla ödemeye yol açıyordu.
+
+        Para tek kapıdan geçer (GDD 22.1): satışın kendisi burada
+        `applyTransaction` ile yazılır, çözüm ise saf `resolveRetailDay`
+        fonksiyonundan gelir.
+      */
+      const vitrin = resolveRetailDay(s.seed, s.market.day, s.inventory);
+      let ekonomi = economyOf(s);
+      const vitrinSatislari: string[] = [];
+      for (const sale of vitrin.sales) {
+        const item = ekonomi.items[sale.itemId];
+        if (!item) continue;
+        const tx: SettlementTransaction = {
+          // Gün + kalem: aynı gün aynı kalem iki kez satılamaz (GDD 22.1).
+          txId: `retail_${s.market.day}_${sale.itemId}`,
+          dealId: `retail_${s.market.day}_${sale.itemId}`,
+          day: s.market.day,
+          cashDelta: sale.price,
+          itemsIn: [],
+          itemsOut: [{ itemId: sale.itemId, quantity: sale.quantity }],
+          trustDelta: 0,
+          // Vitrin satışının müşterisi anonimdir; semt itibarı işlem
+          // masasındaki davranıştan doğar, raftan giden maldan değil.
+          reputationDelta: 0,
+          xpDelta: 0,
+          label: `${item.displayName} · vitrinden satıldı`,
+        };
+        const out = applyTransaction(ekonomi, tx);
+        if (out.applied) {
+          /*
+            GDD 34.5 — kâr SATIŞTA doğar ve vitrin satışı da bir satıştır.
+            `applyTransaction` parayı ve stoğu taşır ama gerçekleşmiş kârı
+            YAZMAZ; o ayrı bir çağrıdır. Bu satır olmadan vitrinden 163.372 ₺
+            tahsil edilip defterde kâr 0 görünüyordu (ölçüldü).
+          */
+          ekonomi = {
+            ...out.state,
+            ledger: realizeProfit(out.state.ledger, sale.price, sale.costBasis),
+          };
+          vitrinSatislari.push(`${item.displayName} · ${fmt(sale.price)}`);
+        }
+      }
+
+      /*
+        Vitrinde bekleyen her kalemin günlük fırsat maliyeti (GDD 8.1
+        `holdingCostPerDay`). Tez bu maliyeti beklenen nete zaten katıyordu;
+        gerçekleşmemesi, vitrini bedava bir depo yapardı.
+      */
+      if (vitrin.holdingCost > 0) {
+        const hc: SettlementTransaction = {
+          txId: `retailhold_${s.market.day}`,
+          dealId: `retailhold_${s.market.day}`,
+          day: s.market.day,
+          cashDelta: -vitrin.holdingCost,
+          itemsIn: [],
+          itemsOut: [],
+          trustDelta: 0,
+          reputationDelta: 0,
+          xpDelta: 0,
+          label: `Gün ${s.market.day} vitrin taşıma maliyeti`,
+        };
+        const out = applyTransaction(ekonomi, hc);
+        if (out.applied) ekonomi = out.state;
+      }
+
+      const { state: closed, report } = closeDay(ekonomi, s.market.day);
       const nextDay = s.market.day + 1;
       const market = createMarketForDay(s.seed, nextDay, s.market);
 
@@ -2321,6 +2395,7 @@ export const useGame = create<GameState>((set, get) => {
             Math.abs(overnightOutcome.spotChange) >= 0.0005 ? overnightOutcome.summary : null,
           warnings,
           upcoming: report.upcomingLiabilities,
+          retailSales: vitrinSatislari,
           missedDemand: topMissedDemand(s.missedDemand, 3).filter((r) => r.today > 0),
           missedDemandTotal: missedToday(s.missedDemand),
         },

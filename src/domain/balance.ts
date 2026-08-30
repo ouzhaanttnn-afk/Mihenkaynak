@@ -135,6 +135,22 @@ export const BUY_CEILING = {
   opCostPerDay: 0.006,
 } as const;
 
+/**
+ * VİTRİN SATIŞININ GÜNLÜK ÇÖZÜMÜ.
+ *
+ * `EXIT_CHANNEL.retail` kanalın EKONOMİSİNİ tanımlar (marj, gerçekleşme
+ * oranı, nakde dönüş günü, taşıma maliyeti). Buradakiler o ekonominin
+ * gün gün nasıl çözüldüğünü ayarlar — ikisi karışmasın diye ayrı durur.
+ */
+export const RETAIL = {
+  /** Talep etiketinin satılma hızına etkisi. */
+  demandFactor: { hot: 1.5, steady: 1, cold: 0.6 },
+  /** Vitrinde bekleyen mal her gün biraz daha zor satılır. */
+  ageDecayPerDay: 0.04,
+  /** Ama hiç satılmaz hâle gelmez: taban ivme. */
+  ageFloor: 0.35,
+} as const;
+
 /** GDD 6.5 — Satış Tabanı. */
 export const SELL_FLOOR = {
   minMargin: 0.06,
