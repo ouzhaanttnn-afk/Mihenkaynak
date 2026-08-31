@@ -47,6 +47,8 @@ Maaşlar kişi başına 40.000 + 50.000 + 60.000 TL eklenir. Günlük toplamda m
 - Seviye 1'de 0 personele geçildiğinde 1/2/3 personel alım butonları kilitli görüldü. 3/6/10 eşikleri ayrıca otomatik test edildi.
 - Görseller: `reports/updatev5/day-close-confirm-390x844.png` ve `day-close-report-390x844.png`.
 
+> 1 Eylül slider düzeltmesi: Sarrafiye Al'daki üç ürün ailesinin tümüne nakit/kapasite maksimumlu slider eklendi. HAS slider miktar seçimi artık cuma dışında da çalışır; yalnız ekonomik işlem onayı cuma günü açıktır.
+
 GitHub'a gönderim canlı sitenin otomatik olarak bu daldan yayınlandığını kanıtlamaz. Vercel bu dalı kullanmıyorsa mevcut sitenin görünümü değişmez; bu çalışma Vercel ayarlarını değiştirmez.
 
 ## Kısa düzeltme — 1 Eylül 2026

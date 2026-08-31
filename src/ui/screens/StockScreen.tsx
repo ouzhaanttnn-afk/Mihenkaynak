@@ -207,6 +207,8 @@ function BullionOffer({ product }: { product: typeof POOL_SUPPLY[number] }) {
   };
   const lot = poolSupplyQuote(templateId, qty, s.market, s.store);
   const max = useMemo(() => maxPoolSupplyQuantity(templateId, s.market, s.store), [templateId, s.market, s.store]);
+  const sliderStep = templateId === 'gram_gold_1' ? 0.001 : 1;
+  const sliderValue = Number.isFinite(qty) ? Math.min(max, Math.max(0, qty)) : 0;
   const unitQuote = lot ?? poolSupplyQuote(templateId, 1, s.market, s.store)!;
   const poolId = poolForTemplate(templateId);
   const held = s.inventory.filter(p => p.poolId === poolId)
@@ -242,6 +244,13 @@ function BullionOffer({ product }: { product: typeof POOL_SUPPLY[number] }) {
       <span className="offerRow__total num">{lot ? tl(lot.totalPrice) : '—'}</span>
       <button type="button" className="offerRow__buy" disabled={!affordable} onClick={buy}>{expensive && confirmed ? 'Onayla' : 'Al'}</button>
     </div>
+    <label className="poolSlider">
+      <span>Seçilen: {gramsPerUnit ? `${sliderValue * gramsPerUnit} g` : `${sliderValue} adet`}</span>
+      <input type="range" aria-label={`${name} miktar sliderı`} min={0} max={max} step={sliderStep} value={sliderValue}
+        disabled={max <= 0 || !space}
+        onChange={e => setQty(templateId === 'gram_gold_1' ? Number(e.target.value).toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : String(Math.round(Number(e.target.value))))} />
+      <span className="poolSlider__range">0 — {gramsPerUnit ? `${max * gramsPerUnit} g` : `${max} adet`}</span>
+    </label>
     {expensive && confirmed && <p className="offerRow__confirm" role="status">Yüksek tutar: {tl(lot.totalPrice)}. Satın almak için tekrar onayla.</p>}
     {!lot && <p className="offerRow__shortfall">Pozitif, geçerli bir miktar seçin. Gram altın hassasiyeti 0,001 g.</p>}
     {lot && !affordable && <p className="offerRow__shortfall">{!space ? 'Arka stokta yeni ürün ailesi için yer yok.' : `Mevcut nakit ${tl(s.store.cash)} · eksik ${tl(lot.totalPrice - s.store.cash)}`}</p>}
@@ -368,18 +377,18 @@ function HasCounter() {
     <div className="group__body v5Controls">
       <p>Saflık 1.000 · Değer {tl(fromMg(s.store.hasBalanceMg ?? 0) * s.market.goldSpot)}</p>
       <p>Toptancıdan al {tl(quote.buy)}/g · Toptancıya sat {tl(quote.sell)}/g</p>
-      <p>{open ? 'Cuma: HAS işlemleri açık.' : 'HAS alım-satımı yalnız cuma günü açık.'}</p>
+      <p>{open ? 'Cuma: HAS işlemleri açık.' : 'Miktarı şimdi seçebilirsiniz; alım-satım onayı yalnız cuma günü açılır.'}</p>
       <div role="group" aria-label="HAS işlem yönü">
         <button type="button" className="chip" aria-pressed={side === 'buy'} onClick={() => changeSide('buy')}>HAS Al</button>
         <button type="button" className="chip" aria-pressed={side === 'sell'} onClick={() => changeSide('sell')}>HAS Sat</button>
       </div>
       <label className="hasSlider">{side === 'buy' ? 'Seçilen' : 'Satılacak'}: {preciseGrams(qty)}
         <input type="range" aria-label="HAS miktarı" min={0} max={fromMg(maxMg)} step={0.001} value={qty}
-          disabled={!open || maxMg <= 0} onChange={e => { setAmountMg(Math.min(maxMg, Math.max(0, toMg(Number(e.target.value))))); setPending(null); }} />
+          disabled={maxMg <= 0} onChange={e => { setAmountMg(Math.min(maxMg, Math.max(0, toMg(Number(e.target.value))))); setPending(null); }} />
       </label>
       <p>0 g — {preciseGrams(fromMg(maxMg))}</p>
       <p>{side === 'buy' ? 'Yaklaşık Tutar' : 'Alınacak'}: {tl(total)}</p>
-      <button type="button" className="chip" disabled={!open || maxMg <= 0}
+      <button type="button" className="chip" disabled={maxMg <= 0}
         onClick={() => { setAmountMg(maxMg); setPending(null); }}>{side === 'buy' ? 'MAX AL' : 'TÜM HAS'}</button>
       <button type="button" className="chip" disabled={!open || !valid} onClick={() => setPending(signature)}>İşleme Devam Et</button>
       {pending === signature && open && valid && <div role="group" aria-label="HAS işlem onayı">

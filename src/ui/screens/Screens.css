@@ -957,3 +957,6 @@
 .poolAmount input { width: 90px; min-height: 44px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
 .hasSlider { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .hasSlider input[type="range"] { width: 100%; min-height: 44px; accent-color: #bf902f; }
+.poolSlider { display: grid; gap: 4px; margin-top: 8px; font-size: var(--fs-caption); }
+.poolSlider input[type="range"] { width: 100%; min-height: 32px; accent-color: #bf902f; }
+.poolSlider__range { color: var(--text-light-3); font-size: var(--fs-micro); }
