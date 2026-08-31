@@ -28,6 +28,7 @@ import {
 } from '@domain/balance';
 import { spawnItem } from '@domain/item-spawn';
 import { createMarketForDay, stepMarketIntraday } from '@domain/market';
+import { isShopOpen } from '@domain/calendar';
 import { nextCustomerDelay, spawnCustomer } from '@domain/customer-spawn';
 import {
   dayCharacter,
@@ -570,7 +571,7 @@ export const useGame = create<GameState>((set, get) => {
       let { queue, nextCustomerAtMinutes, spawnCounter, missedGuestCountToday } = s;
       let telemetry = s.intentTelemetry;
 
-      if (clock >= nextCustomerAtMinutes) {
+      if (isShopOpen(s.market.day) && clock >= nextCustomerAtMinutes) {
         const spawned = spawnCustomer(
           s.seed,
           spawnCounter,

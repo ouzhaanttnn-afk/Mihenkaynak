@@ -196,6 +196,9 @@ export const MARKET_REGIME: Record<
   },
 };
 
+/** Normal günlük ve gün içi fiyatın açılış/kapanış çapası etrafındaki tavanı. */
+export const MARKET_DAILY_CAP = 0.03;
+
 /**
  * Ekonomi Ara Düzeltmesi §2.4 / §6 / §8 — KANAL PROFİLLERİ.
  *

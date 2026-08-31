@@ -444,6 +444,19 @@
   color: var(--text-dark-3);
 }
 
+.marketStrip--closed .marketStrip__price {
+  opacity: 0.72;
+}
+
+.marketStrip--closed .marketStrip__regimeValue,
+.marketStrip--closed .marketStrip__change {
+  color: var(--text-dark-3);
+}
+
+.marketStrip--closed .marketStrip__change {
+  font-style: italic;
+}
+
 .marketStrip__regime {
   flex: 0 0 auto;
   min-width: 82px;

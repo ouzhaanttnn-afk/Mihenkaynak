@@ -20,6 +20,7 @@
  */
 
 import { createMarketForDay } from '@domain/market';
+import { isMarketOpen } from '@domain/calendar';
 import { consolidatePools, poolForTemplate, poolUnitGrams } from '@domain/stock-pools';
 import { bullionMeta } from '@data/bullion';
 import type { CustomerDemand } from '@domain/types';
@@ -180,7 +181,7 @@ export type LoadedState = Pick<
 export function deserialize(file: SaveFile): LoadedState {
   const save = migrate(file);
   const market = isMarketSnapshot(save.market)
-    ? { ...save.market, clockMinutes: save.clockMinutes }
+    ? normalizeMarketSnapshot(save.market, save.clockMinutes)
     : rebuildMarket(save.seed, save.day, save.clockMinutes);
 
   return {
@@ -287,6 +288,27 @@ function commitRawSave(raw: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Yeni piyasa alanları olmayan kayıtları fiyatı silmeden güvenli modele taşır. */
+function normalizeMarketSnapshot(market: MarketState, clockMinutes: number): MarketState {
+  const open = isMarketOpen(market.day);
+  return {
+    ...market,
+    clockMinutes,
+    marketOpen: open,
+    dayOpen: market.dayOpen ?? {
+      goldSpot: market.goldSpot,
+      silverSpot: market.silverSpot,
+      fxIndex: market.fxIndex,
+    },
+    gapDays: market.gapDays ?? 0,
+    lastIntradayStepIndex:
+      market.lastIntradayStepIndex ?? Math.max(35, Math.floor(clockMinutes / 15) - 1),
+    assets: open
+      ? market.assets
+      : market.assets.map((asset) => ({ ...asset, changePct: 0 })),
+  };
 }
 
 function isMarketSnapshot(market: MarketState | undefined): market is MarketState {

@@ -1,5 +1,6 @@
 import { Rng, deriveSeed } from './rng';
 import type { StoreState } from './types';
+import { isLastTradingDay, weekdayLabel } from './calendar';
 
 /** Integer milligrams are the physical source of truth. TL is rounded only at payment. */
 export const toMg = (grams: number): number => Math.round(grams * 1000);
@@ -14,7 +15,7 @@ export const personnelCount = (store: StoreState): number => Math.min(3, Math.ma
 export const queueCapacity = (store: StoreState): number => Math.min(10, 4 + personnelCount(store) * 2);
 export const personnelDaily = (store: StoreState): number => PERSONNEL_MONTHLY[personnelCount(store)]! / 30;
 export const dailyOperatingCost = (store: StoreState): number => roundMoney(store.dailyOverhead + personnelDaily(store));
-export const weekdayName = (day: number): string => ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'][(day - 1) % 7] ?? '';
+export const weekdayName = weekdayLabel;
 
 export function dailyTraffic(seed: number, day: number) {
   const roll = new Rng(deriveSeed(seed, 'dailyTraffic', day)).next();
@@ -32,4 +33,4 @@ export function dailyPurchaseMix(seed: number, day: number) {
   return { y, bullion: (67 + y) / 100, crafted: (33 - y) / 100 };
 }
 /** No weekday existed in v1: day 1 is Monday; day 5, 12, 19 ... are Fridays. */
-export const isHasTradingDay = (day: number): boolean => Number.isInteger(day) && day > 0 && (day - 1) % 7 === 4;
+export const isHasTradingDay = (day: number): boolean => Number.isInteger(day) && day > 0 && isLastTradingDay(day);

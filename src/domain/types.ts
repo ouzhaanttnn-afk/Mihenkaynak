@@ -506,6 +506,14 @@ export interface MarketState {
   volatility: number;
   activeEvent: MarketEvent | null;
   assets: MarketAsset[];
+  /** Gün içi ±%3 bandının sabit açılış çapası. */
+  dayOpen?: { goldSpot: number; silverSpot: number; fxIndex: number };
+  /** Cumartesi–pazar false; kotasyon ve gün içi hareket donar. */
+  marketOpen?: boolean;
+  /** Pazartesi açılışında biriken kapalı gün sayısı (normalde 2). */
+  gapDays?: number;
+  /** Son uygulanmış 15 dakikalık kova; aynı hareketin tekrar bileşikleşmesini engeller. */
+  lastIntradayStepIndex?: number;
   /** QA aynı günü tekrar oynayabilsin diye (GDD 28.3). */
   seed: number;
 }

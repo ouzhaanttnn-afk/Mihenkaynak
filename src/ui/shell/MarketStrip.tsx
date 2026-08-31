@@ -10,6 +10,7 @@
 
 import { TERM } from '@ui/terms';
 import { MARKET_REGIME } from '@domain/balance';
+import { weekdayShort } from '@domain/calendar';
 import { pctChange, price } from '@ui/format';
 import type { MarketState } from '@domain/types';
 
@@ -20,6 +21,7 @@ interface Props {
 
 export function MarketStrip({ market, onOpenMarket }: Props) {
   const regime = MARKET_REGIME[market.regime];
+  const closed = market.marketOpen === false;
 
   /*
    * ŞERİT TEK BİR <button> DEĞİLDİR.
@@ -35,7 +37,7 @@ export function MarketStrip({ market, onOpenMarket }: Props) {
    */
   return (
     <div
-      className="marketStrip"
+      className={`marketStrip ${closed ? 'marketStrip--closed' : ''}`}
       role="group"
       aria-label="Piyasa şeridi — kaydırarak tüm varlıkları görün"
     >
@@ -45,10 +47,12 @@ export function MarketStrip({ market, onOpenMarket }: Props) {
         onClick={onOpenMarket}
         aria-label="Piyasa ekranını aç"
       >
-        <span className="marketStrip__regimeLabel">{TERM.regime}</span>
+        <span className="marketStrip__regimeLabel">
+          {closed ? `${weekdayShort(market.day)} · Piyasa` : TERM.regime}
+        </span>
         <span className="marketStrip__regimeValue">
-          {regime.label}
-          {market.activeEvent ? ' •' : ''}
+          {closed ? 'Kapalı' : regime.label}
+          {!closed && market.activeEvent ? ' •' : ''}
         </span>
       </button>
 
@@ -64,7 +68,7 @@ export function MarketStrip({ market, onOpenMarket }: Props) {
           <span className="marketStrip__row">
             <span className="marketStrip__price num">{price(asset.price)}</span>
             <span className={`marketStrip__change num ${changeClass(asset.changePct)}`}>
-              {pctChange(asset.changePct)}
+              {closed ? 'donuk' : pctChange(asset.changePct)}
             </span>
           </span>
         </button>

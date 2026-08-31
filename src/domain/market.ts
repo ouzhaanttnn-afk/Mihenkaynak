@@ -14,11 +14,13 @@ import {
   EVENT_DIRECTION,
   MARKET_BASE,
   MARKET_COMPOSITION,
+  MARKET_DAILY_CAP,
   MARKET_REGIME,
   REGIME_DRIFT,
   REGIME_TRANSITIONS,
   REGIME_WEIGHTS,
 } from './balance';
+import { closedDaysBefore, isMarketOpen } from './calendar';
 import { Rng, deriveSeed } from './rng';
 import { bullionMeta } from '@data/bullion';
 import type { MarketAsset, MarketEvent, MarketState, GameDay } from './types';
@@ -65,6 +67,18 @@ const EVENT_POOL: Omit<MarketEvent, 'startedDay'>[] = [
  * avantajı imkânsızdır (GDD 13.4 / 28.3).
  */
 export function createMarketForDay(rootSeed: number, day: GameDay, prev?: MarketState): MarketState {
+  // Cumartesi–pazar kotasyonu cuma kapanışında donar; kapalı gün RNG tüketmez.
+  if (!isMarketOpen(day)) {
+    if (prev) return frozenMarket(day, prev);
+    // Test, eski kayıt yeniden kurma ve doğrudan gün açılışları da aynı takvim
+    // zincirini izlemeli; kapalı günü tek başına üretmek piyasa açmamalıdır.
+    let reconstructed = createMarketForDay(rootSeed, 1);
+    for (let d = 2; d <= day; d += 1) {
+      reconstructed = createMarketForDay(rootSeed, d, reconstructed);
+    }
+    return reconstructed;
+  }
+
   const rng = new Rng(deriveSeed(rootSeed, 'market/day', day));
 
   // --- 1. REJİM: bir DURUM, günlük çekiliş değil (§5.1) ---
@@ -86,6 +100,10 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
   const prevSilver = prev?.silverSpot ?? MARKET_BASE.silverGram;
   const prevFx = prev?.fxIndex ?? MARKET_BASE.usd;
 
+  // Pazartesi iki kapalı günün haberini tek açılışta fiyatlar: √3 ölçeği.
+  const span = closedDaysBefore(day) + 1;
+  const spanScale = Math.sqrt(span);
+
   // --- 4. AĞIRLIKLI BİLEŞİM (§5.1) ---
   //
   // §5.1 DEĞİŞMEZ: "Ertesi gün fiyatı basit ve BAĞIMSIZ bir 50/50 yükseliş-
@@ -93,9 +111,12 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
   // hiçbiri tek başına yönü belirlemez:
   const move = composeDailyMove(rng, { regime, trend, volatility, activeEvent, day });
 
-  const goldSpot = round2(prevGold * (1 + move.total));
-  const silverSpot = round2(prevSilver * (1 + move.total * rng.range(0.8, 1.6)));
-  const fxIndex = round2(prevFx * (1 + move.total * 0.3));
+  const cap = MARKET_DAILY_CAP * spanScale;
+  const total = move.total * spanScale;
+  const goldSpot = bandedPrice(prevGold * (1 + total), prevGold, cap);
+  const silverSpot = bandedPrice(prevSilver * (1 + total * rng.range(0.8, 1.6)), prevSilver, cap);
+  const fxIndex = bandedPrice(prevFx * (1 + total * 0.3), prevFx, cap);
+  const dayOpen = { goldSpot, silverSpot, fxIndex };
 
   const assets = buildAssets(
     { goldSpot, silverSpot, fxIndex },
@@ -114,8 +135,42 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
     volatility,
     activeEvent,
     assets,
+    dayOpen,
+    marketOpen: true,
+    gapDays: span - 1,
+    lastIntradayStepIndex: Math.floor((9 * 60) / 15) - 1,
     seed: rootSeed,
   };
+}
+
+/** Kapalı piyasa: fiyat, rejim ve trend değişmez; yalnız takvim ilerler. */
+function frozenMarket(day: GameDay, prev: MarketState): MarketState {
+  const quote = { goldSpot: prev.goldSpot, silverSpot: prev.silverSpot, fxIndex: prev.fxIndex };
+  const activeEvent =
+    prev.activeEvent && day - prev.activeEvent.startedDay < prev.activeEvent.durationDays
+      ? prev.activeEvent
+      : null;
+  return {
+    ...prev,
+    day,
+    clockMinutes: 9 * 60,
+    ...quote,
+    activeEvent,
+    assets: prev.assets.map((asset) => ({ ...asset, changePct: 0 })),
+    dayOpen: quote,
+    marketOpen: false,
+    gapDays: 0,
+    lastIntradayStepIndex: Math.floor((9 * 60) / 15) - 1,
+  };
+}
+
+/** Fiyatı çapaya göre belirlenen yüzde bandında tutar. */
+function bandedPrice(raw: number, anchor: number, cap = MARKET_DAILY_CAP): number {
+  const value = round2(raw);
+  if (!(anchor > 0)) return value;
+  const low = Math.ceil(anchor * (1 - cap) * 100) / 100;
+  const high = Math.floor(anchor * (1 + cap) * 100) / 100;
+  return Math.max(low, Math.min(high, value));
 }
 
 /** §5.1 fiyat bileşenlerinin tek tek katkısı — §5.2 sinyalleri buradan okur. */
@@ -233,31 +288,66 @@ export function carryEvent(
  * sınırları içinde hareket eder". Adım da (day, clock) ile deterministiktir.
  */
 export function stepMarketIntraday(market: MarketState, newClockMinutes: number): MarketState {
-  const stepIndex = Math.floor(newClockMinutes / 15);
-  const rng = new Rng(deriveSeed(market.seed, `market/intraday/${market.day}`, stepIndex));
+  if (market.marketOpen === false) return { ...market, clockMinutes: newClockMinutes };
 
-  // Gün içi adım, günlük volatilitenin küçük bir kesridir.
+  const targetStep = Math.floor(newClockMinutes / 15);
+  const open = market.dayOpen ?? {
+    goldSpot: market.goldSpot,
+    silverSpot: market.silverSpot,
+    fxIndex: market.fxIndex,
+  };
+
+  /*
+   * Aynı 15 dakikalık kova yalnız BİR KEZ uygulanır. Eski kod her render/tick
+   * çağrısında aynı deterministik hareketi mevcut fiyatın üzerine yeniden
+   * çarpıyordu; sonuç FPS ve cihaz hızına göre bileşikleşebiliyordu.
+   *
+   * Saat birden fazla kovayı atlarsa aradaki kovalar sırayla işlenir. Böylece
+   * 1x/4x hız veya geciken bir frame aynı kapanış fiyatını üretir.
+   */
+  const fallbackLast = market.dayOpen
+    ? Math.floor((9 * 60) / 15) - 1
+    : targetStep - 1;
+  const lastApplied = market.lastIntradayStepIndex ?? fallbackLast;
+  if (targetStep <= lastApplied) return { ...market, clockMinutes: newClockMinutes };
+
+  let goldSpot = market.goldSpot;
+  let silverSpot = market.silverSpot;
+  let fxIndex = market.fxIndex;
   const stepScale = market.volatility * 0.12;
-  const dayOpenGold = market.assets.find((a) => a.id === 'goldGram')?.history[0] ?? market.goldSpot;
 
-  const nudge = (rng.next() - 0.5) * 2 * stepScale + market.trend * stepScale * 0.35;
-  const goldSpot = round2(market.goldSpot * (1 + nudge));
-  const silverSpot = round2(market.silverSpot * (1 + nudge * rng.range(0.9, 1.4)));
-  const fxIndex = round2(market.fxIndex * (1 + nudge * 0.25));
+  for (let stepIndex = lastApplied + 1; stepIndex <= targetStep; stepIndex += 1) {
+    const rng = new Rng(deriveSeed(market.seed, `market/intraday/${market.day}`, stepIndex));
+    const nudge = (rng.next() - 0.5) * 2 * stepScale + market.trend * stepScale * 0.35;
+    goldSpot = bandedPrice(goldSpot * (1 + nudge), open.goldSpot);
+    silverSpot = bandedPrice(
+      silverSpot * (1 + nudge * rng.range(0.9, 1.4)),
+      open.silverSpot,
+    );
+    fxIndex = bandedPrice(fxIndex * (1 + nudge * 0.25), open.fxIndex);
+  }
 
   const assets = market.assets.map((asset) => {
-    const price = priceForAsset(asset.id, { goldSpot, silverSpot, fxIndex });
-    const base = asset.history[0] ?? price;
+    const value = priceForAsset(asset.id, { goldSpot, silverSpot, fxIndex });
+    const base = priceForAsset(asset.id, open);
     return {
       ...asset,
-      price,
-      changePct: base === 0 ? 0 : ((price - base) / base) * 100,
-      history: [...asset.history.slice(-23), price],
+      price: value,
+      changePct: base === 0 ? 0 : ((value - base) / base) * 100,
+      history: [...asset.history.slice(-23), value],
     };
   });
 
-  void dayOpenGold;
-  return { ...market, clockMinutes: newClockMinutes, goldSpot, silverSpot, fxIndex, assets };
+  return {
+    ...market,
+    clockMinutes: newClockMinutes,
+    goldSpot,
+    silverSpot,
+    fxIndex,
+    assets,
+    dayOpen: open,
+    lastIntradayStepIndex: targetStep,
+  };
 }
 
 type Spots = { goldSpot: number; silverSpot: number; fxIndex: number };

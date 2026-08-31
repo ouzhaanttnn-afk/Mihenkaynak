@@ -17,6 +17,7 @@ import { TERM } from '@ui/terms';
 import { useEffect, useMemo, useState } from 'react';
 
 import { DAY, NEGOTIATION } from '@domain/balance';
+import { isShopOpen, weekdayLabel } from '@domain/calendar';
 import { shopDisplayName } from '@domain/profile';
 import { effectiveCeiling, suggestedChannel } from '@domain/thesis';
 import { isTerminal } from '@domain/negotiation';
@@ -445,6 +446,17 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
 
   const alerts: { key: string; title: string; detail: string; tone: string; Icon: typeof IconWarning }[] =
     [];
+  const shopOpen = isShopOpen(s.market.day);
+
+  if (!shopOpen) {
+    alerts.push({
+      key: 'closed',
+      title: 'Dükkân bugün kapalı',
+      detail: `${weekdayLabel(s.market.day)} · müşteri gelmez; piyasa cuma kapanışında donuk.`,
+      tone: 'warning',
+      Icon: IconClock,
+    });
+  }
 
   if (s.market.activeEvent) {
     alerts.push({
@@ -470,13 +482,10 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
   }
 
   const nextIn = Math.max(0, Math.round(s.nextCustomerAtMinutes - s.market.clockMinutes));
-  if (alerts.length < 3 && s.queue.length === 0) {
+  if (shopOpen && alerts.length < 3 && s.queue.length === 0) {
     alerts.push({
       key: 'schedule',
-      title:
-        s.queue.length > 0
-          ? `${s.queue.length} müşteri bekliyor`
-          : `Sonraki müşteri ~${nextIn} dk`,
+      title: `Sonraki müşteri ~${nextIn} dk`,
       detail: `Dükkan ${clock(DAY.closeMinutes)}'da kapanıyor.`,
       tone: 'positive',
       Icon: IconClock,
@@ -506,7 +515,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         <div className="idle__headText">
           <h2 className="idle__title">{shopDisplayName(s.profile.jewelerName)}</h2>
           <p className="idle__sub">
-            Gün {s.market.day} · Semt itibarı {Math.round(s.store.reputation)}
+            Gün {s.market.day} · {weekdayLabel(s.market.day)} · Semt itibarı {Math.round(s.store.reputation)}
           </p>
         </div>
       </div>
@@ -1001,6 +1010,19 @@ function ShopDock({
   // --- IDLE ---
   if (!deal || !line) {
     const hasQueue = s.queue.length > 0;
+    const shopOpen = isShopOpen(s.market.day);
+
+    if (!shopOpen) {
+      return (
+        <DecisionDock
+          idle
+          summaryLabel={weekdayLabel(s.market.day)}
+          summaryValue="Dükkân ve müşteri akışı kapalı"
+          primary={{ label: 'Günü Bitir', onPress: s.requestDayClose }}
+          secondary={[{ label: 'Stoka Bak', onPress: () => s.setTab('stock') }]}
+        />
+      );
+    }
 
     return (
       <DecisionDock

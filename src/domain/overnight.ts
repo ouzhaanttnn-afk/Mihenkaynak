@@ -20,6 +20,8 @@
  */
 
 import { isBullion } from '@data/bullion';
+import { MARKET_DAILY_CAP } from './balance';
+import { closedDaysBefore, isLastTradingDay, nextMarketOpenDay, weekdayLabel } from './calendar';
 import type { GameDay, InventoryPosition, ItemInstance, MarketState, Money } from './types';
 
 /** Gün kapanışında alınan pozisyon. */
@@ -50,6 +52,8 @@ export interface OvernightOutcome {
    * FIRSAT MALİYETİ. Bu para hiç var olmadı; kaybedilmiş bir kazançtır.
    */
   cashOpportunityCost: Money;
+  /** Kapanış ile bir sonraki piyasa açılışı arasındaki kapalı gün sayısı. */
+  gapDays: number;
   /** Oyuncuya gösterilecek tarafsız özet — kesinlik dili YOK. */
   summary: string;
 }
@@ -108,13 +112,15 @@ export function resolveOvernight(
   // Fiyat düşerken nakit tutmak bir kazanç değil, kaçınılmış bir zarardır;
   // onu "kâr" gibi göstermek nakdi sürekli üstün gösterirdi.
   const cashOpportunityCost = spotChange > 0 ? Math.round(position.cash * spotChange) : 0;
+  const gapDays = nextMarket.gapDays ?? 0;
 
   return {
     position,
     spotChange,
     metalDelta,
     cashOpportunityCost,
-    summary: describeOutcome(position, spotChange, metalDelta, cashOpportunityCost),
+    gapDays,
+    summary: describeOutcome(position, spotChange, metalDelta, cashOpportunityCost, gapDays),
   };
 }
 
@@ -127,18 +133,43 @@ function describeOutcome(
   spotChange: number,
   metalDelta: Money,
   opportunityCost: Money,
+  gapDays: number,
 ): string {
-  if (Math.abs(spotChange) < 0.0005) return 'Gecelik fiyat neredeyse yerinde kaldı.';
+  const period = gapDays > 0 ? `${gapDays} kapalı gün sonrası açılışta` : 'Gecelik';
+  if (Math.abs(spotChange) < 0.0005) return `${period} fiyat neredeyse yerinde kaldı.`;
 
   if (spotChange > 0) {
     return position.metalShare >= 0.5
-      ? 'Fiyat yükseldi; ağırlığı altında taşımak bu gece işe yaradı.'
-      : `Fiyat yükseldi; nakitte kalan kısım ${Math.abs(opportunityCost)} ₺'lik fırsatı kaçırdı.`;
+      ? `${period} fiyat yükseldi; ağırlığı altında taşımak işe yaradı.`
+      : `${period} fiyat yükseldi; nakitte kalan kısım ${Math.abs(opportunityCost)} ₺'lik fırsatı kaçırdı.`;
   }
 
   return position.metalShare >= 0.5
-    ? `Fiyat düştü; altında kalan pozisyon ${Math.abs(metalDelta)} ₺ geriledi.`
-    : 'Fiyat düştü; nakit ağırlığı bu gece zararı sınırladı.';
+    ? `${period} fiyat düştü; altında kalan pozisyon ${Math.abs(metalDelta)} ₺ geriledi.`
+    : `${period} fiyat düştü; nakit ağırlığı zararı sınırladı.`;
+}
+
+export interface WeekendRisk {
+  closedDays: number;
+  nextOpenDay: GameDay;
+  maxEstimatedExposure: Money;
+  note: string;
+}
+
+/** Cuma kapanışında oyuncuya yön değil, kapalı gün boyunca taşıdığı riski gösterir. */
+export function weekendRisk(day: GameDay, position: OvernightPosition): WeekendRisk | null {
+  if (!isLastTradingDay(day)) return null;
+  const nextOpenDay = nextMarketOpenDay(day);
+  const closedDays = closedDaysBefore(nextOpenDay);
+  const maxEstimatedExposure = Math.round(
+    position.metalValue * MARKET_DAILY_CAP * Math.sqrt(closedDays + 1),
+  );
+  return {
+    closedDays,
+    nextOpenDay,
+    maxEstimatedExposure,
+    note: `Piyasa ${closedDays} gün kapalı kalacak; ${weekdayLabel(nextOpenDay)} açılışına kadar fiyat donuk görünür. Altın pozisyonunun tahmini açılış riski ±${maxEstimatedExposure} ₺ bandındadır.`,
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { DAY } from '@domain/balance';
 import { dailyOperatingCost, weekdayName } from '@domain/v5-rules';
-import { useGame } from '@state/gameStore';
+import { isMarketOpen, isShopOpen, nextMarketOpenDay, weekdayLabel } from '@domain/calendar';
+import { weekendRisk } from '@domain/overnight';
+import { selectors, useGame } from '@state/gameStore';
 import { clock, pct, tl, tlSigned } from '@ui/format';
 
 /** Top-layer dialog: focus stays inside; the paused world cannot receive taps. */
@@ -9,6 +11,8 @@ export function DayCloseDialog() {
   const s = useGame();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const report = s.dayReportOpen ? s.lastDayReport : null;
+  const risk = weekendRisk(s.market.day, selectors.position(s));
+  const tomorrow = s.market.day + 1;
   const open = s.dayCloseConfirmOpen || !!report;
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -37,6 +41,10 @@ export function DayCloseDialog() {
     </> : <>
       <h2 id="day-close-title">Günü şimdi kapat?</h2>
       <p>Saat {clock(s.market.clockMinutes)}. {s.market.clockMinutes < DAY.closeMinutes ? 'Gün daha bitmedi; kapatırsan bugün başka müşteri gelmez.' : 'Bugünün işlemleri kapanacak.'} Günlük gider {tl(dailyOperatingCost(s.store))} her hâlükârda işler.</p>
+      <p>
+        Yarın {weekdayLabel(tomorrow)} · dükkân {isShopOpen(tomorrow) ? 'açık' : 'kapalı'} · piyasa {isMarketOpen(tomorrow) ? 'açık' : `kapalı; sonraki açılış ${weekdayLabel(nextMarketOpenDay(tomorrow))}`}.
+      </p>
+      {risk ? <p>{risk.note}</p> : null}
       {s.queue.length > 0 && <p>{s.queue.length} bekleyen müşteri ayrılacak. Bu kişiler kapasite nedeniyle kaçırılan misafir sayısına eklenmez.</p>}
       <div className="dayCloseDialog__actions">
         <button type="button" className="dayCloseDialog__cancel" onClick={s.cancelDayClose} autoFocus>Vazgeç</button>

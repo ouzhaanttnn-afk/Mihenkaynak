@@ -262,6 +262,7 @@ describe('§5 — Kapanış dağılımı bir pozisyondur', () => {
       'spotChange',
       'metalDelta',
       'cashOpportunityCost',
+      'gapDays',
       'summary',
     ]);
   });
