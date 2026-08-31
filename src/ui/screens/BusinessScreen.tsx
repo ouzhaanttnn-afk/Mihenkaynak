@@ -14,7 +14,7 @@ import { TERM } from '@ui/terms';
 import { useState } from 'react';
 import { PERSONNEL_MONTHLY, PERSONNEL_SALARIES, PERSONNEL_UNLOCK_LEVELS, canSetPersonnel, personnelCount, personnelDaily, queueCapacity } from '@domain/v5-rules';
 
-import { MARKET_REGIME } from '@domain/balance';
+import { MARKET_REGIME, WHOLESALE } from '@domain/balance';
 import { shopDisplayName } from '@domain/profile';
 import {
   LIQUIDITY_BAND_LABEL,
@@ -1078,7 +1078,11 @@ function StoreRoute({ onBack }: { onBack: () => void }) {
   );
 
   const fmtGate = (g: (typeof evaluation.gates)[number]) =>
-    g.unit === 'money' ? `${tl(g.current)} / ${tl(g.needed)}` : `${g.current} / ${g.needed}`;
+    g.unit === 'money'
+      ? `${tl(g.current)} / ${tl(g.needed)}`
+      : g.unit === 'points'
+        ? `${g.current} → ${g.needed}`
+        : `${g.current} / ${g.needed}`;
 
   return (
     <div className="page">
@@ -1126,6 +1130,18 @@ function StoreRoute({ onBack }: { onBack: () => void }) {
                     tone={g.met ? 'positive' : undefined}
                   />
                 ))}
+                {evaluation.gates.some((g) => !g.met && g.key === 'supplierTrust') && (
+                  <p className="emptyNote">
+                    Toptancı güveni 100 üzerindendir. Anlamlı alışlar güveni {WHOLESALE.tradeTrustCap}
+                    {'’'}e kadar büyütür; üstü için vade alıp zamanında ödemek gerekir.
+                  </p>
+                )}
+                {evaluation.gates.some((g) => !g.met && g.key === 'reputation') && (
+                  <p className="emptyNote">
+                    Semt itibarı 100 üzerindendir. İyi kapanan işlemler yükseltir; kırıcı teklif ve
+                    müşteriyi kaçırmak düşürür.
+                  </p>
+                )}
               </div>
             </div>
 

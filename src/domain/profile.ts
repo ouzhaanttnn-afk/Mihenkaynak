@@ -19,6 +19,7 @@
 export const AVATAR_IDS = [
   'male-01', 'male-02', 'male-03', 'male-04', 'male-05', 'male-06',
   'male-07', 'male-08', 'male-09', 'male-10', 'male-11',
+  'female-01', 'female-02', 'female-03', 'female-04', 'female-05', 'female-06',
 ] as const;
 
 export type AvatarId = (typeof AVATAR_IDS)[number];

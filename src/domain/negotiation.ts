@@ -111,6 +111,8 @@ export interface NegotiationContext {
    * Verilmezse 1 sayılır, yani band aynen kalır.
    */
   haggleRoom?: number;
+  /** Satış yönünde adil değerin üzerindeki meşru perakende makası. */
+  retailSpread?: number;
 }
 
 /**
@@ -193,7 +195,10 @@ function scaleToFair(threshold: number, ctx: NegotiationContext): number {
   const room = ctx.haggleRoom ?? 1;
   // room === 1 nötr: adil değerden sapma olduğu gibi kalır.
   if (fair === undefined || fair <= 0 || room === 1) return threshold;
-  return fair + (threshold - fair) * Math.max(0, room);
+  const anchor = dirSign(ctx) === -1 ? fair * (1 + (ctx.retailSpread ?? 0)) : fair;
+  const scaled = anchor + (threshold - anchor) * Math.max(0, room);
+  // Satış çıpası müşterinin spawn anında sabitlenen gerçek tavanını aşamaz.
+  return dirSign(ctx) === -1 ? Math.min(scaled, threshold) : scaled;
 }
 
 /**

@@ -280,7 +280,7 @@ export const PURCHASE = {
   ceilingRatioBand: [1.04, 1.34] as [number, number],
 
   /** Mağaza kademesine göre paketteki azami kalem sayısı. */
-  maxPackageLinesByTier: { 1: 2, 2: 3, 3: 4, 4: 5 } as Record<number, number>,
+  maxPackageLinesByTier: { 1: 2, 2: 3, 3: 4, 4: 5, 5: 6 } as Record<number, number>,
 
   /**
    * §4.1 — TOPLU MÜŞTERİ PROFİLİ.
@@ -325,6 +325,12 @@ export const WHOLESALE = {
   onTimeTrustGain: 4,
   /** Geciken ödemenin güven cezası. */
   lateTrustPenalty: 9,
+  /** Anlamlı peşin alışların küçük güven katkısı; kredi ilişkisinin yerini almaz. */
+  tradeTrustGain: 1,
+  /** Peşin ticaret bu puanın üstüne taşımaz; üst kademeler için zamanında vade gerekir. */
+  tradeTrustCap: 65,
+  /** Güven katkısı için alışın güncel kredi limitindeki asgari payı. */
+  tradeTrustMinShare: 0.25,
   /** Zamanında ödemede limit büyüme katsayısı. */
   onTimeLimitGrowth: 1.06,
   /** Gecikmede limit daralma katsayısı. */

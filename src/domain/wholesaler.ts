@@ -295,6 +295,23 @@ export function financeTerms(store: StoreState, amount: Money, today: GameDay): 
   };
 }
 
+/**
+ * Anlamlı toptancı alışları ilişkiyi yavaşça büyütür. Küçük tekrarlarla
+ * sömürülmez ve peşin ticaret kredi güveninin yerine geçmez.
+ */
+export function tradeTrustAfterPurchase(
+  supplier: SupplierAccount,
+  amount: Money,
+  creditLimitNow: Money,
+): SupplierAccount {
+  if (amount < creditLimitNow * WHOLESALE.tradeTrustMinShare) return supplier;
+  if (supplier.trust >= WHOLESALE.tradeTrustCap) return supplier;
+  return {
+    ...supplier,
+    trust: Math.min(WHOLESALE.tradeTrustCap, supplier.trust + WHOLESALE.tradeTrustGain),
+  };
+}
+
 /** Vade kaydı — settlement sonrası hesaba yazılır. */
 export function openInvoice(
   supplier: SupplierAccount,

@@ -31,6 +31,7 @@
  * süzgeci onu genişletemez.
  */
 
+import { TARGET_MARGIN } from '@domain/balance';
 import type { InfoField, ItemFamily } from '@domain/types';
 import type { ItemTemplate } from './item-templates';
 
@@ -96,6 +97,9 @@ export interface ProductClassRules {
    */
   haggleRoom: number;
 
+  /** Dükkânın yapısal perakende makası; pazarlık payından ayrıdır. */
+  retailSpread: number;
+
   /** Sınıfın neden bu sınırlara sahip olduğunu anlatan tasarım notu. */
   note: string;
 }
@@ -152,6 +156,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     // Sıfır YAPILMADI — sıfır, gerekçeyi ve jesti anlamsız kılardı; sarrafta
     // da pazarlık vardır, sadece dardır.
     haggleRoom: 0.06,
+    retailSpread: TARGET_MARGIN.bullion[1],
     note: 'Gram altın ve külçe. Ağırlık + ayar dışında ölçülecek bir şey yok.',
   },
 
@@ -165,6 +170,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     // %2–14 arası oynuyordu; artık kanal makasının etrafında kalır.
     // 0,12 → 0,06 (bkz. bullionBar).
     haggleRoom: 0.06,
+    retailSpread: TARGET_MARGIN.bullion[1],
     note: 'Çeyrek/yarım/tam/Cumhuriyet/Ata. Gramajı ve tipi standarttır.',
   },
 
@@ -177,6 +183,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     services: ['clean', 'ringSize', 'engraving', 'stoneSet', 'restoration', 'appraisalReport'],
     // İkinci el takı: alıcı da satıcı da tam değerini bilmez → GENİŞ pay.
     haggleRoom: CRAFTED_HAGGLE_ROOM,
+    retailSpread: TARGET_MARGIN.secondHandJewellery[1],
     note: 'Ölçü servisinin tek geçerli olduğu sınıf; taşlıysa taş testleri açılır.',
   },
 
@@ -189,6 +196,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     services: ['clean', 'chainRepair', 'engraving', 'restoration', 'appraisalReport'],
     haggleRoom: CRAFTED_HAGGLE_ROOM,
+    retailSpread: TARGET_MARGIN.secondHandJewellery[1],
     note: 'Ağırlık, ayar, kondisyon. Kilidi olduğu için tamir alır; ölçü servisi almaz.',
   },
 
@@ -199,6 +207,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     tests: ['scale', 'touchstone', 'density', 'magnet', 'loupe', 'spectrometer'],
     services: ['clean', 'chainRepair', 'engraving', 'stoneSet', 'restoration', 'appraisalReport'],
     haggleRoom: CRAFTED_HAGGLE_ROOM,
+    retailSpread: TARGET_MARGIN.secondHandJewellery[1],
     note: 'Kilit ve halka taşır; uzunluk/kilit tamiri burada anlamlı, yüzük ölçüsü değil.',
   },
 
@@ -210,6 +219,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     // Takı değil: ne ölçüsü ne kilidi var.
     services: ['clean', 'engraving', 'restoration', 'appraisalReport'],
     haggleRoom: CRAFTED_HAGGLE_ROOM,
+    retailSpread: TARGET_MARGIN.secondHandJewellery[1],
     note: 'Dekoratif gümüş/obje. Takı servisleri uygulanmaz.',
   },
 
@@ -223,6 +233,7 @@ export const PRODUCT_CLASS_RULES: Record<ProductClass, ProductClassRules> = {
     services: ['clean', 'stoneSet', 'restoration', 'appraisalReport'],
     // Tek parça, referans fiyat yok — pazarlık en geniş burada anlamlı.
     haggleRoom: CRAFTED_HAGGLE_ROOM,
+    retailSpread: TARGET_MARGIN.secondHandJewellery[1],
     note: 'Vintage/koleksiyon. Özgünlüğü bozan servisler kapalı.',
   },
 };

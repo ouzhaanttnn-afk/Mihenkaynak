@@ -81,10 +81,20 @@ describe('kuyumcu adı doğrulaması', () => {
 });
 
 describe('avatar kimliği', () => {
-  it('paket 11 karakter içerir ve varsayılan male-01’dir', () => {
-    expect(AVATAR_IDS).toHaveLength(11);
+  it('iki portre paketi toplam 17 karakter içerir ve varsayılan male-01’dir', () => {
+    expect(AVATAR_IDS).toHaveLength(17);
+    expect(AVATAR_IDS.filter((id) => id.startsWith('male-'))).toHaveLength(11);
+    expect(AVATAR_IDS.filter((id) => id.startsWith('female-'))).toHaveLength(6);
     expect(AVATAR_IDS[0]).toBe('male-01');
     expect(DEFAULT_AVATAR_ID).toBe('male-01');
+  });
+
+  it('avatar kimlikleri benzersizdir ve her kimliğin asset dosyası vardır', async () => {
+    const { existsSync } = await import('node:fs');
+    expect(new Set(AVATAR_IDS).size).toBe(AVATAR_IDS.length);
+    for (const id of AVATAR_IDS) {
+      expect(existsSync(`public/assets/characters/${id}.webp`), `${id}.webp yok`).toBe(true);
+    }
   });
 
   it('bilinen kimlikleri korur', () => {
@@ -92,7 +102,7 @@ describe('avatar kimliği', () => {
   });
 
   it('bilinmeyen / bozuk kimliği varsayılana çeker — çökmez', () => {
-    for (const bad of ['female-01', 'male-99', '', null, undefined, 42, {}]) {
+    for (const bad of ['female-99', 'male-99', '', null, undefined, 42, {}]) {
       expect(normalizeAvatarId(bad)).toBe(DEFAULT_AVATAR_ID);
     }
   });

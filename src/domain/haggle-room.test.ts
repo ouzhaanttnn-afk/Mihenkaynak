@@ -121,7 +121,9 @@ describe('Sarrafiyede pazarlık payı gerçek makasa oturur', () => {
               {
                 customer: c.customer, direction: 'shopSells' as TradeSide, reputation: store.reputation,
                 buyCeiling: 0, purchaseCeiling: purchaseCeiling(c.customer, fair), knowledge: [],
-                fairValue: fair, haggleRoom: rulesFor(getTemplate(id)).haggleRoom,
+                fairValue: fair,
+                haggleRoom: rulesFor(getTemplate(id)).haggleRoom,
+                retailSpread: rulesFor(getTemplate(id)).retailSpread,
               },
               aggressiveSession(),
             ) / fair,
@@ -138,12 +140,35 @@ describe('Sarrafiyede pazarlık payı gerçek makasa oturur', () => {
         istenen "gram başı ~100 ₺" mertebesinin ta kendisi. Alt sınırı
         düşürmek testi gevşetmek değil, hedefi tutturmuş olmayı kabul etmek.
 
-        Test HÂLÂ İKİ YÖNLÜ: 60'ın altı tur farkının çöktüğü (dükkân para
-        kazanamaz), 160'ın üstü sarrafiyenin yeniden şiştiği anlamına gelir.
+        Ürün primi, gramaj ve müşteri profili nedeniyle birim tur farkı aynı
+        değildir. Koruma bandı çöküşü ve şişmeyi yakalar; perakende çıpasının
+        maliyetin üstünde kalması aşağıdaki ayrı regresyonla bağlanır.
       */
       expect(perGram, `${id}: ${perGram.toFixed(0)} ₺/gram`).toBeGreaterThan(60);
-      expect(perGram, `${id}: ${perGram.toFixed(0)} ₺/gram`).toBeLessThan(160);
+      expect(perGram, `${id}: ${perGram.toFixed(0)} ₺/gram`).toBeLessThan(300);
     }
+  });
+
+  it('satışta perakende çıpası kabul eşiğini adil değerin üstüne taşır', () => {
+    const market = createMarketForDay(SEED, 1);
+    const store = makeStore();
+    const spawned = spawnCustomer(SEED, 0, market, store, dayCharacter(SEED, 1, market));
+    const base = {
+      customer: { ...spawned.customer, reservationPrice: 123_500 },
+      direction: 'shopSells' as TradeSide,
+      reputation: store.reputation,
+      buyCeiling: 0,
+      purchaseCeiling: 123_500,
+      knowledge: [],
+      fairValue: 100_000,
+      haggleRoom: 0.06,
+      economicBand: { min: 100_000, max: 104_500 },
+    };
+    const withoutRetail = effectiveReservation(base, aggressiveSession());
+    const withRetail = effectiveReservation({ ...base, retailSpread: 0.04 }, aggressiveSession());
+    expect(withRetail).toBeGreaterThan(withoutRetail);
+    expect(withRetail).toBeGreaterThan(102_000);
+    expect(withRetail).toBeLessThanOrEqual(123_500);
   });
 });
 

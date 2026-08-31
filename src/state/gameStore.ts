@@ -64,11 +64,13 @@ import {
 } from '@domain/trade-network';
 import {
   accrueOverdue,
+  creditLimit,
   financeTerms,
   openInvoice,
   quoteLiquidation,
   repayInvoice,
   supplyOffer,
+  tradeTrustAfterPurchase,
 } from '@domain/wholesaler';
 import { applyMove, createSession, effectiveReservation, isTerminal } from '@domain/negotiation';
 import { applyTest, estimateBand, initialKnowledge, trueValue } from '@domain/valuation';
@@ -1278,6 +1280,7 @@ export const useGame = create<GameState>((set, get) => {
         knowledge: line.knowledge,
         fairValue: haggle.fairValue,
         haggleRoom: haggle.room,
+        retailSpread: haggle.retailSpread,
       };
 
       const { session, response } = applyMove(line.negotiation, ctx, move);
@@ -1536,7 +1539,7 @@ export const useGame = create<GameState>((set, get) => {
         return;
       }
 
-      const supplier =
+      const withInvoice =
         terms.totalDue > 0
           ? openInvoice(outcome.state.store.supplier, {
               id: invoiceId,
@@ -1544,6 +1547,8 @@ export const useGame = create<GameState>((set, get) => {
               dueDay: terms.dueDay,
             })
           : outcome.state.store.supplier;
+
+      const supplier = tradeTrustAfterPurchase(withInvoice, amount, creditLimit(s.store));
 
       const revalued = revalueInventory(
         outcome.state.inventory,
@@ -2426,26 +2431,33 @@ function haggleContext(
   deal: ActiveDeal,
   line: DealLine,
   s: GameState,
-): { fairValue: Money | undefined; room: number } {
+): { fairValue: Money | undefined; room: number; retailSpread: number } {
   const pkg = deal.purchase?.lines ?? [];
 
   if (deal.flow === 'purchase' && pkg.length > 0) {
     let fair = 0;
     let room = 1;
+    let retailSpread = Number.POSITIVE_INFINITY;
     for (const pl of pkg) {
       const item = s.items[pl.itemId];
       if (!item) continue;
+      const rules = rulesFor(getTemplate(item.templateId));
       fair += trueValue(item, s.market) * pl.quantity;
-      room = Math.min(room, rulesFor(getTemplate(item.templateId)).haggleRoom);
+      room = Math.min(room, rules.haggleRoom);
+      retailSpread = Math.min(retailSpread, rules.retailSpread);
     }
-    return fair > 0 ? { fairValue: fair, room } : { fairValue: undefined, room: 1 };
+    return fair > 0
+      ? { fairValue: fair, room, retailSpread: Number.isFinite(retailSpread) ? retailSpread : 0 }
+      : { fairValue: undefined, room: 1, retailSpread: 0 };
   }
 
   const item = s.items[line.itemId];
-  if (!item) return { fairValue: undefined, room: 1 };
+  if (!item) return { fairValue: undefined, room: 1, retailSpread: 0 };
+  const rules = rulesFor(getTemplate(item.templateId));
   return {
     fairValue: trueValue(item, s.market),
-    room: rulesFor(getTemplate(item.templateId)).haggleRoom,
+    room: rules.haggleRoom,
+    retailSpread: rules.retailSpread,
   };
 }
 
