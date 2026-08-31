@@ -7,6 +7,17 @@ Kapsam dışı: **Market ekranı ve Market içeriği.**
 
 ## Uygulama durumu
 
+### Son sağlamlaştırma — 29 Ağustos 2026
+
+- Gün kapanışı, kayıt tarayıcı deposuna yazılıp geri okunarak doğrulanmadan artık yeni güne geçmiyor.
+- Son sağlam checkpoint ayrı yedekte tutuluyor; ana JSON bozulursa oyun otomatik olarak yedeği açıyor.
+- Piyasanın spot, history ve gün içi durumu kayda eklendi; aynı kayıt yenilendiğinde fiyat artık değişmiyor.
+- Aynı ücretli ekspertiz aracı aynı üründe ikinci kez çalıştırılıp yeniden ücret kesemiyor.
+- Paket satırlarında `×1` dahil gerçek adet gösteriliyor.
+- Paket açıklamasındaki tekrarlı kanal adı temizlendi.
+- Uçtan uca testte Gün 2 → Gün 3, 997.600 ₺ ve 4.420,77 ₺ gram altın değeri sayfa yenileme sonrasında birebir korundu.
+- TypeScript, 540 otomatik test ve production build başarılı.
+
 Bu rapordaki 19 bulgu klon üzerinde uygulandı. Öne çıkan sonuçlar:
 
 - Toptancı ve Stok tedariki 1 adetle açılıyor; yüksek tutar ikinci onay istiyor.

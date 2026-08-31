@@ -23,6 +23,9 @@
  */
 
 import { PURCHASE } from './balance';
+import { poolForItem, poolForTemplate, poolUnitGrams, validQuantity } from './stock-pools';
+import { customerPriceBand, isCrafted } from './customer-pricing';
+import { roundMoney } from './v5-rules';
 import { costBasisForUnits } from './settlement';
 import { bullionMeta, isBullion, RETAIL_BULLION_CATALOG } from '@data/bullion';
 import { getTemplate } from '@data/item-templates';
@@ -119,7 +122,12 @@ export function spawnDemand(
   }
 
   // §4.1 kısmi karşılama: toplu müşteri stok yetmezse azıyla da çıkabilir.
-  const acceptsPartial = isBulk ? rng.chance(PURCHASE.bulkPartialChance) : quantity > 1;
+  const poolId = templateId ? poolForTemplate(templateId) : undefined;
+  if (poolId && poolId !== 'QUARTER_GOLD_POOL') {
+    quantity *= bullionMeta(templateId!)!.unitWeightGrams / poolUnitGrams(poolId);
+    templateId = poolId === '24K_GRAM_GOLD_POOL' ? 'gram_gold_1' : 'investment_bangle_22k_10';
+  }
+  const acceptsPartial = poolId === '22K_INVESTMENT_BANGLE_POOL' ? false : isBulk ? rng.chance(PURCHASE.bulkPartialChance) : quantity > 1;
   const minQuantity = acceptsPartial
     ? Math.max(1, Math.ceil(quantity * PURCHASE.partialFloorShare))
     : quantity;
@@ -128,13 +136,15 @@ export function spawnDemand(
 
   return {
     families,
+    poolId,
     wantsBullion,
     templateId,
     quantity,
     isBulk,
     acceptsPartial,
     minQuantity,
-    summary: demandSummary(templateId, families, quantity, isBulk),
+    summary: poolId === '24K_GRAM_GOLD_POOL' ? `${quantity} gram altın` :
+      poolId === '22K_INVESTMENT_BANGLE_POOL' ? `${quantity * 10} gram 22 ayar işçiliksiz bilezik` : demandSummary(templateId, families, quantity, isBulk),
     alternativesLabel: '',
   };
 }
@@ -170,6 +180,8 @@ function demandSummary(
 export type DemandMatch = 'exact' | 'family' | 'off';
 
 export function matchDemand(demand: CustomerDemand, item: ItemInstance): DemandMatch {
+  if (demand.targetInventoryItemId) return item.id === demand.targetInventoryItemId && isCrafted(item) && item.location === 'display' ? 'exact' : 'off';
+  if (demand.poolId) return poolForItem(item) === demand.poolId ? 'exact' : 'off';
   if (demand.templateId && item.templateId === demand.templateId) return 'exact';
   // UPDATEv1: Somut bir ürün isteyen müşteriye yalnız o SKU sunulur.
   // "Bilezik" talebine gram altın ya da başka bir bilezik önermek hem
@@ -195,6 +207,7 @@ export function offerableStock(
     if (position.location !== 'display' && position.location !== 'backStock') continue;
     const item = items[position.itemId];
     if (!item) continue;
+    if (demand.targetInventoryItemId && position.location !== 'display') continue;
     const match = matchDemand(demand, item);
     if (match === 'off') continue;
     rows.push({ position, item, match });
@@ -262,7 +275,7 @@ export function quotePackage(
   // Kanal motoru BİRİM fiyatlar. Paketin birim adil değeri üzerinden
   // fiyatlayıp adetle çarpmak, §6'nın hacim katmanının gerçekten çalışmasını
   // sağlar: 40 adet, 1 adedin 40 katı DEĞİLDİR.
-  const unitFair = Math.round(fair / units);
+  const unitFair = fair / units;
   const quote = priceForChannel({
     item: first,
     market,
@@ -275,7 +288,7 @@ export function quotePackage(
 
   return {
     fair,
-    suggested: quote.unitPrice * units,
+    suggested: quote.totalPrice,
     channel,
     rationale: `${CHANNEL_LABEL_TR[channel]} · ${quote.rationale}`,
   };
@@ -292,6 +305,27 @@ export function quotePackage(
  */
 export function purchaseCeiling(customer: Customer, fair: Money): Money {
   return Math.min(customer.budget, Math.round(fair * customer.purchaseCeilingRatio));
+}
+
+export function packagePriceBand(lines: PackageLine[], items: Record<string, ItemInstance>, market: MarketState) {
+  let min = 0, max = 0, reference = 0;
+  for (const line of lines) {
+    const item = items[line.itemId];
+    const band = item && customerPriceBand(item, market, 'shopSells', line.quantity);
+    if (!band) return undefined;
+    min += band.min; max += band.max; reference += band.reference;
+  }
+  return lines.length ? { min: roundMoney(min), max: roundMoney(max), reference } : undefined;
+}
+
+export function showcaseStock(inventory: InventoryPosition[], items: Record<string, ItemInstance>) {
+  return inventory.filter(p => p.location === 'display' && p.quantity >= 1 && !!items[p.itemId] &&
+    items[p.itemId]!.location === 'display' && isCrafted(items[p.itemId]!) && items[p.itemId]!.buyCost !== null);
+}
+export function showcaseDemand(item: ItemInstance): CustomerDemand {
+  return { targetInventoryItemId: item.id, families: [item.family], wantsBullion: false,
+    templateId: item.templateId, quantity: 1, minQuantity: 1, acceptsPartial: false, isBulk: false,
+    summary: `★ Vitrindeki ${item.displayName} ile ilgileniyor`, alternativesLabel: '' };
 }
 
 /**
@@ -368,7 +402,8 @@ export function repricePackage(
 ): PurchaseSession {
   const clean = lines.filter((l) => {
     const item = items[l.itemId];
-    return l.quantity > 0 && !!item && matchDemand(session.demand, item) !== 'off';
+    const position = inventory.find(p => p.itemId === l.itemId);
+    return !!position && validQuantity(position, l.quantity) && l.quantity <= session.demand.quantity && !!item && matchDemand(session.demand, item) !== 'off';
   });
   const units = packageUnits(clean);
   const quote = quotePackage(clean, session.demand, customer, market, items);

@@ -11,7 +11,10 @@
 import { ARCHETYPES, FIRST_NAMES_F, FIRST_NAMES_M, HONORIFIC_F, HONORIFIC_M, getArchetype } from '@data/archetypes';
 import { PURCHASE } from './balance';
 import { rollIntent, type DayCharacter } from './intent';
-import { applyBulkProfile, spawnDemand } from './purchase';
+import { applyBulkProfile, spawnDemand, showcaseStock, showcaseDemand } from './purchase';
+import { dailyPurchaseMix, roundMoney } from './v5-rules';
+import { customerPriceBand } from './customer-pricing';
+import type { InventoryPosition } from './types';
 import {
   applyMemory,
   pickReturningCustomer,
@@ -56,6 +59,7 @@ export function spawnCustomer(
   character: DayCharacter,
   /** GDD 10 — tanıdık müşteri defteri. Boşsa herkes yabancıdır. */
   registry: CustomerRegistry = {},
+  stock?: { inventory: InventoryPosition[]; items: Record<string, ItemInstance> },
 ): SpawnedCustomer {
   const rng = new Rng(deriveSeed(rootSeed, 'customer', spawnIndex));
 
@@ -82,10 +86,15 @@ export function spawnCustomer(
 
   // --- Talep: yalnız alış intentinde. Ürünü müşteri getirmez, oyuncu
   //     stoktan seçer (GDD 23.23). ---
-  const demand: CustomerDemand | null =
+  let demand: CustomerDemand | null =
     intent === 'buy'
       ? spawnDemand(rootSeed, spawnIndex, archetypeId, character, store.storeTier, store, market)
       : null;
+  if (demand && stock) {
+    const display = showcaseStock(stock.inventory, stock.items);
+    const showcaseRng = new Rng(deriveSeed(rootSeed, 'customer/showcase', spawnIndex));
+    if (display.length && showcaseRng.chance(.20)) demand = { ...showcaseDemand(stock.items[showcaseRng.pick(display).itemId]!), fallbackDemand: demand };
+  }
 
   // --- Kalem sayısı: çoklu ürün orta oyunda açılır (GDD 12) ---
   const multiChance = store.level >= 3 ? 0.26 : store.level >= 2 ? 0.12 : 0;
@@ -113,12 +122,19 @@ export function spawnCustomer(
   // ekspertizi BELİRSİZ ürün içindir; belirsizliği olmayan üründe iş yoktur.
   const appraisablePool = basePool.filter((t) => t.family !== 'bullion');
 
-  const usablePool =
+  let usablePool =
     intent === 'service' && serviceablePool.length > 0
       ? serviceablePool
       : intent === 'appraisal' && appraisablePool.length > 0
         ? appraisablePool
         : basePool;
+  if (intent === 'sell') {
+    const mixRng = new Rng(deriveSeed(rootSeed, 'customer/purchaseMix', spawnIndex));
+    const bullion = mixRng.chance(dailyPurchaseMix(rootSeed, market.day).bullion);
+    const selected = basePool.filter(t => !!bullionMeta(t.id) === bullion);
+    const fallback = templatesForTier(store.storeTier).filter(t => !!bullionMeta(t.id) === bullion);
+    usablePool = selected.length ? selected : fallback.length ? fallback : basePool;
+  }
 
   // Alış intentinde müşteri elinde ürünle gelmez.
   if (intent !== 'buy') {
@@ -149,7 +165,11 @@ export function spawnCustomer(
   const knowledgeAdjust = ((knowledge - 50) / 50) * 0.05; // ±5 puan
   const urgencyAdjust = -((urgency - 50) / 50) * 0.04; // Acil müşteri daha düşüğe razı
   const reservationRatio = clamp(baseRatio + knowledgeAdjust + urgencyAdjust, 0.7, 1.08);
-  const reservationPrice = Math.round(fairTotal * reservationRatio);
+  const reservationPrice = roundMoney(items.reduce((sum, item) => {
+    const band = customerPriceBand(item, market, 'shopBuys');
+    // Reuse the existing personality-derived reservation ratio, no new random roll.
+    return sum + (band ? Math.max(band.min, Math.min(band.max, trueValue(item, market) * reservationRatio)) : trueValue(item, market) * reservationRatio);
+  }, 0));
 
   // --- Bütçe (alıcı müşteride kullanılır) ---
   const qualityFactor = 1 + character.qualityTilt * 0.12;
@@ -158,7 +178,7 @@ export function spawnCustomer(
       ? Math.round(
           purchaseBudgetBase(demand, market) * rng.range(1.1, 2.1) * (1 + status / 200) * qualityFactor,
         )
-      : Math.round(fairTotal * rng.range(1.05, 1.9) * (1 + status / 200) * qualityFactor);
+      : Math.max(reservationPrice, Math.round(fairTotal * rng.range(1.05, 1.9) * (1 + status / 200) * qualityFactor));
 
   // --- Ödeme tavanı oranı: SPAWN ANINDA SABİT (GDD 34.2) ---
   // Paketi oyuncu seçtiği için tavarın TL karşılığı sonradan türer; ama

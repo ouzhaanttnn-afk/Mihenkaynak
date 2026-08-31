@@ -20,6 +20,8 @@
 
 import { LIQUIDITY_BANDS, XP } from './balance';
 import { isBullion } from '@data/bullion';
+import { consolidatePools, poolForItem, validQuantity, poolUnitGrams } from './stock-pools';
+import { toMg, fromMg, roundMoney, personnelDaily, isHasTradingDay, dailyOperatingCost } from './v5-rules';
 import type {
   DealRecord,
   GameDay,
@@ -53,6 +55,7 @@ export function createLedger(): Ledger {
 }
 
 export interface EconomyState {
+  market?: import('./types').MarketState;
   store: StoreState;
   inventory: InventoryPosition[];
   items: Record<string, ItemInstance>;
@@ -88,9 +91,33 @@ export function applyTransaction(
 
   // --- Nakit ---
   const cash = state.store.cash + tx.cashDelta;
-  if (cash < 0) {
+  if (!Number.isFinite(cash) || cash < 0) {
     return { applied: false, state, reason: 'Yetersiz nakit; işlem uygulanmadı.' };
   }
+
+  const requested = new Map<string, number>();
+  for (const out of tx.itemsOut) {
+    const position = state.inventory.find(p => p.itemId === out.itemId);
+    if (!position || !validQuantity(position, out.quantity)) return { applied: false, state, reason: 'Geçersiz stok miktarı.' };
+    requested.set(out.itemId, (requested.get(out.itemId) ?? 0) + out.quantity);
+    if (!validQuantity(position, requested.get(out.itemId)!)) return { applied: false, state, reason: 'Stok yetersiz.' };
+  }
+  if (tx.targetInventoryItemId) {
+    const target = state.inventory.find(p => p.itemId === tx.targetInventoryItemId);
+    if (!target || target.location !== 'display' || tx.itemsOut.length !== 1 ||
+      tx.itemsOut[0]?.itemId !== target.itemId || tx.itemsOut[0].quantity !== 1)
+      return { applied: false, state, reason: 'Vitrin ürünü artık satışta değil.' };
+  }
+  const hasDelta = tx.hasDeltaMg ?? 0;
+  const hasBalanceMg = (state.store.hasBalanceMg ?? 0) + hasDelta;
+  if (!Number.isSafeInteger(hasDelta) || !Number.isSafeInteger(hasBalanceMg) || hasBalanceMg < 0 ||
+      !Number.isFinite(tx.hasCostDelta ?? 0) ||
+      (hasDelta !== 0 && !tx.hasOperation) ||
+      (tx.hasOperation && tx.hasOperation !== 'melt' && !isHasTradingDay(tx.day)) ||
+      (tx.hasOperation === 'buy' && (hasDelta <= 0 || tx.cashDelta >= 0 || tx.itemsIn.length > 0 || tx.itemsOut.length > 0)) ||
+      (tx.hasOperation === 'sell' && (hasDelta >= 0 || tx.cashDelta <= 0 || tx.itemsIn.length > 0 || tx.itemsOut.length > 0)) ||
+      (tx.hasOperation === 'melt' && (hasDelta <= 0 || tx.cashDelta > 0 || tx.itemsOut.length !== 1 || tx.itemsIn.length > 0)))
+    return { applied: false, state, reason: 'Geçersiz HAS işlemi veya işlem günü.' };
 
   // --- Stok girişleri: cost basis kalem bazında yazılır (GDD 12.3) ---
   const items = { ...state.items };
@@ -129,7 +156,9 @@ export function applyTransaction(
   const reputation = clamp(state.store.reputation + tx.reputationDelta, 0, 100);
   const { level, xp, xpToNext } = applyXp(state.store, tx.xpDelta);
 
-  const store: StoreState = { ...state.store, cash, reputation, level, xp, xpToNext };
+  const pooled = consolidatePools(inventory, items);
+  const store: StoreState = { ...state.store, cash, reputation, level, xp, xpToNext,
+    hasBalanceMg, hasCostBasis: Math.max(0, (state.store.hasCostBasis ?? 0) + (tx.hasCostDelta ?? 0)) };
 
   const ledger: Ledger = {
     ...state.ledger,
@@ -137,7 +166,7 @@ export function applyTransaction(
     transactions: [...state.ledger.transactions, tx],
   };
 
-  return { applied: true, state: { store, inventory, items, ledger } };
+  return { applied: true, state: { ...state, store, inventory: pooled.inventory, items: pooled.items, ledger } };
 }
 
 /**
@@ -175,6 +204,7 @@ function upsertPosition(
   items: Record<string, ItemInstance>,
 ): InventoryPosition[] {
   const incomingItem = items[incoming.itemId];
+  if (incomingItem && poolForItem(incomingItem)) return [...inventory, incoming];
   const key = incomingItem ? stackKey(incomingItem, incoming.location) : null;
   if (!key) return [...inventory, incoming];
 
@@ -223,27 +253,30 @@ export function stackKey(item: ItemInstance, location: InventoryPosition['locati
  * Bir pozisyondan adet düşer. Toplam maliyet ve değer BİRİM oranında iner —
  * GDD 31.3: "Item cost basis satışta yalnız SATILAN MİKTAR kadar realize olur."
  *
- * Adet biterse pozisyon düşer. İstenenden az adet varsa olan kadarı çıkar;
- * eksi adet üretmek stok uydurmak olurdu.
+ * Miktar biterse pozisyon düşer. Geçersiz/aşırı çıkış değiştirilmeden reddedilir.
  */
 export function removeUnits(inventory: InventoryPosition[], out: StockOut): InventoryPosition[] {
   const index = inventory.findIndex((p) => p.itemId === out.itemId);
   if (index < 0) return inventory;
 
   const position = inventory[index]!;
-  const taken = Math.min(position.quantity, Math.max(0, Math.round(out.quantity)));
+  if (!validQuantity(position, out.quantity)) return inventory;
+  const taken = out.quantity;
   if (taken <= 0) return inventory;
   if (taken >= position.quantity) return inventory.filter((_, i) => i !== index);
 
-  const remaining = position.quantity - taken;
+  const quantityMg = position.quantityMg === undefined ? undefined : position.quantityMg - toMg(taken * poolUnitGrams(position.poolId));
+  const remaining = quantityMg === undefined ? position.quantity - taken : fromMg(quantityMg) / poolUnitGrams(position.poolId);
   const share = remaining / position.quantity;
   return inventory.map((p, i) =>
     i === index
       ? {
           ...p,
           quantity: remaining,
-          costBasis: Math.round(p.costBasis * share),
-          currentValue: Math.round(p.currentValue * share),
+          quantityMg,
+          averageCostPerUnit: p.averageCostPerUnit ?? p.costBasis / p.quantity,
+          costBasis: (p.averageCostPerUnit ?? p.costBasis / p.quantity) * remaining,
+          currentValue: p.currentValue * share,
         }
       : p,
   );
@@ -253,12 +286,12 @@ export function removeUnits(inventory: InventoryPosition[], out: StockOut): Inve
 export function costBasisForUnits(position: InventoryPosition, quantity: number): Money {
   if (position.quantity <= 0) return 0;
   const taken = Math.min(position.quantity, Math.max(0, quantity));
-  return Math.round((position.costBasis / position.quantity) * taken);
+  return (position.averageCostPerUnit ?? position.costBasis / position.quantity) * taken;
 }
 
 /** Bir pozisyonun birim maliyeti. */
 export function unitCostBasis(position: InventoryPosition): Money {
-  return position.quantity > 0 ? Math.round(position.costBasis / position.quantity) : 0;
+  return position.quantity > 0 ? position.averageCostPerUnit ?? position.costBasis / position.quantity : 0;
 }
 
 /** Ağırlıklı ortalama maliyet — dış çağrılar ve testler için. */
@@ -268,7 +301,7 @@ export function weightedCostBasis(
 ): Money {
   const totalQty = existing.qty + incoming.qty;
   if (totalQty <= 0) return 0;
-  return Math.round((existing.costBasis * existing.qty + incoming.costBasis * incoming.qty) / totalQty);
+  return (existing.costBasis * existing.qty + incoming.costBasis * incoming.qty) / totalQty;
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +403,7 @@ export const LIQUIDITY_BAND_LABEL: Record<LiquidityBand, string> = {
  * Stok potansiyeli net servete girer ama gerçekleşmiş kâra ASLA eklenmez.
  */
 export interface WealthSummary {
+  hasEstimatedValue: Money;
   cash: Money;
   stockCost: Money;
   stockEstimatedValue: Money;
@@ -381,6 +415,7 @@ export interface WealthSummary {
 }
 
 export function summarizeWealth(state: EconomyState): WealthSummary {
+  const hasEstimatedValue = state.market ? fromMg(state.store.hasBalanceMg ?? 0) * state.market.goldSpot : state.store.hasCostBasis ?? 0;
   const stockCost = state.inventory.reduce((s, p) => s + p.costBasis, 0);
   const stockEstimatedValue = state.inventory.reduce((s, p) => s + p.currentValue, 0);
   const liabilities =
@@ -388,12 +423,13 @@ export function summarizeWealth(state: EconomyState): WealthSummary {
     state.store.supplier.openInvoices.reduce((s, i) => s + i.amount, 0);
 
   return {
+    hasEstimatedValue,
     cash: state.store.cash,
     stockCost,
     stockEstimatedValue,
     stockPotential: stockEstimatedValue - stockCost,
     liabilities,
-    netWorth: state.store.cash + stockEstimatedValue - liabilities,
+    netWorth: state.store.cash + stockEstimatedValue + hasEstimatedValue - liabilities,
     realizedProfitToday: state.ledger.realizedProfitToday,
   };
 }
@@ -440,6 +476,10 @@ export interface DayCloseResult {
 }
 
 export interface DayReport {
+  closingCash?: Money;
+  overnightSummary?: string;
+  personnelExpense?: Money;
+  missedGuestCountToday?: number;
   day: GameDay;
   realizedTradeProfit: Money;
   overhead: Money;
@@ -454,9 +494,10 @@ export interface DayReport {
  * Gün kapanışı. GDD 22.1: "Gün sonu servis/vade/gelir işlemleri idempotent
  * olmalıdır." Aynı gün için ikinci kez çağrılırsa kasa tekrar eksilmez.
  */
-export function closeDay(state: EconomyState, day: GameDay): DayCloseResult {
+export function closeDay(state: EconomyState, day: GameDay, missedGuestCountToday = 0): DayCloseResult {
   const txId = `dayclose_${day}`;
-  const overhead = state.store.dailyOverhead;
+  const personnelExpense = personnelDaily(state.store);
+  const overhead = dailyOperatingCost(state.store);
 
   const tx: SettlementTransaction = {
     txId,
@@ -468,7 +509,7 @@ export function closeDay(state: EconomyState, day: GameDay): DayCloseResult {
     trustDelta: 0,
     reputationDelta: 0,
     xpDelta: 0,
-    label: `Gün ${day} kira + sabit gider`,
+    label: `Gün ${day} kira + sabit gider + personel`,
   };
 
   const outcome = applyTransaction(state, tx);
@@ -480,10 +521,13 @@ export function closeDay(state: EconomyState, day: GameDay): DayCloseResult {
     applied: outcome.applied,
     state: nextState,
     report: {
+      personnelExpense,
+      missedGuestCountToday,
       day,
       realizedTradeProfit: nextState.ledger.realizedProfitToday,
       overhead,
-      netCashChange: nextState.ledger.realizedProfitToday - overhead,
+      netCashChange: roundMoney(nextState.ledger.transactions.filter(tx => tx.day === day).reduce((sum, tx) => sum + tx.cashDelta, 0)),
+      closingCash: nextState.store.cash,
       stockPotential: wealth.stockPotential,
       liquidity: ratio,
       liquidityBand: liquidityBand(ratio),

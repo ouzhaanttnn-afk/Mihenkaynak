@@ -19,6 +19,7 @@ import { StockScreen } from '@ui/screens/StockScreen';
 import { WorkshopScreen } from '@ui/screens/WorkshopScreen';
 import { MarketPlaceholderScreen } from '@ui/screens/MarketPlaceholderScreen';
 import { ProfileDialog } from '@ui/shell/ProfileDialog';
+import { DayCloseDialog } from '@ui/shell/DayCloseDialog';
 import { overdueJobs, readyJobs } from '@domain/service';
 
 import '@ui/tokens.css';
@@ -43,6 +44,24 @@ export function App() {
     return ids.size;
   });
 
+  // v5 resumes active negotiations and deterministic queue state, not just a day checkpoint.
+  useEffect(() => {
+    let scheduled = false;
+    let disposed = false;
+    const flush = () => { if (!useGame.getState().saveGame()) useGame.getState().notify('Kayıt yazılamadı; depolama alanını kontrol edin.', 'negative'); };
+    const unsubscribe = useGame.subscribe((next, prev) => {
+      if (next.ledger === prev.ledger && next.activeDeal === prev.activeDeal && next.activeCustomer === prev.activeCustomer &&
+          next.queue === prev.queue && next.missedGuestCountToday === prev.missedGuestCountToday) return;
+      if (scheduled) return;
+      scheduled = true;
+      queueMicrotask(() => { scheduled = false; if (!disposed) flush(); });
+    });
+    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onHide);
+    return () => { disposed = true; unsubscribe(); window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', onHide); };
+  }, []);
+
   // Toast'lar kısa geri bildirimdir; kendiliğinden kapanır.
   useEffect(() => {
     if (toasts.length === 0) return;
@@ -65,6 +84,7 @@ export function App() {
         </div>
 
         <BottomNav active={tab} onSelect={setTab} workshopBadge={workshopAttention} />
+        <DayCloseDialog />
 
         {/*
           Profil penceresi CİHAZ SEVİYESİNDE: ekranın değil, çerçevenin

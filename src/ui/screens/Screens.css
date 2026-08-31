@@ -284,6 +284,26 @@
   overflow: hidden;
 }
 
+/* V5's small forms reuse the existing stone cards; no nested scroll area. */
+.v5Controls {
+  padding: var(--card-pad);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+}
+.v5Controls p { margin: 0 0 var(--sp-2); }
+.v5Controls .chip { min-height: 44px; margin: 2px; }
+.v5Controls input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--sp-2);
+  border: 1px solid var(--line-light);
+  border-radius: var(--r-sm);
+  color: var(--text-light-1);
+  background: var(--stone-50);
+  font: inherit;
+}
+
 .statLine {
   display: flex;
   align-items: center;

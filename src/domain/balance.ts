@@ -14,7 +14,7 @@ export const PURITY_TABLE: Record<Karat, number> = {
   '8K': 0.333,
   '14K': 0.585,
   '18K': 0.75,
-  '22K': 0.916,
+  '22K': 0.912,
   '24K': 0.995,
   AG925: 0.925,
   AG800: 0.8,
@@ -223,21 +223,17 @@ export const MARKET_REGIME: Record<
 /**
  * Ekonomi Ara Düzeltmesi §3 — MÜŞTERİ INTENT DAĞILIMI.
  *
- * DEĞİŞMEZ: %38 / %38 SABİT TABANDIR. Dinamik havuz bu iki dilimi azaltamaz;
- * yalnız kalan %24'ün içinde iş görür.
- *
- * DEĞİŞMEZ: "Dinamik havuzun tamamını tek yöne yığarak fiili alış-satış
- * dengesini sürekli biçimde bozmak yasaktır." → `maxDynamicTilt` kelepçesi.
- * Tilt ±0.5 iken havuzun en aşırı günü bile %24'ün 75/25'inden fazlasını tek
- * yöne veremez; toplam sapma en fazla ±%6 puandır.
+ * V5: %35/%35 taban + bağımsız günlük %10 dağılım + %20 sürpriz.
+ * Dinamik havuzun mevcut iç ağırlıkları korunur; kota/rebalancing uygulanmaz.
  */
 export const INTENT_MIX = {
   /** Müşteri alış intenti — oyuncu müşteriye satar. */
-  customerBuys: 0.38,
+  customerBuys: 0.35,
   /** Müşteri satış intenti — müşteri oyuncuya satar. */
-  customerSells: 0.38,
+  customerSells: 0.35,
   /** Kontrollü dinamik/RNG havuzu. */
-  dynamic: 0.24,
+  dynamic: 0.20,
+  dailyAllocation: 0.10,
   /** Dinamik havuzun servise ayrılan payı. */
   dynamicServiceShare: 0.4,
   /**

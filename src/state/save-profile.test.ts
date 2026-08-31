@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import { deserialize, serialize, type SaveFile } from './save';
 import { defaultProfile } from '@domain/profile';
+import { createMarketForDay, stepMarketIntraday } from '@domain/market';
 import { createLedger } from '@domain/settlement';
 import { emptyTelemetry } from '@domain/intent';
 import { START } from '@domain/balance';
@@ -66,6 +67,15 @@ describe('profil kayıtla birlikte taşınır', () => {
     const state = makeState({ jewelerName: 'Ahmet Usta', avatarId: 'male-07' });
     const back = deserialize(serialize(state));
     expect(progressOf(back as never)).toBe(progressOf(state as never));
+  });
+
+  it('gün içi piyasa snapshotını yeniden zar atmadan korur', () => {
+    const state = makeState();
+    const intraday = stepMarketIntraday(createMarketForDay(state.seed, 6), 777);
+
+    const back = deserialize(serialize({ ...state, market: intraday }));
+
+    expect(back.market).toEqual(intraday);
   });
 });
 

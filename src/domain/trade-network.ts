@@ -145,7 +145,9 @@ export function networkLiquidationOffer(
   if (!item || !position) return null;
   if (!buysBullion(member) || !isBullion(item.templateId)) return null;
 
-  const inStock = Math.max(1, Math.min(position.quantity, Math.round(requested)));
+  if (!Number.isFinite(requested) || requested <= 0) return null;
+  const granularity = position.poolId === '24K_GRAM_GOLD_POOL' ? 1000 : 1;
+  const inStock = Math.min(position.quantity, Math.floor(requested * granularity) / granularity);
   const depth = channelCapacity('tradeNetwork', bullionMeta(item.templateId), market);
 
   const baseUnitValue = isBullion(item.templateId)
@@ -163,7 +165,7 @@ export function networkLiquidationOffer(
   });
 
   // §8 "Ağ kapasitesi sonludur" — esnafın kasası fiyattan önce gelir.
-  const affordable = probe.unitPrice > 0 ? Math.floor(member.cashOnHand / probe.unitPrice) : 0;
+  const affordable = probe.unitPrice > 0 ? Math.floor(member.cashOnHand / probe.unitPrice * granularity) / granularity : 0;
   const quantity = Math.max(0, Math.min(inStock, depth, affordable));
   if (quantity <= 0) {
     return {
@@ -200,9 +202,9 @@ export function networkLiquidationOffer(
     memberId: member.id,
     quantity,
     unitPrice: quote.unitPrice,
-    total: quote.unitPrice * quantity,
+    total: quote.totalPrice,
     grams: gramsFor(item, quantity),
-    costBasis: Math.round(unitCostBasis(position) * quantity),
+    costBasis: unitCostBasis(position) * quantity,
     shortfallReason,
   };
 }

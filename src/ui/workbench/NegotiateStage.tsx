@@ -46,6 +46,8 @@ const MOVE_ICON: Record<string, typeof IconReason> = {
 };
 
 interface Props {
+  /** Oyuncunun kendi vitrin stoğu: tarihî maliyet ile güncel metal ayrı. */
+  saleAccounting?: { acquisitionCost: Money; metalValue: Money };
   session: NegotiationSession;
   message: string;
   /**
@@ -101,6 +103,7 @@ export function NegotiateStage({
   totalFields,
   liquidityAfter,
   reference,
+  saleAccounting,
 }: Props) {
   const active = selectedThesis
     ? thesisOptions.find((o) => o.channel === selectedThesis)
@@ -267,7 +270,13 @@ export function NegotiateStage({
         "Analize Göre Fark" da teklifi o kendi bilgisine göre konumlar,
         müşterinin kabul edeceği rakama göre değil.
       */}
-      {(band || reference) && (
+      {saleAccounting && <div className="refPanel" aria-label="Vitrin satış hesabı">
+        <div className="refPanel__row"><span className="refPanel__key">Alış Maliyetim</span><span className="refPanel__val num">{tl(saleAccounting.acquisitionCost)}</span></div>
+        <div className="refPanel__row"><span className="refPanel__key">Güncel Metal Değeri</span><span className="refPanel__val num">{tl(saleAccounting.metalValue)}</span></div>
+        <div className="refPanel__row"><span className="refPanel__key">{counter !== null ? 'Müşteri Teklifi' : 'Satış Teklifim'}</span><span className="refPanel__val num">{tl(counter ?? offer)}</span></div>
+        <div className="refPanel__row"><span className="refPanel__key">Kâr / Zarar</span><span className="refPanel__val num">{tlSigned((counter ?? offer) - saleAccounting.acquisitionCost)}</span></div>
+      </div>}
+      {!saleAccounting && (band || reference) && (
         <div className="refPanel">
           {band && (
             <div className="refPanel__row refPanel__row--analysis">

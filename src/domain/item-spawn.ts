@@ -17,6 +17,7 @@
  */
 
 import { CONDITION_LABEL, GOLD_KARATS, MARKET_BASE, PURITY_TABLE } from './balance';
+import { bullionMeta } from '@data/bullion';
 import { Rng, deriveSeed, makeId } from './rng';
 import { getTemplate, ITEM_TEMPLATES, type ItemTemplate } from '@data/item-templates';
 import type {
@@ -125,7 +126,10 @@ export function spawnItem(
     .filter((f) => DECEPTION_FLAWS.includes(f.kind))
     .reduce((factor, f) => factor * (1 - f.severity), 1);
 
-  const actualPurity = round4(PURITY_TABLE[declaredDropKarat] * deceptionFactor);
+  const nominalPurity = declaredDropKarat === claimedKarat
+    ? bullionMeta(templateId)?.unitPurity ?? PURITY_TABLE[declaredDropKarat]
+    : PURITY_TABLE[declaredDropKarat];
+  const actualPurity = round4(nominalPurity * deceptionFactor);
   // Ayar etiketi efektif saflığa göre yeniden yazılır; kaplamalı bir "22 ayar"
   // bileziğin gerçek ayarı yoktur, ölçüm onu en yakın alt kademede gösterir.
   const actualKarat = nearestKaratAtOrBelow(actualPurity, template.metal);

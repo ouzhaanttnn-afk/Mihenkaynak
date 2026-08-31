@@ -45,6 +45,11 @@ export function grams(n: number): string {
   return `${DEC1.format(n)} g`;
 }
 
+/** Pool / HAS balances retain milligram visibility. */
+export function preciseGrams(n: number): string {
+  return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 3 }).format(n)} g`;
+}
+
 /** %19 */
 export function pct(ratio: number, digits = 0): string {
   return `%${(ratio * 100).toFixed(digits).replace('.', ',')}`;

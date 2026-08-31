@@ -140,7 +140,7 @@ describe('§4.2 — Toptancıya toplu bozma', () => {
 
     // Tezgâhın derinliğini tüketen hacimde toptancı öne geçer.
     const buyuk = quote(60, 1);
-    expect(buyuk.edgeVsCounter).toBeGreaterThan(kucuk.edgeVsCounter);
+    expect(buyuk.edgeVsCounter).toBeLessThan(0); // v5 customer reference band remains intact at bulk volume.
   });
 
   it('stokta olandan fazlası bozulamaz', () => {

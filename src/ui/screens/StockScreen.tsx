@@ -12,6 +12,10 @@
 
 import { TERM } from '@ui/terms';
 import { useMemo, useState } from 'react';
+import { isCrafted } from '@domain/customer-pricing';
+import { fromMg, isHasTradingDay } from '@domain/v5-rules';
+import { hasQuote, maxHasBuyMg } from '@domain/has-account';
+import { poolForTemplate } from '@domain/stock-pools';
 
 import { KARAT_LABEL } from '@domain/balance';
 import { CHANNEL_SHORT } from '@domain/thesis';
@@ -26,7 +30,7 @@ import { useGame } from '@state/gameStore';
 import { IconStock, IconWarning, ProductSilhouette } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { NAV_ART, productArt } from '@ui/assets';
-import { grams, pct, tl, tlBare, tlSigned } from '@ui/format';
+import { grams, preciseGrams, pct, tl, tlBare, tlSigned } from '@ui/format';
 import type { InventoryPosition } from '@domain/types';
 
 type Filter = 'all' | 'display' | 'backStock' | 'workshop' | 'dead';
@@ -122,6 +126,7 @@ export function StockScreen() {
       <div className="page__scroll">
         {/* Playtest revizyonu §4 — sarrafiye stoklama tezgâhı. */}
         <BullionCounter />
+        <HasCounter />
 
         <div className="filterRail">
           {FILTERS.map((f) => (
@@ -189,10 +194,9 @@ function BullionCounter() {
   // dönüşünde 1'e düşüyordu. Playtest oturumu boyunca yaşayan küçük bir
   // modül durumu bunu çözer; oyun durumuna girmesi gerekmiyor çünkü
   // kaydedilecek bir şey değil, ekranın hafızası.
-  const [open, setOpen] = useState(counterMemory.open);
+  const open = s.stockCatalogOpen;
   const setOpenPersisted = (next: boolean) => {
-    counterMemory.open = next;
-    setOpen(next);
+    s.setStockCatalogOpen(next);
   };
 
   return (
@@ -261,9 +265,11 @@ function BullionOffer({ templateId }: { templateId: string }) {
 
   const view = unitPriceView(probe, lot.unitPrice);
   // Elde bu üründen kaç adet var.
+  const poolId = poolForTemplate(templateId);
   const held = s.inventory
-    .filter((p) => s.items[p.itemId]?.templateId === templateId)
-    .reduce((sum, p) => sum + p.quantity, 0);
+    .filter((p) => poolId ? p.poolId === poolId : s.items[p.itemId]?.templateId === templateId)
+    .reduce((sum, p) => sum + (p.quantityMg === undefined ? p.quantity : fromMg(p.quantityMg)), 0);
+  const heldLabel = poolId && poolId !== 'QUARTER_GOLD_POOL' ? preciseGrams(held) : `${held} adet`;
 
   const affordable = lot.total <= s.store.cash;
   const expensive = lot.total >= Math.max(100_000, Math.round(s.store.cash * 0.2));
@@ -287,7 +293,7 @@ function BullionOffer({ templateId }: { templateId: string }) {
       </div>
 
       <div className="offerRow__meta">
-        Stokta {held} · {view.perGram ? `${lot.grams.toFixed(1)} g` : `${lot.quantity} adet`} ·
+        Stokta {heldLabel} · {view.perGram ? `${lot.grams.toFixed(1)} g` : `${lot.quantity} adet`} ·
         en çok {lot.maxQuantity}
       </div>
 
@@ -343,12 +349,12 @@ function BullionOffer({ templateId }: { templateId: string }) {
  * yüklenmez, ekonomiyi etkilemez. Yalnız sekme gidip gelirken oyuncunun
  * seçimini korur.
  */
-const counterMemory: { open: boolean; qty: Record<string, number> } = {
-  open: false,
+const counterMemory: { qty: Record<string, number> } = {
   qty: {},
 };
 
 function StockRow({ position }: { position: InventoryPosition }) {
+  const s = useGame();
   const item = useGame((s) => s.items[position.itemId]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   if (!item) return null;
@@ -380,10 +386,10 @@ function StockRow({ position }: { position: InventoryPosition }) {
           {item.displayName}
           {/* §4.1 — yığılmış sarrafiyede adet gizlenmez; maliyet ve değer
               toplamdır, tek parçanınki değil. */}
-          {position.quantity > 1 && <span className="row__qty num"> ×{position.quantity}</span>}
+          <span className="row__qty num"> · {position.quantityMg === undefined ? `${position.quantity} adet` : preciseGrams(fromMg(position.quantityMg))}</span>
         </div>
         <div className="row__meta">
-          {KARAT_LABEL[item.declared.claimedKarat]} · {grams(item.truth.grossWeight)} ·{' '}
+          {KARAT_LABEL[item.declared.claimedKarat]} · {position.poolId ? 'Ortak havuz' : grams(item.truth.grossWeight)} ·{' '}
           {position.age} gün{' '}
           {/* GDD 8.3 — "her kalemin neden tutulduğunu görünür kılan plan etiketi" */}
           <span className={`tag ${position.thesis ? '' : 'tag--neutral'}`}>
@@ -395,7 +401,7 @@ function StockRow({ position }: { position: InventoryPosition }) {
 
         <div className="row__figures">
           <span className="figure">
-            <span className="figure__label">Maliyet</span>
+            <span className="figure__label">Gerçek Alış Maliyeti</span>
             <span className="figure__value num">{tl(position.costBasis)}</span>
           </span>
           <span className="figure">
@@ -431,6 +437,10 @@ function StockRow({ position }: { position: InventoryPosition }) {
         </button>
         {detailsOpen && (
           <div className="rowDetailPanel">
+            {isCrafted(item) && position.location !== 'workshop' && <>
+              <button type="button" className="chip" disabled={position.location === 'display'} onClick={() => s.displayStock(item.id)}>Vitrine Koy</button>
+              <button type="button" className="chip" onClick={() => { if (window.confirm('Ürün fiziksel stoktan çıkarılıp HAS bakiyesine dönüşecek. Mevcut 180 ₺ eritme bedeli alınır. Onaylıyor musunuz?')) s.meltStock(item.id); }}>Erit → HAS</button>
+            </>}
             <p><strong>Konum:</strong> {position.location === 'display' ? 'Vitrin' : position.location === 'backStock' ? 'Arka stok' : position.location === 'workshop' ? 'Serviste' : 'Müşteride'}</p>
             <p><strong>Çıkış planı:</strong> {position.thesis ? CHANNEL_SHORT[position.thesis] : 'Henüz seçilmedi.'}</p>
             {!position.thesis && <p>Çıkış planı, ürünün müşteri işleminde değerlendirilip bir satış kanalı seçildiğinde atanır.</p>}
@@ -439,4 +449,37 @@ function StockRow({ position }: { position: InventoryPosition }) {
       </div>
     </div>
   );
+}
+
+function HasCounter() {
+  const s = useGame();
+  const [amount, setAmount] = useState('');
+  const [pending, setPending] = useState<'buy' | 'sell' | null>(null);
+  const [requestId, setRequestId] = useState('');
+  const quote = hasQuote(s.market, s.store);
+  const open = isHasTradingDay(s.market.day);
+  const qty = Number(amount.replace(',', '.'));
+  const valid = Number.isFinite(qty) && qty > 0;
+  const request = (side: 'buy' | 'sell') => {
+    setRequestId(`has_${s.market.day}_${s.ledger.transactions.length}_${side}`);
+    setPending(side);
+  };
+  return <section className="group" aria-label="HAS hesabı">
+    <h2 className="group__title">HAS hesabı · {preciseGrams(fromMg(s.store.hasBalanceMg ?? 0))}</h2>
+    <div className="group__body v5Controls">
+      <p>Saflık 1.000 · Değer {tl(fromMg(s.store.hasBalanceMg ?? 0) * s.market.goldSpot)}</p>
+      <p>Toptancıdan al {tl(quote.buy)}/g · Toptancıya sat {tl(quote.sell)}/g</p>
+      <p>{open ? 'Cuma: HAS işlemleri açık.' : 'HAS alım-satımı yalnız cuma günü açık.'}</p>
+      <label>HAS gramı <input aria-label="HAS gramı" type="text" inputMode="decimal" value={amount} disabled={!open} onChange={e => { setAmount(e.target.value); setPending(null); }} /></label>
+      <button type="button" className="chip" disabled={!open} onClick={() => { setAmount(String(fromMg(maxHasBuyMg(s.store.cash, quote.buy)))); setPending(null); }}>MAX al</button>
+      <button type="button" className="chip" disabled={!open} onClick={() => { setAmount(String(fromMg(s.store.hasBalanceMg ?? 0))); setPending(null); }}>Tüm HAS</button>
+      <button type="button" className="chip" disabled={!open || !valid} onClick={() => request('buy')}>HAS Al</button>
+      <button type="button" className="chip" disabled={!open || !valid} onClick={() => request('sell')}>HAS Sat</button>
+      {pending && <div role="group" aria-label="HAS işlem onayı">
+        <p>{preciseGrams(qty)} · {tl(qty * (pending === 'buy' ? quote.buy : quote.sell))} — {pending === 'buy' ? 'alım' : 'satış'} onayı</p>
+        <button type="button" className="chip" onClick={() => { s.tradeHas(pending, qty, requestId); setPending(null); setAmount(''); }}>İşlemi Onayla</button>
+        <button type="button" className="chip" onClick={() => setPending(null)}>Vazgeç</button>
+      </div>}
+    </div>
+  </section>;
 }

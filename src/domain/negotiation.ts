@@ -71,6 +71,8 @@ export function createSession(lineId: string, itemId: string): NegotiationSessio
 }
 
 export interface NegotiationContext {
+  /** UPDATEv5 economic limits; personality/relationship operate inside this band. */
+  economicBand?: { min: number; max: number };
   customer: Customer;
   /**
    * Pazarlığın YÖNÜ (Addendum §3 terminolojisi).
@@ -156,7 +158,8 @@ export function effectiveReservation(ctx: NegotiationContext, session: Negotiati
   const base = sign === 1 ? customer.reservationPrice : purchaseThresholdBase(ctx);
   const raw = base * a.closeThreshold * (1 - sign * flex);
 
-  return Math.round(scaleToFair(raw, ctx));
+  const threshold = scaleToFair(raw, ctx);
+  return Math.round(ctx.economicBand ? clamp(threshold, ctx.economicBand.min, ctx.economicBand.max) : threshold);
 }
 
 /**
@@ -452,12 +455,12 @@ function deriveCounter(
   // Aynı pazarlık durumunda oyuncu müşteriye yaklaşırken karşı tarafın
   // rakamı ters yöne kaçamaz. Sertleşme/son teklif durum geçişleri bu
   // korumanın dışındadır; orada değişimin nedeni ekranda açıkça görünür.
-  if (session.activeCounter !== null && session.state === state) {
-    return sign === 1
+  const counter = session.activeCounter !== null && session.state === state
+    ? sign === 1
       ? Math.min(session.activeCounter, derived)
-      : Math.max(session.activeCounter, derived);
-  }
-  return derived;
+      : Math.max(session.activeCounter, derived)
+    : derived;
+  return ctx.economicBand ? Math.round(clamp(counter, ctx.economicBand.min, ctx.economicBand.max)) : counter;
 }
 
 // ---------------------------------------------------------------------------

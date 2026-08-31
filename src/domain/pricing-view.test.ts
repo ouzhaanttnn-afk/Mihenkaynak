@@ -111,7 +111,7 @@ describe('§1 — Sarrafiyede birim fiyat görünür', () => {
   it('adet × birim fiyat = toplam (§1 toplu işlem kuralı)', () => {
     const ceyrek = spawnItem(SEED, 2, 'quarter_gold');
     const lot = supplyOffer(ceyrek, 6, MARKET, makeStore())!;
-    expect(lot.unitPrice * lot.quantity).toBe(lot.total);
+    expect(Math.round(lot.unitPrice * lot.quantity)).toBe(lot.total);
   });
 
   it('gram bazlıda gram × ₺/g ≈ toplam', () => {
@@ -161,11 +161,11 @@ describe('§2 — Piyasa referans alış dinamik ve tarafsızdır', () => {
     expect(satis).toBeGreaterThan(alis);
   });
 
-  it('iki yön simetrik DEĞİLDİR — tek fonksiyonun işareti çevrilerek üretilemez', () => {
+  it('v5 iki yön referansın etrafında yarım makasla simetriktir', () => {
     const alis = marketReferenceBuy(item, MARKET, base);
     const satis = marketReferenceSell(item, MARKET, base);
     // Simetrik olsaydı adil değere uzaklıkları eşit olurdu.
-    expect(Math.abs(base - alis)).not.toBeCloseTo(Math.abs(satis - base), 0);
+    expect(Math.abs(base - alis)).toBeCloseTo(Math.abs(satis - base), 6);
   });
 
   it('referans MÜŞTERİDEN bağımsızdır — rezervasyon fiyatı değildir', () => {
@@ -237,7 +237,7 @@ describe('§4 — Playtest sarrafiye havuzu', () => {
     const store = makeStore();
     for (const q of [1, 3, 8]) {
       const lot = supplyOffer(spawnItem(SEED, 990_001, 'gram_gold_10'), q, MARKET, store)!;
-      expect(lot.total).toBe(lot.unitPrice * lot.quantity);
+      expect(lot.total).toBe(Math.round(lot.unitPrice * lot.quantity));
       expect(lot.quantity).toBe(q);
     }
   });

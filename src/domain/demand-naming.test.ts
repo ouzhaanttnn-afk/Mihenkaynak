@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { START } from './balance';
+import { poolForTemplate } from './stock-pools';
 import { getTemplate, ITEM_TEMPLATES } from '@data/item-templates';
 import { RETAIL_BULLION_CATALOG, INVESTMENT_BANGLE_WEIGHTS, bullionMeta } from '@data/bullion';
 import { spawnCustomer } from './customer-spawn';
@@ -80,7 +81,9 @@ describe('Talep somut bir ürün adı taşır', () => {
     for (const d of all) {
       const name = getTemplate(d.templateId!)?.displayName;
       expect(names.has(name!), d.summary).toBe(true);
-      expect(d.summary).toContain(name!);
+      if (d.poolId === '24K_GRAM_GOLD_POOL') expect(d.summary).toContain(`${d.quantity} gram altın`);
+      else if (d.poolId === '22K_INVESTMENT_BANGLE_POOL') expect(d.summary).toContain(`${d.quantity * 10} gram 22 ayar işçiliksiz bilezik`);
+      else expect(d.summary).toContain(name!);
     }
   });
 
@@ -95,7 +98,7 @@ describe('Talep somut bir ürün adı taşır', () => {
 describe('Somut ad talebi kesin ürüne daralır', () => {
   it('istenen SKU dışında başka sarrafiye önerilmez', () => {
     for (const d of demands()) {
-      const otherId = RETAIL_BULLION_CATALOG.find((id) => id !== d.templateId)!;
+      const otherId = RETAIL_BULLION_CATALOG.find((id) => id !== d.templateId && (!d.poolId || poolForTemplate(id) !== d.poolId))!;
       expect(matchDemand(d, spawnItem(SEED, 1, otherId))).toBe('off');
     }
   });
@@ -112,7 +115,7 @@ describe('Somut ad talebi kesin ürüne daralır', () => {
     expect(bullion.length).toBeGreaterThan(5);
     const other = spawnItem(SEED, 3, 'gram_gold_5');
     for (const d of bullion) {
-      const expected = d.templateId === 'gram_gold_5' ? 'exact' : 'off';
+      const expected = d.poolId === '24K_GRAM_GOLD_POOL' || d.templateId === 'gram_gold_5' ? 'exact' : 'off';
       expect(matchDemand(d, other)).toBe(expected);
     }
   });
@@ -132,7 +135,7 @@ describe('UPDATEv3 yatırım bileziği kataloğu', () => {
       expect(t.weightBand).toEqual([weight, weight]);
       expect(t.craftsmanshipRatioBand).toEqual([0, 0]);
       expect(t.hasStone).toBe(false);
-      expect(bullionMeta(t.id)?.unitPurity).toBe(0.916);
+      expect(bullionMeta(t.id)?.unitPurity).toBe(0.922);
       expect(bullionMeta(t.id)?.premiumRatio).toBe(0);
     }
   });

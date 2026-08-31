@@ -97,7 +97,12 @@ import {
 import { Art } from '@ui/Art';
 import { customerArt, NAV_ART } from '@ui/assets';
 import { customerIntentLine } from '@ui/intent-line';
-import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
+import { queueCapacity } from '@domain/v5-rules';
+import { RETAIL_BULLION_CATALOG } from '@data/bullion';
+import { showcaseStock } from '@domain/purchase';
+import { poolForItem, poolForTemplate } from '@domain/stock-pools';
+import { customerPriceBand } from '@domain/customer-pricing';
+import { clock, pct, tl, tlSigned, tonWord, preciseGrams } from '@ui/format';
 import { offerUnitLabel } from '@ui/offer-view';
 import type {
   DealLine,
@@ -267,6 +272,13 @@ export function ShopScreen() {
                 selectedThesis={null}
                 thesisOptions={[]}
                 band={null}
+                saleAccounting={deal.purchase.demand.targetInventoryItemId ? {
+                  acquisitionCost: deal.purchase.packageCost,
+                  metalValue: deal.purchase.lines.reduce((sum, row) => {
+                    const item = s.items[row.itemId];
+                    return sum + (item ? customerPriceBand(item, s.market, 'shopSells', row.quantity)?.reference ?? 0 : 0);
+                  }, 0),
+                } : undefined}
                 verifiedFields={0}
                 totalFields={0}
                 liquidityAfter={salePreview(
@@ -473,7 +485,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
 
   const position = selectors.position(s);
   const metalShare = Math.round(position.metalShare * 100);
-  const stockCount = s.inventory.reduce((n, p) => n + p.quantity, 0);
+  const stockCount = s.inventory.length;
 
   return (
     <div className={`idle ${coaching ? 'idle--coaching' : ''} ${s.queue.length > 0 ? 'idle--hasQueue' : ''}`}>
@@ -523,7 +535,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         <span className="position__cell">
           <span className="position__label">Stok</span>
           <span className="position__value num">
-            {stockCount} <span className="position__unit">adet</span>
+            {stockCount} <span className="position__unit">kalem</span>
           </span>
         </span>
 
@@ -537,6 +549,15 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         </span>
       </button>
 
+      {!s.inventory.some(p => {
+        const item = s.items[p.itemId];
+        return item && p.quantity > 0 && (p.location === 'backStock' || p.location === 'display') && RETAIL_BULLION_CATALOG.includes(item.templateId) && (!poolForTemplate(item.templateId) || !!poolForItem(item));
+      }) && showcaseStock(s.inventory, s.items).length === 0 && (
+        <div className="alert">
+          <span>Satacak ürünün yok. Satış yapabilmek için önce stok oluştur.</span>
+          <button type="button" className="chip" onClick={s.openStockCatalog}>İlk Stoğunu Al</button>
+        </div>
+      )}
       {s.queue.length > 0 && <WaitingCustomerQueue />}
 
       <div className="alerts">
@@ -574,13 +595,14 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
  */
 function WaitingCustomerQueue() {
   const queue = useGame((s) => s.queue);
+  const capacity = useGame((s) => queueCapacity(s.store));
   const greetCustomer = useGame((s) => s.greetCustomer);
 
   return (
     <section className="waitingQueue" aria-labelledby="waiting-queue-title">
       <div className="waitingQueue__head">
         <h3 id="waiting-queue-title">Bekleyen Müşteriler</h3>
-        <span>{queue.length}/3</span>
+        <span>{queue.length}/{capacity}</span>
       </div>
 
       <div className="waitingQueue__list">
@@ -636,6 +658,11 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
   const line = deal ? activeLine(deal) : undefined;
 
   if (!deal || !line) {
+    // Kuyruk doluyken boş araç rayının hiçbir eylemi yoktu; buna rağmen
+    // 56 px yer ayırıp kısa/safe-area'lı telefonlarda ilk müşteri kartını
+    // kesiyordu. Kuyruk kararın kendisidir. Müşteri karşılanınca aktif işlem
+    // rayı aynı fiziksel konumunda yeniden görünür.
+    if (s.queue.length > 0) return null;
     return <ToolRail items={[]} idle emptyLabel="Müşteri karşılandığında araçlar burada" />;
   }
 
@@ -808,7 +835,7 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
           // GDD 23.11 — "Locked araç görünüyorsa kilit nedeni kısa metinle
           // açıklanır." Dokunmatikte tooltip yoktur; nedeni toast ile söyle.
           onLockedPress: () => s.notify(`${tool.name}: ${lockReason}`, 'info'),
-          disabled: tool.cost > s.store.cash,
+          disabled: used || tool.cost > s.store.cash,
           badge: tool.cost > 0 ? `${tool.cost}₺` : undefined,
           };
         });
@@ -968,37 +995,12 @@ function ShopDock({
   liquidity: number;
 }) {
   const s = useGame();
-  const [dayEndConfirm, setDayEndConfirm] = useState(false);
   const deal = s.activeDeal;
   const line = deal ? activeLine(deal) : undefined;
 
   // --- IDLE ---
   if (!deal || !line) {
     const hasQueue = s.queue.length > 0;
-    const earlyClose = s.market.clockMinutes < DAY.closeMinutes - 60;
-
-    if (dayEndConfirm) {
-      const warnings = [
-        hasQueue ? `${s.queue.length} bekleyen müşteri kaybolacak` : null,
-        earlyClose ? 'dükkânı erken kapatıyorsun' : null,
-        `${tl(s.store.dailyOverhead)} günlük gider işlenecek`,
-      ].filter(Boolean);
-      return (
-        <DecisionDock
-          idle
-          summaryLabel="Günü kapat"
-          summaryValue={warnings.join(' · ')}
-          primary={{
-            label: 'Evet, günü kapat',
-            onPress: () => {
-              setDayEndConfirm(false);
-              s.advanceDay();
-            },
-          }}
-          secondary={[{ label: 'Vazgeç', onPress: () => setDayEndConfirm(false) }]}
-        />
-      );
-    }
 
     return (
       <DecisionDock
@@ -1010,7 +1012,7 @@ function ShopDock({
           onPress: s.greetCustomer,
           disabled: !hasQueue,
         }}
-        secondary={[{ label: 'Günü Bitir', onPress: () => setDayEndConfirm(true) }]}
+        secondary={[{ label: 'Günü Bitir', onPress: s.requestDayClose }]}
       />
     );
   }
@@ -1286,7 +1288,7 @@ function PurchaseDock({
           summaryValue={
             count === 0
               ? 'Henüz ürün seçilmedi'
-              : `${count} adet · ${tl(purchase.packageFairValue)} adil değer`
+              : `${purchase.demand.poolId === '24K_GRAM_GOLD_POOL' ? preciseGrams(count) : purchase.demand.poolId === '22K_INVESTMENT_BANGLE_POOL' ? preciseGrams(count * 10) : `${count} adet`} · ${tl(purchase.packageFairValue)} adil değer`
           }
           primary={{
             label: 'Paketi Değerle',

@@ -11,6 +11,7 @@
  */
 
 import type { ConditionGrade, ItemFamily, Karat, MetalKind } from '@domain/types';
+import { MARKET_BASE } from '@domain/balance';
 import { INVESTMENT_BANGLE_WEIGHTS, investmentBangleTemplateId } from './bullion';
 
 export interface ItemTemplate {
@@ -194,7 +195,7 @@ export const ITEM_TEMPLATES: ItemTemplate[] = [
     family: 'bullion',
     metal: 'gold',
     nominalKarat: '22K',
-    weightBand: [1.75, 1.75],
+    weightBand: [MARKET_BASE.quarterGoldWeight, MARKET_BASE.quarterGoldWeight],
     netRatioBand: [1, 1],
     craftsmanshipRatioBand: [0.02, 0.05],
     conditionWeights: { pristine: 7, good: 3 },

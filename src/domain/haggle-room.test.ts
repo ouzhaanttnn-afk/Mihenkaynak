@@ -14,6 +14,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { START } from './balance';
+import { poolForTemplate } from './stock-pools';
 import { getTemplate, ITEM_TEMPLATES } from '@data/item-templates';
 import { rulesFor } from '@data/product-classes';
 import { bullionMeta, isBullion } from '@data/bullion';
@@ -114,7 +115,7 @@ describe('Sarrafiyede pazarlık payı gerçek makasa oturur', () => {
         const ch = dayCharacter(SEED, day, m);
         for (let i = 0; i < 70; i++) {
           const c = spawnCustomer(SEED + day, i, m, store, ch);
-          if (c.customer.intent !== 'buy' || c.customer.demand?.templateId !== id) continue;
+          if (c.customer.intent !== 'buy' || (c.customer.demand?.templateId !== id && (!c.customer.demand?.poolId || c.customer.demand.poolId !== poolForTemplate(id)))) continue;
           caps.push(
             effectiveReservation(
               {

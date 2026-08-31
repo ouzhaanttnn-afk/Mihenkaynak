@@ -13,11 +13,8 @@
  *   MÜŞTERİNİN fiilidir, dükkânın değil.
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * §3 iki katmanlı üretim tarif eder:
- *   %38 müşteri alış intenti — SABİT TABAN, dinamik havuz azaltamaz
- *   %38 müşteri satış intenti — SABİT TABAN, dinamik havuz azaltamaz
- *   %24 kontrollü dinamik/RNG — günün ürün, hacim, kanal ve tempo karakterini
- *       değiştirir; %38/%38 tabanını BOZMAZ.
+ * UPDATEv5: %35/%35 taban, günlük bağımsız zarla dağıtılan %10,
+ * %20 mevcut sürpriz havuzu. Bunlar ağırlıktır; kota veya catch-up değildir.
  *
  * DEĞİŞMEZ (§3): "Dinamik havuzun tamamını tek yöne yığarak fiili alış-satış
  * dengesini SÜREKLİ biçimde bozmak yasaktır; sapmalar kontrollü, sınırlı ve
@@ -27,16 +24,17 @@
  */
 
 import { INTENT_MIX } from './balance';
+import { dailyIntentSplit, dailyTraffic } from './v5-rules';
 import { Rng, deriveSeed } from './rng';
 import type { CustomerIntent, GameDay, MarketState } from './types';
 
 /**
- * Günün karakteri — §3'ün %24'lük dinamik havuzu.
+ * Günün karakteri — V5'in %20'lik dinamik havuzu.
  *
- * "%24 havuz; toplu sipariş olasılığı, ürün karması, hacim bandı, müşteri
+ * "Dinamik havuz; toplu sipariş olasılığı, ürün karması, hacim bandı, müşteri
  * kalitesi, aciliyet ve gün içi yoğunluk gibi nitelikleri etkileyebilir."
  *
- * Dikkat: buradaki hiçbir alan %38/%38 tabanını değiştirmez. Havuz NİYETİN
+ * Dikkat: buradaki hiçbir alan günlük ana split'i değiştirmez. Havuz NİYETİN
  * PAYINI değil, niyetin NASIL göründüğünü belirler.
  */
 export interface DayCharacter {
@@ -90,7 +88,7 @@ export function dayCharacter(rootSeed: number, day: GameDay, market: MarketState
     volumeScale,
     qualityTilt,
     urgencyTilt,
-    tempo,
+    tempo: 1 / dailyTraffic(rootSeed, day).multiplier,
     dynamicTilt,
     label: characterLabel(bulkOrderChance, bullionBias, tempo, dynamicTilt),
   };
@@ -99,13 +97,8 @@ export function dayCharacter(rootSeed: number, day: GameDay, market: MarketState
 /**
  * Bir müşterinin niyetini üretir.
  *
- * §3'ün iki katmanı burada AYRI AYRI görünür:
- *   [0, 0.38)         → müşteri alış  (sabit taban)
- *   [0.38, 0.76)      → müşteri satış (sabit taban)
- *   [0.76, 1)         → dinamik havuz (kelepçeli eğimle dağıtılır)
- *
- * Taban dilimleri gün karakterinden ETKİLENMEZ. Karakter yalnızca son %24'ün
- * içinde iş görür — §3'ün "tabanını bozmaz" cümlesinin birebir karşılığı.
+ * Günlük split ilk %80'i iki yöne ayırır; son %20 mevcut sürpriz havuzudur.
+ * Önceki müşteri sayıları veya stok açığı bu zarın girdisi değildir.
  */
 export function rollIntent(
   rootSeed: number,
@@ -115,19 +108,20 @@ export function rollIntent(
   const rng = new Rng(deriveSeed(rootSeed, 'customer/intent', spawnIndex));
   const roll = rng.next();
 
-  if (roll < INTENT_MIX.customerBuys) {
+  const split = dailyIntentSplit(rootSeed, character.day);
+  if (roll < split.customerBuys) {
     return { intent: 'buy', fromDynamicPool: false };
   }
-  if (roll < INTENT_MIX.customerBuys + INTENT_MIX.customerSells) {
+  if (roll < split.customerBuys + split.customerSells) {
     return { intent: 'sell', fromDynamicPool: false };
   }
 
-  // --- Dinamik havuz (%24) ---
+  // --- Dinamik havuz (%20) ---
   // Havuzun bir kısmı ticaret dışı niyetlere gider (servis ve ekspertiz);
   // kalanı kelepçeli eğimle alış/satış arasında paylaşılır.
   //
-  // §3 DEĞİŞMEZİ KORUNUR: ticaret dışı niyetler yalnız bu %24'ün içinden
-  // çıkar. %38/%38 sabit taban dokunulmaz kalır — ekspertizin eklenmesi
+  // Ticaret dışı niyetler yalnız bu %20'nin içinden
+  // çıkar. Günlük ana split korunur — ekspertizin eklenmesi
   // alış-satış dengesini değiştirmez, yalnız dinamik havuzun içini böler.
   const inner = rng.next();
   if (inner < INTENT_MIX.dynamicServiceShare) {
@@ -195,7 +189,7 @@ export function tradeBalance(t: IntentTelemetry): number {
 
 /**
  * §11 "Dinamik havuz sapması: TELEMETRİ ALARMI ve SINIRLANDIRMA devreye
- * girer; %38/%38 sabit taban dinamik havuza AKTARILMAZ."
+ * girer; ana split sürpriz havuzuna AKTARILMAZ. V5 alarmı yalnız ölçümdür."
  *
  * Alarm iki şeyi ayrı ayrı denetler:
  *   1. Sabit tabanların altına inilmiş mi (aktarım olmuş mu),
@@ -229,11 +223,11 @@ export function intentAlarm(t: IntentTelemetry): IntentAlarm {
     shares.sell >= INTENT_MIX.customerSells - tolerance;
 
   const balanced =
-    balance >= 1 - INTENT_MIX.balanceTolerance && balance <= 1 + INTENT_MIX.balanceTolerance;
+    balance >= .35 / .65 - tolerance && balance <= .65 / .35 + tolerance;
 
   let warning: string | null = null;
   if (sampled && !baseIntact) {
-    warning = 'Sabit intent tabanı aşınmış görünüyor; dinamik havuz sınırlandırılmalı.';
+    warning = 'Ölçülen niyet oranı beklenen tabanın altında; kısa örneklem sapabilir. Telafi müşterisi üretilmez.';
   } else if (sampled && !balanced) {
     warning = `Alış-satış dengesi bandın dışında (${balance.toFixed(2)}).`;
   }

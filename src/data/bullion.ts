@@ -15,6 +15,7 @@
  */
 
 import type { TradeChannel } from '@domain/types';
+import { MARKET_BASE } from '@domain/balance';
 
 /** §4 "likidite sınıfı" — ürünün ne kadar kolay nakde döndüğü. */
 export type LiquidityClass = 'high' | 'medium' | 'low';
@@ -155,8 +156,8 @@ export const BULLION_META: BullionMeta[] = [
   },
   {
     templateId: 'quarter_gold',
-    unitWeightGrams: 1.75,
-    unitPurity: 0.916,
+    unitWeightGrams: MARKET_BASE.quarterGoldWeight,
+    unitPurity: 0.922,
     liquidityClass: 'high',
     volumeBand: [1, 6],
     bulkVolumeBand: [15, 90],
@@ -224,7 +225,7 @@ export const BULLION_META: BullionMeta[] = [
   ...INVESTMENT_BANGLE_WEIGHTS.map((weight): BullionMeta => ({
     templateId: investmentBangleTemplateId(weight),
     unitWeightGrams: weight,
-    unitPurity: 0.916,
+    unitPurity: 0.922,
     liquidityClass: 'high',
     volumeBand: [1, 2],
     bulkVolumeBand: [2, 8],

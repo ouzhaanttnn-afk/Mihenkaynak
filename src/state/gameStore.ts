@@ -10,6 +10,11 @@
  */
 
 import { create } from 'zustand';
+import { queueCapacity, toMg, canSetPersonnel } from '@domain/v5-rules';
+import { tradeHas, meltToHas } from '@domain/has-account';
+import { customerPriceBand, isCrafted } from '@domain/customer-pricing';
+import { packagePriceBand, showcaseStock } from '@domain/purchase';
+import { validQuantity } from '@domain/stock-pools';
 
 import {
   DAY,
@@ -231,6 +236,20 @@ export interface GameState {
 
   /** Kapıda bekleyen müşteriler. */
   queue: { customer: Customer; items: ItemInstance[] }[];
+  missedGuestCountToday: number;
+  lastDayReport: import('@domain/settlement').DayReport | null;
+  dayCloseConfirmOpen: boolean;
+  dayReportOpen: boolean;
+  requestDayClose: () => void;
+  cancelDayClose: () => void;
+  startNewDay: () => void;
+  stockCatalogOpen: boolean;
+  openStockCatalog: () => void;
+  setStockCatalogOpen: (open: boolean) => void;
+  setPersonnelCount: (count: number) => void;
+  tradeHas: (side: 'buy' | 'sell', grams: number, txId: string) => void;
+  meltStock: (itemId: string) => void;
+  displayStock: (itemId: string) => void;
   /** Bir sonraki müşterinin geleceği oyun dakikası. */
   nextCustomerAtMinutes: number;
 
@@ -353,6 +372,9 @@ function createInitialStore(): StoreState {
     backStockSlots: START.backStockSlots,
     workshopCapacity: START.workshopCapacity,
     staff: [],
+    personnelCount: 0,
+    hasBalanceMg: 0,
+    hasCostBasis: 0,
     supplier: {
       trust: START.supplierTrust,
       limit: START.supplierLimit,
@@ -405,6 +427,11 @@ export const useGame = create<GameState>((set, get) => {
     lastOvernight: null,
 
     queue: [],
+    missedGuestCountToday: 0,
+    lastDayReport: null,
+    dayCloseConfirmOpen: false,
+    dayReportOpen: false,
+    stockCatalogOpen: false,
     nextCustomerAtMinutes: DAY.openMinutes + 3,
 
     jobs: [],
@@ -423,6 +450,41 @@ export const useGame = create<GameState>((set, get) => {
 
     // -----------------------------------------------------------------------
     setTab: (tab) => set({ tab }),
+    openStockCatalog: () => set({ tab: 'stock', stockCatalogOpen: true }),
+    setStockCatalogOpen: (stockCatalogOpen) => set({ stockCatalogOpen }),
+    setPersonnelCount: (count) => {
+      const s = get();
+      if (!canSetPersonnel(s.store, count)) return;
+      set({ store: { ...s.store, personnelCount: count } });
+      writeSave(get());
+    },
+    tradeHas: (side, grams, txId) => {
+      const s = get();
+      if (!Number.isFinite(grams) || Math.abs(toMg(grams) / 1000 - grams) > 1e-9) return;
+      const outcome = tradeHas(economyOf(s), s.market, side, toMg(grams), txId);
+      if (!outcome.applied) { pushToast(set, get, outcome.reason ?? 'İşlem uygulanmadı.', 'negative'); return; }
+      set(economyToState(outcome.state));
+      writeSave(get());
+      pushToast(set, get, 'HAS işlemi kaydedildi.', 'positive');
+    },
+    meltStock: (itemId) => {
+      const s = get();
+      const outcome = meltToHas(economyOf(s), s.market, itemId);
+      if (!outcome.applied) { pushToast(set, get, outcome.reason ?? 'Eritilemedi.', 'negative'); return; }
+      set(economyToState(outcome.state));
+      writeSave(get());
+      pushToast(set, get, 'Ürün eritildi; karşılığı HAS bakiyesine eklendi.', 'positive');
+    },
+    displayStock: (itemId) => {
+      const s = get();
+      const item = s.items[itemId];
+      const pos = s.inventory.find(p => p.itemId === itemId);
+      if (!item || !pos || pos.location === 'workshop' || !isCrafted(item) || item.buyCost === null ||
+          s.inventory.filter(p => p.location === 'display').length >= s.store.displaySlots) return;
+      set({ items: { ...s.items, [itemId]: { ...item, location: 'display', thesis: 'retail' } },
+        inventory: s.inventory.map(p => p.itemId === itemId ? { ...p, location: 'display', thesis: 'retail' } : p) });
+      writeSave(get());
+    },
 
     setSpeed: (speed) => {
       // GDD 26.2 — 1x/2x temel erişim; 4x yalnız rewarded ile geçici açılır.
@@ -487,7 +549,7 @@ export const useGame = create<GameState>((set, get) => {
       const s = get();
       // Profil penceresi açıkken oyun dünyası donar; oyuncu seçim yaparken
       // günün ve müşteri kuyruğunun ilerlemesi cezaya dönüşmemeli.
-      if (s.profileOpen) return;
+      if (s.profileOpen || s.dayCloseConfirmOpen || s.dayReportOpen) return;
       // Aktif pazarlık sırasında saat ilerlemez: oyuncu düşünürken müşteri
       // sabrı gerçek zamanla erimez (GDD 11 — refleks oyunu değildir).
       if (s.activeDeal && !isDealFinished(s.activeDeal)) return;
@@ -501,10 +563,10 @@ export const useGame = create<GameState>((set, get) => {
       }
 
       const market = stepMarketIntraday(s.market, clock);
-      let { queue, nextCustomerAtMinutes, spawnCounter } = s;
+      let { queue, nextCustomerAtMinutes, spawnCounter, missedGuestCountToday } = s;
       let telemetry = s.intentTelemetry;
 
-      if (clock >= nextCustomerAtMinutes && queue.length < 3) {
+      if (clock >= nextCustomerAtMinutes) {
         const spawned = spawnCustomer(
           s.seed,
           spawnCounter,
@@ -512,8 +574,13 @@ export const useGame = create<GameState>((set, get) => {
           s.store,
           s.dayCharacter,
           s.customers,
+          { inventory: s.inventory, items: s.items },
         );
-        queue = [...queue, spawned];
+        const valid = spawned.customer.intent === 'buy' ? !!spawned.customer.demand : spawned.items.length > 0;
+        if (valid) {
+          if (queue.length < queueCapacity(s.store)) queue = [...queue, spawned];
+          else missedGuestCountToday += 1;
+        }
         spawnCounter += 1;
         telemetry = recordIntent(telemetry, spawned.customer.intent, spawned.fromDynamicPool);
 
@@ -537,6 +604,7 @@ export const useGame = create<GameState>((set, get) => {
         nextCustomerAtMinutes,
         spawnCounter,
         intentTelemetry: telemetry,
+        missedGuestCountToday,
       });
     },
 
@@ -545,8 +613,14 @@ export const useGame = create<GameState>((set, get) => {
       const s = get();
       if (s.activeDeal && !isDealFinished(s.activeDeal)) return;
 
-      const head = s.queue[0];
+      let head = s.queue[0];
       if (!head) return;
+      const targetId = head.customer.demand?.targetInventoryItemId;
+      if (targetId && !showcaseStock(s.inventory, s.items).some(p => p.itemId === targetId)) {
+        // Regenerate the SAME spawn's standard demand; no extra arrival/count.
+        const demand = head.customer.demand?.fallbackDemand;
+        if (demand) head = { ...head, customer: { ...head.customer, demand } };
+      }
 
       const items = { ...s.items };
       for (const item of head.items) items[item.id] = item;
@@ -1022,6 +1096,10 @@ export const useGame = create<GameState>((set, get) => {
 
       const tool = getTool(toolId);
       if (tool.unlockLevel > s.store.level) return;
+      if (line.testResults.some((test) => test.toolId === tool.id)) {
+        pushToast(set, get, `${tool.name} bu üründe zaten uygulandı.`, 'info');
+        return;
+      }
       if (tool.cost > s.store.cash) {
         pushToast(set, get, 'Bu test için yeterli nakit yok.', 'negative');
         return;
@@ -1150,7 +1228,8 @@ export const useGame = create<GameState>((set, get) => {
       if (!position) return;
 
       // Stokta olmayan adedi satmak stok uydurmaktır (GDD 34.4).
-      const capped = Math.max(0, Math.min(position.quantity, Math.round(quantity)));
+      const capped = Math.max(0, Math.min(position.quantity, deal.purchase.demand.quantity, position.poolId === '24K_GRAM_GOLD_POOL' ? toMg(quantity) / 1000 : Math.floor(quantity)));
+      if (capped > 0 && !validQuantity(position, capped)) return;
       const next =
         capped <= 0
           ? deal.purchase.lines.filter((l) => l.itemId !== itemId)
@@ -1187,6 +1266,8 @@ export const useGame = create<GameState>((set, get) => {
       const haggle = haggleContext(deal, line, s);
 
       const ctx = {
+        economicBand: isPurchase ? packagePriceBand(deal.purchase!.lines, s.items, s.market) :
+          (s.items[line.itemId] ? customerPriceBand(s.items[line.itemId]!, s.market, 'shopBuys') ?? undefined : undefined),
         customer,
         direction: (isPurchase ? 'shopSells' : 'shopBuys') as TradeSide,
         reputation: s.store.reputation,
@@ -1408,7 +1489,7 @@ export const useGame = create<GameState>((set, get) => {
         id: `${probe.id}_${seq}_${i}`,
         // Vade farkı maliyet tabanına BİNER: finanse edilmiş malın gerçek
         // maliyeti daha yüksektir ve kâr hesabı bunu görmek zorundadır.
-        buyCost: Math.round((amount + terms.financeCost) / units),
+        buyCost: (amount + terms.financeCost) / units,
         acquiredDay: s.market.day,
         location: 'backStock' as const,
       }));
@@ -1703,9 +1784,25 @@ export const useGame = create<GameState>((set, get) => {
       );
     },
 
+    requestDayClose: () => {
+      const s = get();
+      if (s.dayReportOpen || (s.activeDeal && !isDealFinished(s.activeDeal))) return;
+      set({ dayCloseConfirmOpen: true });
+    },
+    cancelDayClose: () => set({ dayCloseConfirmOpen: false }),
+    startNewDay: () => {
+      const s = get();
+      if (!s.dayReportOpen) return;
+      if (!writeSave({ ...s, dayReportOpen: false })) {
+        pushToast(set, get, 'Kayıt yazılamadı; gün özeti açık tutuldu.', 'negative'); return;
+      }
+      set({ dayReportOpen: false });
+    },
     advanceDay: () => {
       const s = get();
-      const { state: closed, report } = closeDay(economyOf(s), s.market.day);
+      if (s.dayReportOpen) return;
+      const { state: closed, report, applied } = closeDay(economyOf(s), s.market.day, s.missedGuestCountToday);
+      if (!applied) { pushToast(set, get, 'Günlük gider karşılanamadı; gün kapatılmadı.', 'negative'); return; }
       const nextDay = s.market.day + 1;
       const market = createMarketForDay(s.seed, nextDay, s.market);
 
@@ -1740,7 +1837,7 @@ export const useGame = create<GameState>((set, get) => {
       );
       const overnightOutcome = resolveOvernight(position, market);
 
-      set({
+      const nextState = {
         ...economyToState({ ...closed, store, inventory }),
         ledger: { ...closed.ledger, realizedProfitToday: 0 },
         jobs,
@@ -1751,11 +1848,25 @@ export const useGame = create<GameState>((set, get) => {
         overnight: position,
         lastOvernight: overnightOutcome,
         queue: [],
+        missedGuestCountToday: 0,
+        lastDayReport: { ...report, overnightSummary: overnightOutcome.summary },
+        dayCloseConfirmOpen: false,
+        dayReportOpen: true,
         activeCustomer: null,
         activeDeal: null,
         nextCustomerAtMinutes: DAY.openMinutes + 3,
         customerRushUntilMinutes: null,
-      });
+      };
+
+      // Gün değişimi ekrana uygulanmadan önce checkpoint'in gerçekten
+      // yazılabildiğini doğrula. Kayıt başarısızsa oyuncu eski günde kalır;
+      // sessiz ilerleme kaybı yerine güvenle tekrar deneyebilir.
+      if (!writeSave({ ...s, ...nextState } as GameState)) {
+        pushToast(set, get, 'Gün kapatılamadı: kayıt doğrulanamadı. Tekrar deneyin.', 'negative');
+        return;
+      }
+
+      set(nextState);
 
       pushToast(
         set,
@@ -1787,11 +1898,6 @@ export const useGame = create<GameState>((set, get) => {
           'negative',
         );
       }
-
-      // GDD 28.1 — gün sonu checkpoint. Kaydın §11'e göre taşıdığı şeyler:
-      // rejim (seed'den yeniden türetilir), açık borçlar, vadeler, limitler
-      // ve pozisyonlar.
-      writeSave(get());
 
       const ready = jobs.filter((j) => j.result === 'success' || j.result === 'failed').length;
       if (ready > 0) {
@@ -2009,8 +2115,8 @@ function packageLocked(deal: ActiveDeal): boolean {
 function openingQuantity(s: GameState, purchase: PurchaseSession, itemId: string): number {
   const position = s.inventory.find((p) => p.itemId === itemId);
   if (!position) return 1;
-  const missing = Math.max(1, purchase.demand.quantity - purchase.units);
-  return Math.max(1, Math.min(position.quantity, missing));
+  const missing = Math.max(0, purchase.demand.quantity - purchase.units);
+  return Math.max(0, Math.min(position.quantity, missing));
 }
 
 /** Paketi yeniden fiyatlayıp state'e yazar — tek giriş noktası. */
@@ -2093,6 +2199,7 @@ function settlePurchase(
     return !item || matchDemand(purchase.demand, item) === 'off';
   })) return;
   const accepted = state === 'ACCEPTED' && price > 0;
+  if (accepted && (purchase.fulfilment === 'none' || purchase.units > purchase.demand.quantity)) return;
 
   let economy = economyOf(s);
 
@@ -2104,6 +2211,7 @@ function settlePurchase(
     const tx: SettlementTransaction = {
       // Paket bazlı benzersiz kimlik → çift tap ve reload koruması (GDD 22.1).
       txId: `sale_${deal.dealId}`,
+      targetInventoryItemId: purchase.demand.targetInventoryItemId,
       dealId: deal.dealId,
       day: s.market.day,
       cashDelta: price,
@@ -2259,7 +2367,7 @@ function visitNote(outcome: VisitRecord['outcome'], volume: Money): string {
 // ---------------------------------------------------------------------------
 
 function economyOf(s: GameState): EconomyState {
-  return { store: s.store, inventory: s.inventory, items: s.items, ledger: s.ledger };
+  return { store: s.store, inventory: s.inventory, items: s.items, ledger: s.ledger, market: s.market };
 }
 
 function economyToState(e: EconomyState): Pick<GameState, 'store' | 'inventory' | 'items' | 'ledger'> {
@@ -2482,13 +2590,15 @@ function patienceComment(customer: Customer): string {
   return 'Buyurun, inceleyin.';
 }
 
+// UI-only sequence: never consume the simulation RNG for notification IDs.
+let toastSequence = 0;
 function pushToast(
   set: (partial: Partial<GameState>) => void,
   get: () => GameState,
   text: string,
   tone: ToastMessage['tone'],
 ): void {
-  const id = `toast_${get().ledger.transactions.length}_${text.length}_${Date.now()}`;
+  const id = `toast_${Date.now()}_${++toastSequence}`;
   set({ toasts: [...get().toasts, { id, text, tone }].slice(-3) });
 }
 

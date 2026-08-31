@@ -105,6 +105,8 @@ export function customerIntentLine(customer: Customer, items: ItemInstance[]): s
       // Talebin özeti zaten oyuncunun dilinde ("10 adet Çeyrek Altın").
       const demand = customer.demand;
       if (!demand) return 'Dükkandan ürün almak istiyor';
+      if (demand.targetInventoryItemId) return demand.summary;
+      if (demand.poolId) return `${demand.summary} almak istiyor`;
 
       if (demand.templateId) {
         const name = getTemplate(demand.templateId)?.displayName ?? demand.templateId;

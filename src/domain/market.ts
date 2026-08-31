@@ -20,6 +20,7 @@ import {
   REGIME_WEIGHTS,
 } from './balance';
 import { Rng, deriveSeed } from './rng';
+import { bullionMeta } from '@data/bullion';
 import type { MarketAsset, MarketEvent, MarketState, GameDay } from './types';
 
 /** GDD 20.2 — dinamik olay en az iki sistemi etkiler ve karşı oyun sunar. */
@@ -264,7 +265,7 @@ type Spots = { goldSpot: number; silverSpot: number; fxIndex: number };
 function priceForAsset(id: MarketAsset['id'], spots: Spots): number {
   switch (id) {
     case 'goldGram':
-      return round2(spots.goldSpot);
+      return round2(spots.goldSpot * bullionMeta('gram_gold_1')!.unitPurity);
     case 'silverGram':
       return round2(spots.silverSpot);
     case 'quarterGold':
@@ -273,8 +274,7 @@ function priceForAsset(id: MarketAsset['id'], spots: Spots): number {
       return round2(
         spots.goldSpot *
           MARKET_BASE.quarterGoldWeight *
-          0.916 *
-          MARKET_BASE.quarterGoldSpread,
+          bullionMeta('quarter_gold')!.unitPurity,
       );
     case 'usd':
       return round2(spots.fxIndex);

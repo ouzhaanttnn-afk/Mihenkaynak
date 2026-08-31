@@ -12,6 +12,7 @@
 
 import { TERM } from '@ui/terms';
 import { useState } from 'react';
+import { PERSONNEL_MONTHLY, PERSONNEL_SALARIES, PERSONNEL_UNLOCK_LEVELS, canSetPersonnel, personnelCount, personnelDaily, queueCapacity, dailyTraffic, dailyIntentSplit } from '@domain/v5-rules';
 
 import { MARKET_REGIME } from '@domain/balance';
 import { shopDisplayName } from '@domain/profile';
@@ -92,7 +93,9 @@ export function BusinessScreen() {
 
 function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
   const s = useGame();
+  const [pendingPersonnel, setPendingPersonnel] = useState<number | null>(null);
   const wealth = summarizeWealth({
+    market: s.market,
     store: s.store,
     inventory: s.inventory,
     items: s.items,
@@ -143,11 +146,38 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
             />
             <StatLine label="Yükümlülük" value={tl(wealth.liabilities)} />
             <StatLine label="Net servet" value={tl(wealth.netWorth)} />
+            <StatLine label="HAS değeri (realize değil)" value={tl(wealth.hasEstimatedValue)} />
           </div>
         </div>
 
         {/* Addendum §5 — gecelik pozisyon ve sonucu */}
         <OvernightPanel />
+        <div className="group">
+          <h2 className="group__title">Kuyruk Personeli</h2>
+          <div className="group__body v5Controls">
+            <p>Personel {personnelCount(s.store)} · Bekleme kapasitesi {queueCapacity(s.store)}</p>
+            <p>Aylık {tl(PERSONNEL_MONTHLY[personnelCount(s.store)]!)} · Günlük {tl(personnelDaily(s.store))}</p>
+            <p>Maaşlar kişi başına eklenir: {PERSONNEL_SALARIES.map(salary => tl(salary)).join(' + ')} / ay.</p>
+            <p>Yalnız bekleme kapasitesini artırır; müşteri geliş hızını veya atölyeyi değiştirmez.</p>
+            {[0, 1, 2, 3].map(count => <button key={count} type="button" className="chip" aria-pressed={personnelCount(s.store) === count}
+              disabled={!canSetPersonnel(s.store, count)}
+              onClick={() => setPendingPersonnel(count)}>{count} personel{count > 0 ? ` · Sv ${PERSONNEL_UNLOCK_LEVELS[count]}` : ''}</button>)}
+            {pendingPersonnel !== null && <div role="group" aria-label="Personel onayı">
+              <p>{pendingPersonnel} personel · aylık toplam {tl(PERSONNEL_MONTHLY[pendingPersonnel]!)}. Günlük gider kapanışta tahsil edilir.</p>
+              <button type="button" className="chip" onClick={() => { s.setPersonnelCount(pendingPersonnel); setPendingPersonnel(null); }}>Personeli Onayla</button>
+              <button type="button" className="chip" onClick={() => setPendingPersonnel(null)}>Vazgeç</button>
+            </div>}
+          </div>
+        </div>
+        <div className="group">
+          <h2 className="group__title">Günlük Akış</h2>
+          <div className="group__body v5Controls">
+            <p>Trafik: {dailyTraffic(s.seed, s.market.day).label}</p>
+            <p>Müşteri alış %{Math.round(dailyIntentSplit(s.seed, s.market.day).customerBuys * 100)} · satış %{Math.round(dailyIntentSplit(s.seed, s.market.day).customerSells * 100)} · sürpriz %20</p>
+            <p>Kaçırılan Misafir: {s.missedGuestCountToday}</p>
+            {s.lastDayReport && <p>Gün {s.lastDayReport.day}: {s.lastDayReport.missedGuestCountToday ?? 0} misafir kaçırıldı · Gider {tl(s.lastDayReport.overhead)} (personel dahil).</p>}
+          </div>
+        </div>
 
         {/*
           Addendum §4.1 — "Toplu işlemler tekil müşteri metriğini
@@ -633,7 +663,8 @@ function LiquidateRow({ position, item }: { position: InventoryPosition; item: I
   const [quantity, setQuantity] = useState(position.quantity);
   const [slices, setSlices] = useState(1);
 
-  const qty = Math.min(position.quantity, Math.max(1, quantity));
+  const gramPool = position.poolId === '24K_GRAM_GOLD_POOL';
+  const qty = Math.min(position.quantity, Math.max(gramPool ? .001 : 1, quantity));
   const quote = quoteLiquidation(
     { itemId: position.itemId, quantity: qty },
     s.items,
@@ -668,12 +699,13 @@ function LiquidateRow({ position, item }: { position: InventoryPosition; item: I
       <div className="lotRow__terms">{quote.rationale}</div>
 
       <div className="lotRow__controls">
-        {position.quantity > 1 && (
+        {(gramPool || position.quantity > 1) && (
           <label className="lotRow__field">
-            <span>Adet</span>
+            <span>{gramPool ? 'Gram' : position.poolId === '22K_INVESTMENT_BANGLE_POOL' ? '10 g birim' : 'Adet'}</span>
             <input
               type="number"
-              min={1}
+              min={gramPool ? .001 : 1}
+              step={gramPool ? .001 : 1}
               max={position.quantity}
               value={qty}
               onChange={(e) => setQuantity(Number(e.target.value))}

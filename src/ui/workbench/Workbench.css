@@ -2008,6 +2008,14 @@
   color: var(--text-dark-1);
 }
 
+input.qtyStep__value {
+  width: 76px;
+  min-height: 44px;
+  background: transparent;
+  border: 1px solid var(--line-dark);
+  border-radius: 6px;
+}
+
 .pkgLines__qty {
   margin-left: auto;
   color: var(--brass-400);
