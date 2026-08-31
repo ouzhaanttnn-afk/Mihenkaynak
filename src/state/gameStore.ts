@@ -10,6 +10,7 @@
  */
 
 import { create } from 'zustand';
+import { poolSupplyQuote, poolSupplyItem } from '@domain/pool-supply';
 import { queueCapacity, toMg, canSetPersonnel } from '@domain/v5-rules';
 import { tradeHas, meltToHas } from '@domain/has-account';
 import { customerPriceBand, isCrafted } from '@domain/customer-pricing';
@@ -334,6 +335,7 @@ export interface GameState {
 
   // --- Toptancı (Addendum §4.2, §7) ---
   liquidateToWholesaler: (itemId: string, quantity: number, sliceCount: number) => void;
+  buyPoolStock: (templateId: string, quantity: number) => void;
   buyFromWholesaler: (templateId: string, quantity: number) => void;
   repaySupplier: (invoiceId: string) => void;
 
@@ -1436,9 +1438,27 @@ export const useGame = create<GameState>((set, get) => {
       );
     },
 
+    /** Three canonical cash-only counter families; transaction revalidates quote, cash and physical space. */
+    buyPoolStock: (templateId, quantity) => {
+      const s = get();
+      const quote = poolSupplyQuote(templateId, quantity, s.market, s.store);
+      if (!quote) return;
+      const id = `poolbuy_${s.market.day}_${s.ledger.appliedTxIds.length}`;
+      const item = { ...poolSupplyItem(templateId), id: `${id}_item`,
+        buyCost: quote.totalPrice / quantity, acquiredDay: s.market.day, location: 'backStock' as const };
+      const outcome = applyTransaction({ ...economyOf(s), market: s.market }, {
+        txId: id, dealId: id, day: s.market.day, cashDelta: -quote.totalPrice,
+        poolPurchase: { quantity }, itemsIn: [item], itemsOut: [],
+        trustDelta: 0, reputationDelta: 0, xpDelta: 0, label: `${item.displayName} ortak havuz tedariki`,
+      });
+      if (!outcome.applied) { pushToast(set, get, outcome.reason ?? 'Alım uygulanamadı.', 'negative'); return; }
+      set(economyToState({ ...outcome.state, inventory: revalueInventory(outcome.state.inventory, outcome.state.items, thesisContext(s)) }));
+      writeSave(get());
+      pushToast(set, get, `Sarrafiye alındı · ${fmt(quote.totalPrice)}`, 'positive');
+    },
     /**
-     * §7 — toptancıdan mal alır. Nakit yetmezse kalanı VADEYE yazılır;
-     * koşullar işlem öncesi hesaplanır ve burada aynen uygulanır.
+     * §7 — other wholesale routes retain their existing financed lot system.
+     * It is deliberately separate from the three-family cash counter above.
      */
     buyFromWholesaler: (templateId, quantity) => {
       const s = get();

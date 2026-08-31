@@ -13,7 +13,7 @@
 import { TERM } from '@ui/terms';
 import { useMemo, useState } from 'react';
 import { isCrafted } from '@domain/customer-pricing';
-import { fromMg, isHasTradingDay } from '@domain/v5-rules';
+import { fromMg, toMg, roundMoney, isHasTradingDay } from '@domain/v5-rules';
 import { hasQuote, maxHasBuyMg } from '@domain/has-account';
 import { poolForTemplate } from '@domain/stock-pools';
 
@@ -21,10 +21,7 @@ import { KARAT_LABEL } from '@domain/balance';
 import { CHANNEL_SHORT } from '@domain/thesis';
 import { liquidityBand, liquidityRatio, summarizeWealth } from '@domain/settlement';
 import { getTemplate } from '@data/item-templates';
-import { spawnItem } from '@domain/item-spawn';
-import { unitPriceView } from '@domain/channels';
-import { RETAIL_BULLION_CATALOG } from '@data/bullion';
-import { supplyOffer } from '@domain/wholesaler';
+import { POOL_SUPPLY, poolSupplyQuote, maxPoolSupplyQuantity, hasPoolSupplySpace } from '@domain/pool-supply';
 import { useGame } from '@state/gameStore';
 
 import { IconStock, IconWarning, ProductSilhouette } from '@ui/icons';
@@ -187,171 +184,72 @@ export function StockScreen() {
  */
 function BullionCounter() {
   const s = useGame();
-  const [category, setCategory] = useState<'all' | 'gram' | 'coin' | 'bangle'>('all');
-  // Tezgâhın açık/kapalı durumu ve adet seçimleri sekme değişince
-  // KAYBOLMAMALI. StockScreen sekme değiştiğinde unmount olduğu için yerel
-  // state sıfırlanıyordu: oyuncu 20 adet seçip nakde bakmaya gidince
-  // dönüşünde 1'e düşüyordu. Playtest oturumu boyunca yaşayan küçük bir
-  // modül durumu bunu çözer; oyun durumuna girmesi gerekmiyor çünkü
-  // kaydedilecek bir şey değil, ekranın hafızası.
-  const open = s.stockCatalogOpen;
-  const setOpenPersisted = (next: boolean) => {
-    s.setStockCatalogOpen(next);
-  };
-
-  return (
-    <div className="counter">
-      <button
-        type="button"
-        className="counter__toggle"
-        onClick={() => setOpenPersisted(!open)}
-        aria-expanded={open}
-      >
-        <span>Sarrafiye Al</span>
-        <span className="counter__hint num">{tl(s.store.cash)}</span>
-      </button>
-
-      {open && (
-        <>
-        <div className="counter__categories" role="tablist" aria-label="Sarrafiye kategorileri">
-          {([
-            ['all', 'Tümü'],
-            ['gram', 'Gram / Külçe'],
-            ['coin', 'Ziynet'],
-            ['bangle', 'Bilezik'],
-          ] as const).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              className={`chip ${category === id ? 'chip--active' : ''}`}
-              onClick={() => setCategory(id)}
-              aria-selected={category === id}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="counter__list">
-          {RETAIL_BULLION_CATALOG.filter((templateId) => {
-            if (category === 'all') return true;
-            if (category === 'bangle') return templateId.startsWith('investment_bangle_');
-            if (category === 'gram') return templateId.startsWith('gram_gold_') || templateId === 'small_ingot';
-            return !templateId.startsWith('gram_gold_') && !templateId.startsWith('investment_bangle_') && templateId !== 'small_ingot';
-          }).map((templateId) => (
-            <BullionOffer key={templateId} templateId={templateId} />
-          ))}
-        </div>
-        </>
-      )}
-    </div>
-  );
+  return <div className="counter">
+    <button type="button" className="counter__toggle" onClick={() => s.setStockCatalogOpen(!s.stockCatalogOpen)} aria-expanded={s.stockCatalogOpen}>
+      <span>Sarrafiye Al</span><span className="counter__hint num">{tl(s.store.cash)}</span>
+    </button>
+    {s.stockCatalogOpen && <div className="counter__list">
+      {POOL_SUPPLY.map(product => <BullionOffer key={product.templateId} product={product} />)}
+    </div>}
+  </div>;
 }
 
-function BullionOffer({ templateId }: { templateId: string }) {
+function BullionOffer({ product }: { product: typeof POOL_SUPPLY[number] }) {
   const s = useGame();
-  const [qty, setQtyState] = useState(counterMemory.qty[templateId] ?? 1);
-  const [confirming, setConfirming] = useState(false);
-  const setQty = (next: number) => {
+  const { templateId, name, gramsPerUnit } = product;
+  const [amount, setAmount] = useState(counterMemory.qty[templateId] ?? '1');
+  const [confirmation, setConfirmation] = useState<string | null>(null);
+  const qty = Number(amount.replace(',', '.'));
+  const setQty = (next: string) => {
     counterMemory.qty[templateId] = next;
-    setQtyState(next);
-    setConfirming(false);
+    setAmount(next);
+    setConfirmation(null);
   };
-
-  // Sonda sabit: fiyat ürünün ŞABLONUNA bağlıdır, örneğin kimliğine değil.
-  const probe = useMemo(() => spawnItem(s.seed, 990_001, templateId), [s.seed, templateId]);
-  const lot = supplyOffer(probe, Math.max(1, qty), s.market, s.store);
-  if (!lot) return null;
-
-  const view = unitPriceView(probe, lot.unitPrice);
-  // Elde bu üründen kaç adet var.
+  const lot = poolSupplyQuote(templateId, qty, s.market, s.store);
+  const max = useMemo(() => maxPoolSupplyQuantity(templateId, s.market, s.store), [templateId, s.market, s.store]);
+  const unitQuote = lot ?? poolSupplyQuote(templateId, 1, s.market, s.store)!;
   const poolId = poolForTemplate(templateId);
-  const held = s.inventory
-    .filter((p) => poolId ? p.poolId === poolId : s.items[p.itemId]?.templateId === templateId)
+  const held = s.inventory.filter(p => p.poolId === poolId)
     .reduce((sum, p) => sum + (p.quantityMg === undefined ? p.quantity : fromMg(p.quantityMg)), 0);
-  const heldLabel = poolId && poolId !== 'QUARTER_GOLD_POOL' ? preciseGrams(held) : `${held} adet`;
-
-  const affordable = lot.total <= s.store.cash;
-  const expensive = lot.total >= Math.max(100_000, Math.round(s.store.cash * 0.2));
+  const space = hasPoolSupplySpace(templateId, s.inventory, s.store);
+  const affordable = !!lot && lot.totalPrice <= s.store.cash && space;
+  const signature = lot ? `${qty}:${lot.totalPrice}` : '';
+  const expensive = !!lot && lot.totalPrice >= Math.max(100_000, Math.round(s.store.cash * .2));
+  const confirmed = confirmation === signature;
   const buy = () => {
-    if (expensive && !confirming) {
-      setConfirming(true);
-      return;
-    }
-    s.buyFromWholesaler(templateId, lot.quantity);
-    setConfirming(false);
-    setQty(1);
+    if (!affordable || !lot) return;
+    if (expensive && !confirmed) { setConfirmation(signature); return; }
+    s.buyPoolStock(templateId, qty);
+    setQty('1');
   };
-
-  return (
-    <div className="offerRow">
-      <div className="offerRow__head">
-        <span className="offerRow__name">{probe.displayName}</span>
-        <span className="offerRow__unit num">
-          {tlBare(view.unitPrice)} {view.unit}
-        </span>
-      </div>
-
-      <div className="offerRow__meta">
-        Stokta {heldLabel} · {view.perGram ? `${lot.grams.toFixed(1)} g` : `${lot.quantity} adet`} ·
-        en çok {lot.maxQuantity}
-      </div>
-
-      <div className="offerRow__controls">
-        <div className="qtyStep" role="group" aria-label={`${probe.displayName} adedi`}>
-          <button
-            type="button"
-            className="qtyStep__btn"
-            onClick={() => setQty(Math.max(1, qty - 1))}
-            aria-label="Bir azalt"
-          >
-            −
-          </button>
-          <span className="qtyStep__value num">{lot.quantity}</span>
-          <button
-            type="button"
-            className="qtyStep__btn"
-            onClick={() => setQty(Math.min(lot.maxQuantity, qty + 1))}
-            disabled={lot.quantity >= lot.maxQuantity}
-            aria-label="Bir artır"
-          >
-            +
-          </button>
-        </div>
-
-        <span className="offerRow__total num">{tl(lot.total)}</span>
-
-        <button
-          type="button"
-          className="offerRow__buy"
-          onClick={buy}
-          disabled={!affordable}
-        >
-          {affordable ? (confirming ? 'Onayla' : 'Al') : 'Nakit yok'}
-        </button>
-      </div>
-      {confirming && (
-        <p className="offerRow__confirm" role="status">
-          Yüksek tutar: {tl(lot.total)}. Satın almak için tekrar onayla.
-        </p>
-      )}
-      {!affordable && (
-        <p className="offerRow__shortfall" role="status">
-          Mevcut nakit {tl(s.store.cash)} · eksik {tl(lot.total - s.store.cash)}
-        </p>
-      )}
+  return <section className="offerRow" aria-label={name}>
+    <div className="offerRow__head">
+      <span className="offerRow__name">{name}</span>
+      <span className="offerRow__unit num">{tlBare(unitQuote.unitPrice / (gramsPerUnit || 1))} TL/{gramsPerUnit ? 'g' : 'adet'}</span>
     </div>
-  );
+    <div className="offerRow__meta">Stokta {gramsPerUnit ? preciseGrams(held) : `${held} adet`}</div>
+    <div className="offerRow__controls">
+      {templateId === 'gram_gold_1'
+        ? <label className="poolAmount">Gram <input aria-label="Gram Altın miktarı" type="text" inputMode="decimal" value={amount}
+            onChange={e => setQty(e.target.value)} /></label>
+        : <div className="qtyStep" role="group" aria-label={`${name} miktarı`}>
+          <button type="button" className="qtyStep__btn" aria-label={gramsPerUnit ? '10 gram azalt' : 'Bir adet azalt'}
+            disabled={qty <= 1} onClick={() => setQty(String(Math.max(1, qty - 1)))}>−</button>
+          <span className="qtyStep__value num">{gramsPerUnit ? `${qty * gramsPerUnit} g` : qty}</span>
+          <button type="button" className="qtyStep__btn" aria-label={gramsPerUnit ? '10 gram artır' : 'Bir adet artır'}
+            disabled={qty + 1 > max || !space} onClick={() => setQty(String(qty + 1))}>+</button>
+        </div>}
+      <span className="offerRow__total num">{lot ? tl(lot.totalPrice) : '—'}</span>
+      <button type="button" className="offerRow__buy" disabled={!affordable} onClick={buy}>{expensive && confirmed ? 'Onayla' : 'Al'}</button>
+    </div>
+    {expensive && confirmed && <p className="offerRow__confirm" role="status">Yüksek tutar: {tl(lot.totalPrice)}. Satın almak için tekrar onayla.</p>}
+    {!lot && <p className="offerRow__shortfall">Pozitif, geçerli bir miktar seçin. Gram altın hassasiyeti 0,001 g.</p>}
+    {lot && !affordable && <p className="offerRow__shortfall">{!space ? 'Arka stokta yeni ürün ailesi için yer yok.' : `Mevcut nakit ${tl(s.store.cash)} · eksik ${tl(lot.totalPrice - s.store.cash)}`}</p>}
+  </section>;
 }
 
-/**
- * Tezgâhın ekran hafızası. Oyun durumunun parçası DEĞİL: kaydedilmez,
- * yüklenmez, ekonomiyi etkilemez. Yalnız sekme gidip gelirken oyuncunun
- * seçimini korur.
- */
-const counterMemory: { qty: Record<string, number> } = {
-  qty: {},
-};
+/** Uncommitted UI choice survives tab changes; inventory is always held in game state. */
+const counterMemory: { qty: Record<string, string> } = { qty: {} };
 
 function StockRow({ position }: { position: InventoryPosition }) {
   const s = useGame();
@@ -453,31 +351,43 @@ function StockRow({ position }: { position: InventoryPosition }) {
 
 function HasCounter() {
   const s = useGame();
-  const [amount, setAmount] = useState('');
-  const [pending, setPending] = useState<'buy' | 'sell' | null>(null);
-  const [requestId, setRequestId] = useState('');
+  const [side, setSide] = useState<'buy' | 'sell'>('buy');
+  const [amountMg, setAmountMg] = useState(0);
+  const [pending, setPending] = useState<string | null>(null);
   const quote = hasQuote(s.market, s.store);
   const open = isHasTradingDay(s.market.day);
-  const qty = Number(amount.replace(',', '.'));
-  const valid = Number.isFinite(qty) && qty > 0;
-  const request = (side: 'buy' | 'sell') => {
-    setRequestId(`has_${s.market.day}_${s.ledger.transactions.length}_${side}`);
-    setPending(side);
-  };
+  const maxMg = side === 'buy' ? maxHasBuyMg(s.store.cash, quote.buy) : s.store.hasBalanceMg ?? 0;
+  const selectedMg = Math.min(amountMg, maxMg);
+  const qty = fromMg(selectedMg);
+  const total = roundMoney(qty * (side === 'buy' ? quote.buy : quote.sell));
+  const valid = selectedMg > 0 && selectedMg <= maxMg && total > 0;
+  const signature = `${s.market.day}:${side}:${selectedMg}:${total}:${s.ledger.transactions.length}`;
+  const changeSide = (next: 'buy' | 'sell') => { setSide(next); setAmountMg(0); setPending(null); };
   return <section className="group" aria-label="HAS hesabı">
     <h2 className="group__title">HAS hesabı · {preciseGrams(fromMg(s.store.hasBalanceMg ?? 0))}</h2>
     <div className="group__body v5Controls">
       <p>Saflık 1.000 · Değer {tl(fromMg(s.store.hasBalanceMg ?? 0) * s.market.goldSpot)}</p>
       <p>Toptancıdan al {tl(quote.buy)}/g · Toptancıya sat {tl(quote.sell)}/g</p>
       <p>{open ? 'Cuma: HAS işlemleri açık.' : 'HAS alım-satımı yalnız cuma günü açık.'}</p>
-      <label>HAS gramı <input aria-label="HAS gramı" type="text" inputMode="decimal" value={amount} disabled={!open} onChange={e => { setAmount(e.target.value); setPending(null); }} /></label>
-      <button type="button" className="chip" disabled={!open} onClick={() => { setAmount(String(fromMg(maxHasBuyMg(s.store.cash, quote.buy)))); setPending(null); }}>MAX al</button>
-      <button type="button" className="chip" disabled={!open} onClick={() => { setAmount(String(fromMg(s.store.hasBalanceMg ?? 0))); setPending(null); }}>Tüm HAS</button>
-      <button type="button" className="chip" disabled={!open || !valid} onClick={() => request('buy')}>HAS Al</button>
-      <button type="button" className="chip" disabled={!open || !valid} onClick={() => request('sell')}>HAS Sat</button>
-      {pending && <div role="group" aria-label="HAS işlem onayı">
-        <p>{preciseGrams(qty)} · {tl(qty * (pending === 'buy' ? quote.buy : quote.sell))} — {pending === 'buy' ? 'alım' : 'satış'} onayı</p>
-        <button type="button" className="chip" onClick={() => { s.tradeHas(pending, qty, requestId); setPending(null); setAmount(''); }}>İşlemi Onayla</button>
+      <div role="group" aria-label="HAS işlem yönü">
+        <button type="button" className="chip" aria-pressed={side === 'buy'} onClick={() => changeSide('buy')}>HAS Al</button>
+        <button type="button" className="chip" aria-pressed={side === 'sell'} onClick={() => changeSide('sell')}>HAS Sat</button>
+      </div>
+      <label className="hasSlider">{side === 'buy' ? 'Seçilen' : 'Satılacak'}: {preciseGrams(qty)}
+        <input type="range" aria-label="HAS miktarı" min={0} max={fromMg(maxMg)} step={0.001} value={qty}
+          disabled={!open || maxMg <= 0} onChange={e => { setAmountMg(Math.min(maxMg, Math.max(0, toMg(Number(e.target.value))))); setPending(null); }} />
+      </label>
+      <p>0 g — {preciseGrams(fromMg(maxMg))}</p>
+      <p>{side === 'buy' ? 'Yaklaşık Tutar' : 'Alınacak'}: {tl(total)}</p>
+      <button type="button" className="chip" disabled={!open || maxMg <= 0}
+        onClick={() => { setAmountMg(maxMg); setPending(null); }}>{side === 'buy' ? 'MAX AL' : 'TÜM HAS'}</button>
+      <button type="button" className="chip" disabled={!open || !valid} onClick={() => setPending(signature)}>İşleme Devam Et</button>
+      {pending === signature && open && valid && <div role="group" aria-label="HAS işlem onayı">
+        <p>{preciseGrams(qty)} · {tl(total)} — {side === 'buy' ? 'alım' : 'satış'} onayı</p>
+        <button type="button" className="chip" onClick={() => {
+          s.tradeHas(side, qty, `has_${s.market.day}_${s.ledger.transactions.length}_${side}`);
+          setPending(null); setAmountMg(0);
+        }}>İşlemi Onayla</button>
         <button type="button" className="chip" onClick={() => setPending(null)}>Vazgeç</button>
       </div>}
     </div>

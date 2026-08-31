@@ -814,6 +814,8 @@ export interface StockOut {
 }
 
 export interface SettlementTransaction {
+  /** Canonical pool intake: grams, quarters or 10g bangle units. */
+  poolPurchase?: { quantity: number };
   hasDeltaMg?: number;
   hasCostDelta?: number;
   hasOperation?: 'buy' | 'sell' | 'melt';

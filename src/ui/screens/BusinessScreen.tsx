@@ -12,7 +12,7 @@
 
 import { TERM } from '@ui/terms';
 import { useState } from 'react';
-import { PERSONNEL_MONTHLY, PERSONNEL_SALARIES, PERSONNEL_UNLOCK_LEVELS, canSetPersonnel, personnelCount, personnelDaily, queueCapacity, dailyTraffic, dailyIntentSplit } from '@domain/v5-rules';
+import { PERSONNEL_MONTHLY, PERSONNEL_SALARIES, PERSONNEL_UNLOCK_LEVELS, canSetPersonnel, personnelCount, personnelDaily, queueCapacity } from '@domain/v5-rules';
 
 import { MARKET_REGIME } from '@domain/balance';
 import { shopDisplayName } from '@domain/profile';
@@ -172,8 +172,6 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
         <div className="group">
           <h2 className="group__title">Günlük Akış</h2>
           <div className="group__body v5Controls">
-            <p>Trafik: {dailyTraffic(s.seed, s.market.day).label}</p>
-            <p>Müşteri alış %{Math.round(dailyIntentSplit(s.seed, s.market.day).customerBuys * 100)} · satış %{Math.round(dailyIntentSplit(s.seed, s.market.day).customerSells * 100)} · sürpriz %20</p>
             <p>Kaçırılan Misafir: {s.missedGuestCountToday}</p>
             {s.lastDayReport && <p>Gün {s.lastDayReport.day}: {s.lastDayReport.missedGuestCountToday ?? 0} misafir kaçırıldı · Gider {tl(s.lastDayReport.overhead)} (personel dahil).</p>}
           </div>

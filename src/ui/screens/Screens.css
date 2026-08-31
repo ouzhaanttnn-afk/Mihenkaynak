@@ -953,3 +953,7 @@
 .pageHead--withArt .pageHead__sub {
   padding-right: 104px;
 }
+.poolAmount { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.poolAmount input { width: 90px; min-height: 44px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+.hasSlider { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.hasSlider input[type="range"] { width: 100%; min-height: 44px; accent-color: #bf902f; }

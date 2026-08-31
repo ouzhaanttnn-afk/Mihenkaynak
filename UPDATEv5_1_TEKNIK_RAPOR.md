@@ -48,3 +48,12 @@ Maaşlar kişi başına 40.000 + 50.000 + 60.000 TL eklenir. Günlük toplamda m
 - Görseller: `reports/updatev5/day-close-confirm-390x844.png` ve `day-close-report-390x844.png`.
 
 GitHub'a gönderim canlı sitenin otomatik olarak bu daldan yayınlandığını kanıtlamaz. Vercel bu dalı kullanmıyorsa mevcut sitenin görünümü değişmez; bu çalışma Vercel ayarlarını değiştirmez.
+
+## Kısa düzeltme — 1 Eylül 2026
+
+- Stok → Sarrafiye Al yalnız Gram Altın, Çeyrek Altın ve 22 Ayar İşçiliksiz Yatırım Bileziği gösterir.
+- Gram Altın 0,001 g hassasiyetle serbest pozitif gramdır; Çeyrek tam adet, bilezik ±10 g çalışır. Eski yapay lot tavanı bu üç ailede yoktur; nakit ve gerçek arka-stok yuvası sınırdır.
+- Üç aile mevcut ortak havuzlara girer; gram/bilezikte mg, çeyrekte adet ve ağırlıklı ortalama maliyet korunur. Tedarik peşindir ve fiyat mevcut toptancı kanalından gelir.
+- HAS manuel text input yerine alış/satışa göre canlı maksimumlu 0,001 g slider kullanır. Cuma, nakit, mevcut HAS ve transaction kontrolleri korunur.
+- Trafik ve günlük intent oranları İşletme ekranından kaldırıldı; deterministik simülasyon kodu değiştirilmedi.
+- 31 test dosyasında 680 test, TypeScript ve production build başarılıdır. Bu düzeltmeye ait 34 yeni işlem testi dahildir. Tarayıcı görsel doğrulaması Codex kullanım sınırı nedeniyle çalıştırılamadı; bu durum build ve otomatik doğrulamaları etkilemedi.

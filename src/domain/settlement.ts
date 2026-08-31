@@ -19,6 +19,7 @@
  */
 
 import { LIQUIDITY_BANDS, XP } from './balance';
+import { hasPoolSupplySpace, poolSupplyQuote, validPoolSupplyItem, validPoolSupplyQuantity } from './pool-supply';
 import { isBullion } from '@data/bullion';
 import { consolidatePools, poolForItem, validQuantity, poolUnitGrams } from './stock-pools';
 import { toMg, fromMg, roundMoney, personnelDaily, isHasTradingDay, dailyOperatingCost } from './v5-rules';
@@ -95,6 +96,19 @@ export function applyTransaction(
     return { applied: false, state, reason: 'Yetersiz nakit; işlem uygulanmadı.' };
   }
 
+  if (tx.poolPurchase) {
+    const item = tx.itemsIn[0];
+    const quantity = tx.poolPurchase.quantity;
+    const quote = item && state.market && poolSupplyQuote(item.templateId, quantity, state.market, state.store);
+    if (!item || !quote || tx.itemsIn.length !== 1 || tx.itemsOut.length || tx.hasOperation ||
+        !validPoolSupplyQuantity(item.templateId, quantity) || !validPoolSupplyItem(item) || !poolForItem(item) ||
+        item.location !== 'backStock' || state.items[item.id] || tx.day !== state.market?.day ||
+        !hasPoolSupplySpace(item.templateId, state.inventory, state.store) ||
+        tx.cashDelta !== -quote.totalPrice || !Number.isFinite(item.buyCost) ||
+        Math.abs((item.buyCost ?? 0) * quantity - quote.totalPrice) > 1e-6)
+      return { applied: false, state, reason: 'Geçersiz sarrafiye miktarı, tutarı veya stok kapasitesi.' };
+  }
+
   const requested = new Map<string, number>();
   for (const out of tx.itemsOut) {
     const position = state.inventory.find(p => p.itemId === out.itemId);
@@ -129,9 +143,9 @@ export function applyTransaction(
       inventory,
       {
         itemId: incoming.id,
-        quantity: 1,
-        costBasis: incoming.buyCost ?? 0,
-        currentValue: incoming.buyCost ?? 0,
+        quantity: tx.poolPurchase?.quantity ?? 1,
+        costBasis: (incoming.buyCost ?? 0) * (tx.poolPurchase?.quantity ?? 1),
+        currentValue: (incoming.buyCost ?? 0) * (tx.poolPurchase?.quantity ?? 1),
         age: 0,
         demand: 'steady',
         thesis: incoming.thesis,
