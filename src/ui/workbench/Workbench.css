@@ -1072,6 +1072,7 @@
 }
 
 .waitingQueue__head {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1097,6 +1098,11 @@
   gap: var(--sp-2);
   overflow-y: auto;
   overscroll-behavior: contain;
+  overflow-anchor: none;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-block: var(--sp-2);
+  padding-block: 1px var(--sp-2);
   scrollbar-width: none;
 }
 
@@ -1216,6 +1222,33 @@
   .idle--hasQueue .alerts,
   .idle--hasQueue .rewardedLine {
     display: none;
+  }
+}
+
+/*
+ * Telefon portresinde kuyruk ana görevdir. CSS viewport yüksekliği modern
+ * telefonlarda 800 px'i geçtiği için yalnız `max-height: 720px` kuralı
+ * devreye girmiyor; kimlik, pozisyon ve stok uyarısı tek müşteri kartını
+ * bile 40–50 px'lik bir pencereye sıkıştırıyordu. Dar ekranda bu ikincil
+ * blokları kaldırıp listenin en az bir tam kart + devam kartını göstermesine
+ * izin veriyoruz. Üst durum şeridinde nakit/profil, dock'ta ana eylem zaten
+ * görünür kalır.
+ */
+@media (max-width: 560px) {
+  .idle--hasQueue {
+    gap: var(--sp-2);
+  }
+
+  .idle--hasQueue .idle__head,
+  .idle--hasQueue .position,
+  .idle--hasQueue > .alert,
+  .idle--hasQueue .alerts,
+  .idle--hasQueue .rewardedLine {
+    display: none;
+  }
+
+  .idle--hasQueue .waitingQueue {
+    min-height: 0;
   }
 }
 
