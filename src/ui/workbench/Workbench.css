@@ -922,6 +922,26 @@
   flex-direction: column;
   justify-content: center;
   gap: var(--sp-3);
+  /*
+   * Orijinal sürümdeki mobil davranış: aktif işlem yokken tüm boş-dükkan
+   * sütunu tek parça kayar. Dock bu alanın dışında kaldığı için ana eylem
+   * sabittir; kimlik, pozisyon, uyarı ve müşteri kartları ise ezilmeden
+   * doğal yüksekliklerini korur.
+   */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  overflow-anchor: none;
+}
+
+.idle::-webkit-scrollbar {
+  display: none;
+}
+
+/* Flex çocukları küçülürse içerik taşmak yerine kartların üstüne biner. */
+.idle > * {
+  flex-shrink: 0;
 }
 
 /*
@@ -1064,8 +1084,8 @@
 /* ---- Bekleyen müşteri kuyruğu — FIFO sırasını görünür kılan kompakt liste ---- */
 
 .waitingQueue {
-  flex: 1 1 auto;
-  min-height: 96px; /* başlık + en az bir okunabilir müşteri kartı */
+  flex: 0 0 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
@@ -1090,13 +1110,11 @@
 }
 
 .waitingQueue__list {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: visible;
   scrollbar-width: none;
 }
 
@@ -1195,28 +1213,6 @@
   color: #241a06;
   font-size: var(--fs-caption);
   font-weight: var(--fw-semibold);
-}
-
-@media (max-height: 720px) {
-  .waitingCustomer {
-    min-height: 56px;
-  }
-
-  .waitingCustomer__meta {
-    display: none;
-  }
-
-  /*
-   * Ekran kısa olduğunda öğretim açık olsun veya olmasın müşteriyi koru.
-   * Önceki seçici yalnız `idle--coaching` durumunu kapsadığı için kullanıcının
-   * ekran görüntüsündeki gibi ders kapalıyken liste birkaç piksele çöküyordu.
-   */
-  .idle--hasQueue .idle__head,
-  .idle--hasQueue .position,
-  .idle--hasQueue .alerts,
-  .idle--hasQueue .rewardedLine {
-    display: none;
-  }
 }
 
 @media (max-height: 450px) {
