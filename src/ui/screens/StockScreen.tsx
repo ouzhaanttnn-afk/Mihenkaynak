@@ -185,10 +185,25 @@ export function StockScreen() {
 function BullionCounter() {
   const s = useGame();
   return <div className="counter">
-    <button type="button" className="counter__toggle" onClick={() => s.setStockCatalogOpen(!s.stockCatalogOpen)} aria-expanded={s.stockCatalogOpen}>
-      <span>Sarrafiye Al</span><span className="counter__hint num">{tl(s.store.cash)}</span>
+    <button
+      type="button"
+      className="counter__toggle"
+      onClick={() => s.setStockCatalogOpen(!s.stockCatalogOpen)}
+      aria-expanded={s.stockCatalogOpen}
+      aria-controls="bullion-catalog"
+    >
+      <span>Sarrafiye Al</span>
+      <span className="counter__meta">
+        <span className="counter__hint num">{tl(s.store.cash)}</span>
+        <span
+          className={`counter__chevron ${s.stockCatalogOpen ? 'counter__chevron--open' : ''}`}
+          aria-hidden="true"
+        >
+          ▼
+        </span>
+      </span>
     </button>
-    {s.stockCatalogOpen && <div className="counter__list">
+    {s.stockCatalogOpen && <div className="counter__list" id="bullion-catalog">
       {POOL_SUPPLY.map(product => <BullionOffer key={product.templateId} product={product} />)}
     </div>}
   </div>;

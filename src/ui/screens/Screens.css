@@ -684,18 +684,48 @@
   justify-content: space-between;
   gap: var(--sp-2);
   padding: 0 var(--sp-3);
-  background: none;
+  background: color-mix(in srgb, var(--amethyst-500) 11%, var(--stone-50));
   border: 0;
-  color: var(--text-light-1);
+  border-left: 3px solid var(--amethyst-500);
+  color: var(--amethyst-500);
   font-size: var(--fs-label);
   font-weight: var(--fw-semibold);
   cursor: pointer;
 }
 
+.counter__toggle:hover,
+.counter__toggle:focus-visible {
+  background: color-mix(in srgb, var(--amethyst-500) 17%, var(--stone-50));
+}
+
+.counter__toggle:focus-visible {
+  outline: 2px solid var(--amethyst-500);
+  outline-offset: -2px;
+}
+
+.counter__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
 .counter__hint {
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-caption);
-  color: var(--text-light-3);
+  color: var(--text-light-2);
+}
+
+.counter__chevron {
+  display: inline-block;
+  color: var(--amethyst-500);
+  font-size: 12px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 160ms ease;
+}
+
+.counter__chevron--open {
+  transform: rotate(180deg);
 }
 
 .counter__list {
