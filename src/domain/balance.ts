@@ -200,6 +200,20 @@ export const MARKET_REGIME: Record<
 export const MARKET_DAILY_CAP = 0.03;
 
 /**
+ * Uzun dönem fiyat çapası. Günlük hareketi yönetmez; fiyat başlangıç
+ * referansından kalıcı biçimde uzaklaştığında yalnız küçük bir karşı kuvvet
+ * üretir. Böylece 30 günlük trendler yaşar, 365 günlük bileşik uçuşlar yaşamaz.
+ */
+export const MARKET_MEAN_REVERSION = {
+  /** Bu sapma içinde piyasa serbest hareket eder. */
+  freeBand: 0.08,
+  /** Serbest bandın dışındaki sapmanın günlük geri besleme payı. */
+  strength: 0.055,
+  /** Dengeleyici hiçbir günde fiyatı tek başına %0,25'ten fazla itemez. */
+  dailyCap: 0.0025,
+} as const;
+
+/**
  * Ekonomi Ara Düzeltmesi §2.4 / §6 / §8 — KANAL PROFİLLERİ.
  *
  * DEĞİŞMEZ (§8): "Toptancı ve esnaf ağı aynı fiyat/limit algoritmasının

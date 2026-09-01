@@ -1,0 +1,31 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`uzun dönem ekonomi snapshotları > 30 günlük fiyat zinciri kontrollü kalır 1`] = `
+{
+  "days": 30,
+  "final": 3487,
+  "finalVsReference": 0.822,
+  "maximum": 4380,
+  "minimum": 3487,
+}
+`;
+
+exports[`uzun dönem ekonomi snapshotları > 120 günlük fiyat zinciri kontrollü kalır 1`] = `
+{
+  "days": 120,
+  "final": 4399,
+  "finalVsReference": 1.037,
+  "maximum": 4735,
+  "minimum": 3487,
+}
+`;
+
+exports[`uzun dönem ekonomi snapshotları > 365 günlük fiyat zinciri kontrollü kalır 1`] = `
+{
+  "days": 365,
+  "final": 3921,
+  "finalVsReference": 0.924,
+  "maximum": 4735,
+  "minimum": 3076,
+}
+`;

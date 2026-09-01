@@ -19,7 +19,7 @@ import { poolForTemplate } from '@domain/stock-pools';
 
 import { KARAT_LABEL } from '@domain/balance';
 import { CHANNEL_SHORT } from '@domain/thesis';
-import { liquidityBand, liquidityRatio, summarizeWealth } from '@domain/settlement';
+import { liquidationEstimate, liquidityBand, liquidityRatio, summarizeWealth } from '@domain/settlement';
 import { getTemplate } from '@data/item-templates';
 import { POOL_SUPPLY, poolSupplyQuote, maxPoolSupplyQuantity, hasPoolSupplySpace } from '@domain/pool-supply';
 import { useGame } from '@state/gameStore';
@@ -85,7 +85,7 @@ export function StockScreen() {
             <span className="summaryRow__value num">{tl(wealth.stockCost)}</span>
           </div>
           <div className="summaryRow__item">
-            <span className="summaryRow__label">Potansiyel</span>
+            <span className="summaryRow__label">Net Çıkış</span>
             <span
               className={`summaryRow__value num ${
                 wealth.stockPotential >= 0
@@ -273,7 +273,9 @@ function BullionOffer({ product }: { product: typeof POOL_SUPPLY[number] }) {
     </label>
     {expensive && confirmed && <p className="offerRow__confirm" role="status">Yüksek tutar: {tl(lot.totalPrice)}. Satın almak için tekrar onayla.</p>}
     {!lot && <p className="offerRow__shortfall">Pozitif, geçerli bir miktar seçin. Gram altın hassasiyeti 0,001 g.</p>}
-    {lot && !affordable && <p className="offerRow__shortfall">{!space ? 'Arka stokta yeni ürün ailesi için yer yok.' : `Mevcut nakit ${tl(s.store.cash)} · eksik ${tl(lot.totalPrice - s.store.cash)}`}</p>}
+    {lot && !affordable && <p className="offerRow__shortfall">{!space
+      ? 'Arka stokta yeni ürün ailesi için yer yok.'
+      : `Minimum ${templateId === 'gram_gold_1' ? '0,001 g' : '1 adet'} · Yetersiz Nakit · ${tl(lot.totalPrice)} gerekli, ${tl(s.store.cash)} mevcut`}</p>}
   </section>;
 }
 
@@ -287,7 +289,8 @@ function StockRow({ position }: { position: InventoryPosition }) {
   if (!item) return null;
 
   const template = getTemplate(item.templateId);
-  const delta = position.currentValue - position.costBasis;
+  const liquidation = liquidationEstimate(position);
+  const delta = liquidation.value - position.costBasis;
   const isDead = position.age >= DEAD_STOCK_AGE;
 
   return (
@@ -332,8 +335,8 @@ function StockRow({ position }: { position: InventoryPosition }) {
             <span className="figure__value num">{tl(position.costBasis)}</span>
           </span>
           <span className="figure">
-            <span className="figure__label">Bugünkü Değer</span>
-            <span className="figure__value num">{tl(position.currentValue)}</span>
+            <span className="figure__label">Net Satış Tahmini</span>
+            <span className="figure__value num">{tl(liquidation.value)}</span>
           </span>
           <span className="figure">
             <span className="figure__label">Tahmini Marj</span>
@@ -345,6 +348,10 @@ function StockRow({ position }: { position: InventoryPosition }) {
               {tlSigned(delta)}
             </span>
           </span>
+        </div>
+
+        <div className="row__exitEstimate">
+          Hızlı çıkış: <strong>{liquidation.channel}</strong> · Tahmini süre {liquidation.time}
         </div>
 
         {/* Satır uyarısı — tek satır durum (GDD 23.15) */}

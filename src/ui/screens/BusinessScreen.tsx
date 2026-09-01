@@ -141,7 +141,7 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               tone={wealth.realizedProfitToday >= 0 ? 'positive' : 'negative'}
             />
             <StatLine
-              label="Stok potansiyeli (realize değil)"
+              label="Stok net çıkış farkı (realize değil)"
               value={tlSigned(wealth.stockPotential)}
               tone={wealth.stockPotential >= 0 ? 'positive' : 'negative'}
             />

@@ -32,7 +32,7 @@ export function DayCloseDialog() {
         <Row label="Personel payı (gidere dahil)" value={tl(report.personnelExpense ?? 0)} />
         <Row label="Kasa değişimi" value={tlSigned(report.netCashChange)} tone={report.netCashChange >= 0 ? 'positive' : 'negative'} />
         <Row label="Kapanış nakdi" value={tl(report.closingCash ?? s.store.cash)} />
-        <Row label="Stok potansiyeli" value={tlSigned(report.stockPotential)} tone={report.stockPotential >= 0 ? 'positive' : 'negative'} />
+        <Row label="Stok net çıkış farkı" value={tlSigned(report.stockPotential)} tone={report.stockPotential >= 0 ? 'positive' : 'negative'} />
         <Row label="Nakit Durumu" value={pct(report.liquidity)} />
         <Row label="Kaçırılan Misafir" value={String(report.missedGuestCountToday ?? 0)} />
       </dl>
@@ -45,6 +45,9 @@ export function DayCloseDialog() {
         Yarın {weekdayLabel(tomorrow)} · dükkân {isShopOpen(tomorrow) ? 'açık' : 'kapalı'} · piyasa {isMarketOpen(tomorrow) ? 'açık' : `kapalı; sonraki açılış ${weekdayLabel(nextMarketOpenDay(tomorrow))}`}.
       </p>
       {risk ? <p>{risk.note}</p> : null}
+      {!isMarketOpen(tomorrow) && (
+        <p>Cuma kapanışından pazartesi açılışına kadar piyasa fiyatı donar; hafta sonu haberleri pazartesi açılışında tek seferde fiyatlanır.</p>
+      )}
       {s.queue.length > 0 && <p>{s.queue.length} bekleyen müşteri ayrılacak. Bu kişiler kapasite nedeniyle kaçırılan misafir sayısına eklenmez.</p>}
       <div className="dayCloseDialog__actions">
         <button type="button" className="dayCloseDialog__cancel" onClick={s.cancelDayClose} autoFocus>Vazgeç</button>

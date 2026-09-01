@@ -340,8 +340,11 @@ export function NegotiateStage({
                     : 'negative'
                 }`}
               >
-                {reference.unitOffer > reference.unitReference ? '+' : '−'}
-                {tlBare(Math.abs(reference.unitReference - reference.unitOffer))} {reference.unit}
+                {reference.unitOffer === reference.unitReference
+                  ? `0 ${reference.unit}`
+                  : `${reference.unitOffer > reference.unitReference ? '+' : '−'}${tlBare(
+                      Math.abs(reference.unitReference - reference.unitOffer),
+                    )} ${reference.unit}`}
               </span>
             </div>
           )}

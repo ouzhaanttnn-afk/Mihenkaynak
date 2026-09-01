@@ -32,7 +32,9 @@ export function tlBare(n: number): string {
 
 /** +8.200 ₺ / −1.350 ₺ */
 export function tlSigned(n: number): string {
-  return `${TL_SIGNED.format(Math.round(n)).replace('-', '−')} ₺`;
+  const rounded = Math.round(n);
+  if (rounded === 0) return '0 ₺';
+  return `${TL_SIGNED.format(rounded).replace('-', '−')} ₺`;
 }
 
 /** Piyasa fiyatı — kuruşlu. */

@@ -428,10 +428,54 @@ export interface WealthSummary {
   realizedProfitToday: Money;
 }
 
+export interface LiquidationEstimate {
+  value: Money;
+  channel: 'Toptancı' | 'Eritme / HAS' | 'Servis + satış' | 'Vitrin' | 'Koleksiyon';
+  time: string;
+}
+
+/**
+ * Stok ekranının muhasebe markı: teorik en yüksek getiri değil, bugün
+ * erişilebilen en hızlı net çıkış. `expectedExitValues` birim değerdir;
+ * pozisyon adedi burada açıkça çarpılır.
+ */
+export function liquidationEstimate(position: InventoryPosition): LiquidationEstimate {
+  const candidates = [
+    { id: 'wholesale', channel: 'Toptancı', time: '1–2 gün' },
+    { id: 'melt', channel: 'Eritme / HAS', time: '1–2 gün' },
+    { id: 'serviceResale', channel: 'Servis + satış', time: '2–5 gün' },
+    { id: 'retail', channel: 'Vitrin', time: '3–7 gün' },
+    { id: 'collection', channel: 'Koleksiyon', time: '7+ gün' },
+  ] as const;
+
+  for (const candidate of candidates) {
+    const perUnit = position.expectedExitValues[candidate.id];
+    if (perUnit !== undefined && perUnit > 0) {
+      return {
+        value: roundMoney(perUnit * position.quantity),
+        channel: candidate.channel,
+        time: candidate.time,
+      };
+    }
+  }
+
+  // Eski kayıtların expectedExitValues alanı boş olabilir. Bu durumda mevcut
+  // markı hızlı çıkış iskontosuyla kullanmak, teorik değeri aynen taşımaktan
+  // daha güvenli ve geriye uyumludur.
+  return {
+    value: roundMoney(position.currentValue * 0.88),
+    channel: 'Toptancı',
+    time: '1–2 gün',
+  };
+}
+
 export function summarizeWealth(state: EconomyState): WealthSummary {
   const hasEstimatedValue = state.market ? fromMg(state.store.hasBalanceMg ?? 0) * state.market.goldSpot : state.store.hasCostBasis ?? 0;
   const stockCost = state.inventory.reduce((s, p) => s + p.costBasis, 0);
-  const stockEstimatedValue = state.inventory.reduce((s, p) => s + p.currentValue, 0);
+  const stockEstimatedValue = state.inventory.reduce(
+    (sum, position) => sum + liquidationEstimate(position).value,
+    0,
+  );
   const liabilities =
     state.store.payables.reduce((s, p) => s + p.amount, 0) +
     state.store.supplier.openInvoices.reduce((s, i) => s + i.amount, 0);

@@ -1806,6 +1806,9 @@ function buildPackageReference(
     const refView = unitPriceView(single, Math.round(totalReference / units));
     const offerView = unitPriceView(single, Math.round(offer / units));
     const showTotal = units > 1 || (refView.perGram && refView.gramsPerPiece > 1);
+    const amountLabel = refView.perGram
+      ? `${(units * refView.gramsPerPiece).toLocaleString('tr-TR')} g`
+      : `${units} adet`;
 
     return {
       direction: 'shopSells' as const,
@@ -1813,7 +1816,7 @@ function buildPackageReference(
       unitOffer: offerView.unitPrice,
       unit: refView.unit,
       showTotal,
-      totalLabel: `${units} adet · piyasa ${Math.round(totalReference).toLocaleString('tr-TR')} ₺`,
+      totalLabel: `${amountLabel} · piyasa ${Math.round(totalReference).toLocaleString('tr-TR')} ₺`,
       totalReference: Math.round(totalReference),
       totalOffer: offer,
     };

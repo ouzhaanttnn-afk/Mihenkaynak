@@ -590,7 +590,9 @@ describe('GDD 34.5 — Stok potansiyeli gerçekleşmiş kâra eklenmez', () => {
     };
 
     const wealth = summarizeWealth(economy);
-    expect(wealth.stockPotential).toBe(6_000);
+    // Eski kayıt kanal tablosu taşımıyor: net çıkış markı %12 hızlı satış
+    // iskontosu uygular, teorik 6.000 ₺ farkı servete aynen yazmaz.
+    expect(wealth.stockPotential).toBe(2_880);
     // Ama gerçekleşmiş kâr hâlâ sıfır — satış olmadı.
     expect(wealth.realizedProfitToday).toBe(0);
     expect(economy.ledger.realizedProfitTotal).toBe(0);

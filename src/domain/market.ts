@@ -15,6 +15,7 @@ import {
   MARKET_BASE,
   MARKET_COMPOSITION,
   MARKET_DAILY_CAP,
+  MARKET_MEAN_REVERSION,
   MARKET_REGIME,
   REGIME_DRIFT,
   REGIME_TRANSITIONS,
@@ -112,10 +113,15 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
   const move = composeDailyMove(rng, { regime, trend, volatility, activeEvent, day });
 
   const cap = MARKET_DAILY_CAP * spanScale;
-  const total = move.total * spanScale;
-  const goldSpot = bandedPrice(prevGold * (1 + total), prevGold, cap);
-  const silverSpot = bandedPrice(prevSilver * (1 + total * rng.range(0.8, 1.6)), prevSilver, cap);
-  const fxIndex = bandedPrice(prevFx * (1 + total * 0.3), prevFx, cap);
+  const goldMove = (move.total + meanReversionNudge(prevGold, MARKET_BASE.goldGram)) * spanScale;
+  const silverMove =
+    (move.total * rng.range(0.8, 1.6) + meanReversionNudge(prevSilver, MARKET_BASE.silverGram)) *
+    spanScale;
+  const fxMove =
+    (move.total * 0.3 + meanReversionNudge(prevFx, MARKET_BASE.usd)) * spanScale;
+  const goldSpot = bandedPrice(prevGold * (1 + goldMove), prevGold, cap);
+  const silverSpot = bandedPrice(prevSilver * (1 + silverMove), prevSilver, cap);
+  const fxIndex = bandedPrice(prevFx * (1 + fxMove), prevFx, cap);
   const dayOpen = { goldSpot, silverSpot, fxIndex };
 
   const assets = buildAssets(
@@ -141,6 +147,20 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
     lastIntradayStepIndex: Math.floor((9 * 60) / 15) - 1,
     seed: rootSeed,
   };
+}
+
+/**
+ * Referans fiyatın çevresindeki serbest banttan sonra çalışan tavanlı geri
+ * çağırma kuvveti. Pozitif değer düşük fiyatı yukarı, negatif değer yüksek
+ * fiyatı aşağı iter. Saf ve test edilebilir tutulur.
+ */
+export function meanReversionNudge(current: number, reference: number): number {
+  if (!(current > 0) || !(reference > 0)) return 0;
+  const deviation = (reference - current) / reference;
+  const excess = Math.max(0, Math.abs(deviation) - MARKET_MEAN_REVERSION.freeBand);
+  if (excess === 0) return 0;
+  const raw = Math.sign(deviation) * excess * MARKET_MEAN_REVERSION.strength;
+  return Math.max(-MARKET_MEAN_REVERSION.dailyCap, Math.min(MARKET_MEAN_REVERSION.dailyCap, raw));
 }
 
 /** Kapalı piyasa: fiyat, rejim ve trend değişmez; yalnız takvim ilerler. */
