@@ -51,6 +51,7 @@
       { "id": "shop-realistic", "file": "realistic/navigation/shop.png", "usage": "Dükkan ana navigasyon/boş durum" },
       { "id": "stock-realistic", "file": "realistic/navigation/stock.png", "usage": "Stok ana navigasyon" },
       { "id": "workshop-realistic", "file": "realistic/navigation/workshop.png", "usage": "Atölye ana navigasyon" },
+      { "id": "market-realistic", "file": "realistic/icons/market-shop.png", "usage": "Market ana navigasyon" },
       { "id": "investments-realistic", "file": "realistic/navigation/investments.png", "usage": "İşletme ve yatırımlar" },
       { "id": "skills-realistic", "file": "realistic/navigation/skills.png", "usage": "Yetenekler ve başarılar" },
       { "id": "profile-realistic", "file": "realistic/navigation/profile.png", "usage": "Oyuncu profili" },

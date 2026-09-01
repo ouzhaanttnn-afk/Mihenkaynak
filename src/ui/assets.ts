@@ -11,12 +11,11 @@
  * alfası korunarak WebP'ye alındı: 101 MB → 1,74 MB. Kaynak yine paketin
  * `assets/realistic` şeffaf görselleridir; değişen yalnız teslim kodlaması.
  *
- * BANT KURALI (paketin README'si + brief):
- *   · 64 px ve üstü ana odak görselleri  → buradaki gerçekçi varlıklar
- *   · 16–32 px kontrol ve bilgi alanları → src/ui/icons.tsx SVG seti
- * Bu yüzden alt navigasyon (21 px ikon) ve araç rayı SVG kalır; gerçekçi
- * navigasyon varlıkları kök ekranların 64 px+ başlık/boş durum alanında
- * kullanılır.
+ * BANT KURALI:
+ *   · Ana odak ve kök navigasyon          → gerçekçi varlıklar
+ *   · Çok küçük kontrol/bilgi işaretleri  → okunabilir SVG yedekleri
+ * Alt navigasyon gerçekçi ikonları 29 px'de gösterir; yüklenemezlerse aynı
+ * anlamdaki SVG ikonuna otomatik düşer.
  *
  * Varlık bulunamazsa <Art> bileşeni SVG ikonuna düşer — kırık görsel yok.
  */
@@ -249,6 +248,7 @@ export const NAV_ART = {
   shop: art('realistic/navigation/shop.png', 'Dükkan'),
   stock: art('realistic/navigation/stock.png', 'Stok'),
   workshop: art('realistic/navigation/workshop.png', 'Atölye'),
+  market: art('realistic/icons/market-shop.png', 'Market'),
   business: art('realistic/navigation/investments.png', 'İşletme ve yatırımlar'),
   wholesaler: art('realistic/navigation/wholesaler.png', 'Toptancı'),
   skills: art('realistic/navigation/skills.png', 'Yetenekler'),

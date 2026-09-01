@@ -1122,6 +1122,19 @@
   height: 56px;
 }
 
+.bottomNav__art {
+  width: 29px;
+  height: 29px;
+  object-fit: contain;
+  filter: saturate(0.8) brightness(0.82);
+  transition: filter var(--t-fast) var(--ease-standard), transform var(--t-fast) var(--ease-standard);
+}
+
+.bottomNav__item--active .bottomNav__art {
+  filter: saturate(1.08) brightness(1.08) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+  transform: translateY(-1px);
+}
+
 .cta::before {
   content: '';
   position: absolute;

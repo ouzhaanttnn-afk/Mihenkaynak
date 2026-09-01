@@ -937,16 +937,10 @@
   overflow-anchor: none;
 }
 
-.idle::before {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  pointer-events: none;
+.workbench--idle {
   background:
     linear-gradient(180deg, rgba(10, 15, 22, 0.72), rgba(10, 15, 22, 0.9)),
     url('/assets/realistic/backgrounds/shop-interior-liquid-v1.webp') center 42% / cover no-repeat;
-  filter: saturate(0.84) contrast(0.94);
 }
 
 .idle::-webkit-scrollbar {

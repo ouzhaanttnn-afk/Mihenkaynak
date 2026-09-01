@@ -240,7 +240,7 @@ export function ShopScreen() {
         </>
       )}
 
-      <main className="workbench">
+      <main className={`workbench ${!deal ? 'workbench--idle' : ''}`}>
         <div className="wb">
           {/* Çoklu ürün kalem şeridi — dikey scroll yerine yatay pill (GDD 23.13) */}
           {deal && deal.lines.length > 1 && (

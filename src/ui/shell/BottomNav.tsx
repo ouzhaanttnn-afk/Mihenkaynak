@@ -12,14 +12,16 @@
  */
 
 import { IconBusiness, IconMarket, IconShop, IconStock, IconWorkshop } from '@ui/icons';
+import { Art } from '@ui/Art';
+import { NAV_ART, type Art as ArtAsset } from '@ui/assets';
 import type { RootTab } from '@state/gameStore';
 
-const ROOTS: { id: RootTab; label: string; Icon: typeof IconShop }[] = [
-  { id: 'shop', label: 'Dükkan', Icon: IconShop },
-  { id: 'stock', label: 'Stok', Icon: IconStock },
-  { id: 'workshop', label: 'Atölye', Icon: IconWorkshop },
-  { id: 'market', label: 'Market', Icon: IconMarket },
-  { id: 'business', label: 'İşletme', Icon: IconBusiness },
+const ROOTS: { id: RootTab; label: string; Icon: typeof IconShop; art: ArtAsset }[] = [
+  { id: 'shop', label: 'Dükkan', Icon: IconShop, art: NAV_ART.shop },
+  { id: 'stock', label: 'Stok', Icon: IconStock, art: NAV_ART.stock },
+  { id: 'workshop', label: 'Atölye', Icon: IconWorkshop, art: NAV_ART.workshop },
+  { id: 'market', label: 'Market', Icon: IconMarket, art: NAV_ART.market },
+  { id: 'business', label: 'İşletme', Icon: IconBusiness, art: NAV_ART.business },
 ];
 
 interface Props {
@@ -31,7 +33,7 @@ interface Props {
 export function BottomNav({ active, onSelect, workshopBadge = 0 }: Props) {
   return (
     <nav className="bottomNav" aria-label="Ana navigasyon">
-      {ROOTS.map(({ id, label, Icon }) => (
+      {ROOTS.map(({ id, label, Icon, art }) => (
         <button
           key={id}
           type="button"
@@ -39,7 +41,13 @@ export function BottomNav({ active, onSelect, workshopBadge = 0 }: Props) {
           onClick={() => onSelect(id)}
           aria-current={active === id ? 'page' : undefined}
         >
-          <Icon size={21} />
+          <Art
+            art={art}
+            size={29}
+            decorative
+            className="bottomNav__art art--onDark"
+            fallback={<Icon size={21} />}
+          />
           {id === 'workshop' && workshopBadge > 0 && (
             <span className="bottomNav__badge" aria-label={`${workshopBadge} teslim bekleyen iş`}>
               {Math.min(9, workshopBadge)}
