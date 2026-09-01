@@ -23,6 +23,7 @@ interface Props {
   onUnlock4x: () => void;
   /** Kuyumcunun adı ve portresi — yalnız görünüm. */
   profile: PlayerProfile;
+  profileFrame?: string;
   onEditProfile: () => void;
 }
 
@@ -34,6 +35,7 @@ export function StatusStrip({
   onSpeed,
   onUnlock4x,
   profile,
+  profileFrame,
   onEditProfile,
 }: Props) {
   const xpRatio = Math.min(1, store.xp / Math.max(1, store.xpToNext));
@@ -63,7 +65,7 @@ export function StatusStrip({
         onClick={onEditProfile}
         aria-label={`Profili düzenle — ${profile.jewelerName}`}
       >
-        <span className="profileChip__avatar">
+        <span className={`profileChip__avatar ${profileFrame ? `profileChip__avatar--${profileFrame}` : ''}`}>
           <Art
             art={avatarArt(profile.avatarId)}
             size={52}

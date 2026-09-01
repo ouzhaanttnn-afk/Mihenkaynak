@@ -537,6 +537,7 @@ export interface DayReport {
   closingCash?: Money;
   overnightSummary?: string;
   personnelExpense?: Money;
+  lifestyleExpense?: Money;
   missedGuestCountToday?: number;
   day: GameDay;
   realizedTradeProfit: Money;
@@ -552,10 +553,15 @@ export interface DayReport {
  * Gün kapanışı. GDD 22.1: "Gün sonu servis/vade/gelir işlemleri idempotent
  * olmalıdır." Aynı gün için ikinci kez çağrılırsa kasa tekrar eksilmez.
  */
-export function closeDay(state: EconomyState, day: GameDay, missedGuestCountToday = 0): DayCloseResult {
+export function closeDay(
+  state: EconomyState,
+  day: GameDay,
+  missedGuestCountToday = 0,
+  lifestyleExpense: Money = 0,
+): DayCloseResult {
   const txId = `dayclose_${day}`;
   const personnelExpense = personnelDaily(state.store);
-  const overhead = dailyOperatingCost(state.store);
+  const overhead = roundMoney(dailyOperatingCost(state.store) + Math.max(0, lifestyleExpense));
 
   const tx: SettlementTransaction = {
     txId,
@@ -567,7 +573,7 @@ export function closeDay(state: EconomyState, day: GameDay, missedGuestCountToda
     trustDelta: 0,
     reputationDelta: 0,
     xpDelta: 0,
-    label: `Gün ${day} kira + sabit gider + personel`,
+    label: `Gün ${day} kira + sabit gider + personel + şahsi bakım`,
   };
 
   const outcome = applyTransaction(state, tx);
@@ -580,6 +586,7 @@ export function closeDay(state: EconomyState, day: GameDay, missedGuestCountToda
     state: nextState,
     report: {
       personnelExpense,
+      lifestyleExpense: Math.max(0, lifestyleExpense),
       missedGuestCountToday,
       day,
       realizedTradeProfit: nextState.ledger.realizedProfitToday,

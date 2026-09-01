@@ -944,6 +944,19 @@
     url('/assets/realistic/backgrounds/shop-interior-liquid-v1.webp') center 42% / cover no-repeat;
 }
 
+.workbench--theme_nocturne {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(111, 64, 168, 0.26), transparent 38%),
+    linear-gradient(180deg, rgba(10, 12, 24, 0.74), rgba(8, 7, 18, 0.94)),
+    url('/assets/realistic/backgrounds/shop-interior-liquid-v1.webp') center 42% / cover no-repeat;
+}
+
+.workbench--theme_ivory {
+  background:
+    linear-gradient(180deg, rgba(102, 82, 52, 0.32), rgba(11, 14, 19, 0.88)),
+    url('/assets/realistic/backgrounds/shop-interior-liquid-v1.webp') center 42% / cover no-repeat;
+}
+
 .idle::-webkit-scrollbar {
   display: none;
 }
@@ -1021,6 +1034,16 @@
   font-size: var(--fs-caption);
   color: var(--text-dark-3);
   margin-top: 2px;
+}
+
+.idle__badge {
+  display: inline-flex;
+  margin-left: 7px;
+  color: var(--brass-300);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  filter: drop-shadow(0 0 5px rgba(215, 170, 74, 0.55));
+  vertical-align: middle;
 }
 
 /* ---- Pozisyon paneli — sarrafın "kaç param, kaç malım var" sorusu ---- */

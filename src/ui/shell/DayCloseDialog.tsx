@@ -3,6 +3,7 @@ import { DAY } from '@domain/balance';
 import { dailyOperatingCost, weekdayName } from '@domain/v5-rules';
 import { isMarketOpen, isShopOpen, nextMarketOpenDay, weekdayLabel } from '@domain/calendar';
 import { weekendRisk } from '@domain/overnight';
+import { lifestyleDailyExpense } from '@domain/marketplace';
 import { selectors, useGame } from '@state/gameStore';
 import { clock, pct, tl, tlSigned } from '@ui/format';
 
@@ -14,6 +15,7 @@ export function DayCloseDialog() {
   const risk = weekendRisk(s.market.day, selectors.position(s));
   const tomorrow = s.market.day + 1;
   const open = s.dayCloseConfirmOpen || !!report;
+  const lifestyleExpense = lifestyleDailyExpense(s.playerMarket);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!open || !dialog) return;
@@ -30,6 +32,7 @@ export function DayCloseDialog() {
         <Row label="Gerçekleşmiş kâr" value={tlSigned(report.realizedTradeProfit)} tone={report.realizedTradeProfit >= 0 ? 'positive' : 'negative'} />
         <Row label="Günlük gider" value={tlSigned(-report.overhead)} tone="negative" />
         <Row label="Personel payı (gidere dahil)" value={tl(report.personnelExpense ?? 0)} />
+        {(report.lifestyleExpense ?? 0) > 0 && <Row label="Şahsi bakım (gidere dahil)" value={tl(report.lifestyleExpense ?? 0)} />}
         <Row label="Kasa değişimi" value={tlSigned(report.netCashChange)} tone={report.netCashChange >= 0 ? 'positive' : 'negative'} />
         <Row label="Kapanış nakdi" value={tl(report.closingCash ?? s.store.cash)} />
         <Row label="Stok net çıkış farkı" value={tlSigned(report.stockPotential)} tone={report.stockPotential >= 0 ? 'positive' : 'negative'} />
@@ -40,7 +43,8 @@ export function DayCloseDialog() {
       <button type="button" className="dayCloseDialog__primary" onClick={s.startNewDay}>Yeni güne başla</button>
     </> : <>
       <h2 id="day-close-title">Günü şimdi kapat?</h2>
-      <p>Saat {clock(s.market.clockMinutes)}. {s.market.clockMinutes < DAY.closeMinutes ? 'Gün daha bitmedi; kapatırsan bugün başka müşteri gelmez.' : 'Bugünün işlemleri kapanacak.'} Günlük gider {tl(dailyOperatingCost(s.store))} her hâlükârda işler.</p>
+      <p>Saat {clock(s.market.clockMinutes)}. {s.market.clockMinutes < DAY.closeMinutes ? 'Gün daha bitmedi; kapatırsan bugün başka müşteri gelmez.' : 'Bugünün işlemleri kapanacak.'} Günlük gider {tl(dailyOperatingCost(s.store) + lifestyleExpense)} her hâlükârda işler.</p>
+      {lifestyleExpense > 0 && <p>Bu tutarın {tl(lifestyleExpense)} kadarı sahip olduğun şahsi prestij varlıklarının günlük bakımıdır.</p>}
       <p>
         Yarın {weekdayLabel(tomorrow)} · dükkân {isShopOpen(tomorrow) ? 'açık' : 'kapalı'} · piyasa {isMarketOpen(tomorrow) ? 'açık' : `kapalı; sonraki açılış ${weekdayLabel(nextMarketOpenDay(tomorrow))}`}.
       </p>

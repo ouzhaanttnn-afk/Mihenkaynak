@@ -191,6 +191,7 @@ export function ShopScreen() {
         onSpeed={s.setSpeed}
         onUnlock4x={s.unlock4x}
         profile={s.profile}
+        profileFrame={s.playerMarket.equipped.profileFrame}
         onEditProfile={s.openProfile}
       />
 
@@ -245,7 +246,7 @@ export function ShopScreen() {
         </>
       )}
 
-      <main className={`workbench ${!deal ? 'workbench--idle' : ''}`}>
+      <main className={`workbench ${!deal ? 'workbench--idle' : ''} ${s.playerMarket.equipped.shopTheme ? `workbench--${s.playerMarket.equipped.shopTheme}` : ''}`}>
         <div className="wb">
           {/* Çoklu ürün kalem şeridi — dikey scroll yerine yatay pill (GDD 23.13) */}
           {deal && deal.lines.length > 1 && (
@@ -563,7 +564,10 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
             fallback={null}
           />
           <div className="idle__headText">
-            <h2 className="idle__title">{shopDisplayName(s.profile.jewelerName)}</h2>
+            <h2 className="idle__title">
+              {shopDisplayName(s.profile.jewelerName)}
+              {s.playerMarket.equipped.shopBadge && <span className="idle__badge" title="Market profil rozeti">◆</span>}
+            </h2>
             <p className="idle__sub">
               Gün {s.market.day} · {weekdayLabel(s.market.day)} · Semt itibarı {Math.round(s.store.reputation)}
             </p>

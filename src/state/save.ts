@@ -28,6 +28,7 @@ import { dayCharacter, emptyTelemetry } from '@domain/intent';
 import { createLedger, type Ledger } from '@domain/settlement';
 import type { GameState } from './gameStore';
 import { normalizeProfile, type PlayerProfile } from '@domain/profile';
+import { defaultPlayerMarket, type PlayerMarketState } from '@domain/marketplace';
 import type { CustomerRegistry } from '@domain/customer-memory';
 import type {
   InventoryPosition,
@@ -98,6 +99,8 @@ export interface SaveFile {
    * şey yalnız bir varsayılanı olan yeni alansa buna gerek yok.
    */
   profile?: PlayerProfile;
+  /** Market sahipliği; eski kayıtlarda boş koleksiyona düşer. */
+  playerMarket?: PlayerMarketState;
 }
 
 /**
@@ -134,6 +137,7 @@ export function serialize(state: GameState): SaveFile {
     speed4xUnlocked: state.speed4xUnlocked,
     seenLessons: state.seenLessons,
     profile: state.profile,
+    playerMarket: state.playerMarket,
   };
 }
 
@@ -156,6 +160,7 @@ export type LoadedState = Pick<
   | 'speed4xUnlocked'
   | 'seenLessons'
   | 'profile'
+  | 'playerMarket'
   | 'queue'
   | 'activeCustomer'
   | 'activeDeal'
@@ -207,6 +212,7 @@ export function deserialize(file: SaveFile): LoadedState {
     // Profil alanı olmayan (bu özellikten önceki) kayıtlar varsayılana
     // düşer; bozuk bir ad veya bilinmeyen avatar da normalize edilir.
     profile: normalizeProfile(save.profile),
+    playerMarket: save.playerMarket ?? defaultPlayerMarket(),
     // Aktif ziyaret ve yarım pazarlık aynı durumdan devam eder.
     queue: save.queue ?? [],
     activeCustomer: save.activeCustomer ?? null,

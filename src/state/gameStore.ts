@@ -133,6 +133,13 @@ import {
   suggestedFee,
 } from '@domain/appraisal';
 import { applyTierGrants, evaluateUpgrade, growthSnapshot } from '@domain/store-growth';
+import {
+  defaultPlayerMarket,
+  equipMarketProduct,
+  lifestyleDailyExpense,
+  purchaseMarketProduct,
+  type PlayerMarketState,
+} from '@domain/marketplace';
 import { clearSave, persistProfile, readSave, writeSave } from './save';
 import type {
   ActiveDeal,
@@ -218,6 +225,8 @@ export interface GameState {
    * Hiçbir ilerleme, ekonomi veya karar değeri taşımaz.
    */
   profile: PlayerProfile;
+  /** Oyun içi TL ile alınan kozmetik ve şahsi prestij varlıkları. */
+  playerMarket: PlayerMarketState;
   /** Profil düzenleme penceresi açık mı (yalnız arayüz durumu). */
   profileOpen: boolean;
   customerRushUntilMinutes: number | null;
@@ -303,6 +312,8 @@ export interface GameState {
   openProfile: () => void;
   closeProfile: () => void;
   triggerCustomerRush: () => void;
+  buyMarketProduct: (productId: string) => boolean;
+  equipMarketProduct: (productId: string) => boolean;
 
   tick: (deltaRealSeconds: number) => void;
   greetCustomer: () => void;
@@ -422,6 +433,7 @@ export const useGame = create<GameState>((set, get) => {
     customerRushUntilMinutes: null,
     seenLessons: [],
     profile: defaultProfile(),
+    playerMarket: defaultPlayerMarket(),
     profileOpen: false,
 
     dayCharacter: dayCharacter(seed, 1, market),
@@ -549,6 +561,31 @@ export const useGame = create<GameState>((set, get) => {
       // kalitesi, bütçesi, rezervasyon fiyatı veya hidden truth DEĞİŞMEZ.
       set({ customerRushUntilMinutes: market.clockMinutes + 90 });
       pushToast(set, get, 'Müşteri akını başladı — geliş aralığı kısaldı.', 'info');
+    },
+
+    buyMarketProduct: (productId) => {
+      const s = get();
+      const outcome = purchaseMarketProduct(economyOf(s), s.playerMarket, productId, s.market.day);
+      if (!outcome.applied) {
+        pushToast(set, get, outcome.reason ?? 'Market satın alımı yapılamadı.', 'negative');
+        return false;
+      }
+      set({ ...economyToState(outcome.economy), playerMarket: outcome.playerMarket });
+      writeSave(get());
+      pushToast(set, get, 'Market ürünü koleksiyonuna eklendi.', 'positive');
+      return true;
+    },
+
+    equipMarketProduct: (productId) => {
+      const next = equipMarketProduct(get().playerMarket, productId);
+      if (!next) {
+        pushToast(set, get, 'Bu ürün kullanılamıyor.', 'negative');
+        return false;
+      }
+      set({ playerMarket: next });
+      writeSave(get());
+      pushToast(set, get, 'Kozmetik görünüm uygulandı.', 'positive');
+      return true;
     },
 
     // -----------------------------------------------------------------------
@@ -1829,7 +1866,12 @@ export const useGame = create<GameState>((set, get) => {
     advanceDay: () => {
       const s = get();
       if (s.dayReportOpen) return;
-      const { state: closed, report, applied } = closeDay(economyOf(s), s.market.day, s.missedGuestCountToday);
+      const { state: closed, report, applied } = closeDay(
+        economyOf(s),
+        s.market.day,
+        s.missedGuestCountToday,
+        lifestyleDailyExpense(s.playerMarket),
+      );
       if (!applied) { pushToast(set, get, 'Günlük gider karşılanamadı; gün kapatılmadı.', 'negative'); return; }
       const nextDay = s.market.day + 1;
       const market = createMarketForDay(s.seed, nextDay, s.market);
