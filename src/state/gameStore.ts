@@ -140,6 +140,11 @@ import {
   purchaseMarketProduct,
   type PlayerMarketState,
 } from '@domain/marketplace';
+import {
+  defaultSkillProgress,
+  toolWithSkillBonuses,
+  type SkillProgress,
+} from '@domain/skill-tree';
 import { clearSave, persistProfile, readSave, writeSave } from './save';
 import type {
   ActiveDeal,
@@ -227,6 +232,8 @@ export interface GameState {
   profile: PlayerProfile;
   /** Oyun içi TL ile alınan kozmetik ve şahsi prestij varlıkları. */
   playerMarket: PlayerMarketState;
+  /** Gelecekteki yetenek ağacının kalıcı mekanik kademeleri. */
+  skillProgress: SkillProgress;
   /** Profil düzenleme penceresi açık mı (yalnız arayüz durumu). */
   profileOpen: boolean;
   customerRushUntilMinutes: number | null;
@@ -434,6 +441,7 @@ export const useGame = create<GameState>((set, get) => {
     seenLessons: [],
     profile: defaultProfile(),
     playerMarket: defaultPlayerMarket(),
+    skillProgress: defaultSkillProgress(),
     profileOpen: false,
 
     dayCharacter: dayCharacter(seed, 1, market),
@@ -1138,7 +1146,7 @@ export const useGame = create<GameState>((set, get) => {
       const item = s.items[line.itemId];
       if (!item) return;
 
-      const tool = getTool(toolId);
+      const tool = toolWithSkillBonuses(getTool(toolId), s.skillProgress);
       if (tool.unlockLevel > s.store.level) return;
       if (line.testResults.some((test) => test.toolId === tool.id)) {
         pushToast(set, get, `${tool.name} bu üründe zaten uygulandı.`, 'info');

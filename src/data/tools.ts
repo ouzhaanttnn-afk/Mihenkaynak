@@ -45,10 +45,12 @@ export const TEST_TOOLS: TestTool[] = [
     infoFields: ['purity'],
     durationSec: 3,
     cost: 45,
-    reliability: 0.74,
+    // Yetenek ağacı tabanı: yeni oyuncu yanlış ayar beyanını %60 doğrulukla
+    // yakalar. Gelecekteki ayar uzmanlığı bunu en fazla %90'a çıkarır.
+    reliability: 0.6,
     certaintyGain: 0.55,
     unlockLevel: 1,
-    description: 'Ayar aralığını daraltır. İç dolgu riskini kapatmaz.',
+    description: 'Ayar aralığını %60 temel doğrulukla daraltır. İç dolgu riskini kapatmaz.',
   },
   {
     id: 'density',

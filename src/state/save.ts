@@ -29,6 +29,11 @@ import { createLedger, type Ledger } from '@domain/settlement';
 import type { GameState } from './gameStore';
 import { normalizeProfile, type PlayerProfile } from '@domain/profile';
 import { defaultPlayerMarket, type PlayerMarketState } from '@domain/marketplace';
+import {
+  defaultSkillProgress,
+  normalizeSkillProgress,
+  type SkillProgress,
+} from '@domain/skill-tree';
 import type { CustomerRegistry } from '@domain/customer-memory';
 import type {
   InventoryPosition,
@@ -101,6 +106,8 @@ export interface SaveFile {
   profile?: PlayerProfile;
   /** Market sahipliği; eski kayıtlarda boş koleksiyona düşer. */
   playerMarket?: PlayerMarketState;
+  /** Yetenek ağacı ilerlemesi; eski kayıtlarda tüm kademeler sıfırdır. */
+  skillProgress?: SkillProgress;
 }
 
 /**
@@ -138,6 +145,7 @@ export function serialize(state: GameState): SaveFile {
     seenLessons: state.seenLessons,
     profile: state.profile,
     playerMarket: state.playerMarket,
+    skillProgress: state.skillProgress,
   };
 }
 
@@ -161,6 +169,7 @@ export type LoadedState = Pick<
   | 'seenLessons'
   | 'profile'
   | 'playerMarket'
+  | 'skillProgress'
   | 'queue'
   | 'activeCustomer'
   | 'activeDeal'
@@ -213,6 +222,9 @@ export function deserialize(file: SaveFile): LoadedState {
     // düşer; bozuk bir ad veya bilinmeyen avatar da normalize edilir.
     profile: normalizeProfile(save.profile),
     playerMarket: save.playerMarket ?? defaultPlayerMarket(),
+    skillProgress: save.skillProgress
+      ? normalizeSkillProgress(save.skillProgress)
+      : defaultSkillProgress(),
     // Aktif ziyaret ve yarım pazarlık aynı durumdan devam eder.
     queue: save.queue ?? [],
     activeCustomer: save.activeCustomer ?? null,
