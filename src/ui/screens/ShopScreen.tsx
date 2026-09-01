@@ -152,12 +152,17 @@ export function ShopScreen() {
     return { min, max, step };
   }, [line?.band, ceiling]);
 
-  // Pazarlığa girildiğinde teklifi tavana yakın makul bir yerden başlat.
+  // Pazarlığa girildiğinde teklifi slider'ın gerçekten göstereceği değere
+  // yerleştir. Ham kanal önerisini state'te bırakmak ekranda snap'lenmiş başka
+  // bir rakam gösterirken submit/kâr hesabında eski rakamı kullanıyordu.
   useEffect(() => {
-    if (deal?.stage === 'negotiate' && offer === 0 && ceiling > 0) {
+    if (deal?.stage !== 'negotiate' || offer !== 0) return;
+    if (deal.purchase) {
+      setOffer(purchaseStartingOffer(deal.purchase));
+    } else if (ceiling > 0) {
       setOffer(snapOffer(ceiling * 0.9, offerBounds.min, offerBounds.max, offerBounds.step));
     }
-  }, [deal?.stage, ceiling, offer, offerBounds]);
+  }, [deal?.stage, deal?.purchase, ceiling, offer, offerBounds]);
 
   // Yeni kalem / yeni müşteri → teklif sıfırlanır.
   useEffect(() => {
@@ -1397,7 +1402,7 @@ function PurchaseDock({
           primary={{
             label: 'Pazarlığa Geç',
             onPress: () => {
-              setOffer(purchase.suggestedPrice);
+              setOffer(purchaseStartingOffer(purchase));
               s.setStage('negotiate');
             },
             disabled: !ready,
@@ -1508,6 +1513,13 @@ function purchaseBounds(purchase: NonNullable<GameStateDeal>['purchase']) {
   const max = Math.max(min + 1000, Math.round(fair * 1.6));
   const span = max - min;
   return { min, max, step: span > 200_000 ? 500 : span > 40_000 ? 100 : 50 };
+}
+
+/** Ekranda görülen, kâr hesabında kullanılan ve gönderilen ilk fiyat TEK değer. */
+function purchaseStartingOffer(purchase: NonNullable<GameStateDeal>['purchase']): Money {
+  if (!purchase) return 0;
+  const bounds = purchaseBounds(purchase);
+  return snapOffer(purchase.suggestedPrice, bounds.min, bounds.max, bounds.step);
 }
 
 /** Satışta ilişki etiketi: fiyat adil değerin ne kadar üstünde (GDD 23.12). */
