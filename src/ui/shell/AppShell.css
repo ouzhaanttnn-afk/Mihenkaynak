@@ -834,11 +834,15 @@
 
 /* Ana CTA — her aşamada aynı fiziksel bölgede (GDD 23.12). */
 .cta {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   flex: 1 1 auto;
   height: var(--cta-h);
   min-height: var(--cta-h);
   border-radius: var(--r-md);
-  background: var(--surface-brass);
+  border: 1px solid rgba(111, 72, 12, 0.55);
+  background: linear-gradient(180deg, #efc45a 0%, #cf9526 56%, #aa7617 100%);
   color: #241a06;
   font-size: var(--fs-subtitle);
   font-weight: var(--fw-bold);
@@ -1116,6 +1120,16 @@
   width: auto;
   max-width: 62px;
   height: 56px;
+}
+
+.cta::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 1px 35% 48% 1px;
+  border-radius: inherit;
+  background: linear-gradient(110deg, rgba(255, 255, 255, 0.28), transparent 72%);
+  pointer-events: none;
 }
 
 .idle__headText {
@@ -1438,4 +1452,36 @@
     font-size: var(--fs-subtitle);
     margin-bottom: var(--sp-2);
   }
+}
+
+/* Visual polish: premium mor-altın kök navigasyon. */
+.bottomNav {
+  padding: 5px 4px;
+  background: linear-gradient(180deg, rgba(27, 22, 35, 0.96), rgba(12, 16, 22, 1));
+}
+
+.bottomNav__item {
+  border: 1px solid transparent;
+  border-radius: 12px;
+}
+
+.bottomNav__item--active {
+  color: #fff6dc;
+  border-color: rgba(215, 170, 74, 0.48);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(215, 170, 74, 0.2), transparent 48%),
+    linear-gradient(145deg, rgba(104, 63, 160, 0.92), rgba(49, 25, 86, 0.94));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 4px 14px rgba(34, 17, 58, 0.28);
+}
+
+.bottomNav__item--active::before {
+  top: -5px;
+  width: 22px;
+}
+
+.bottomNav__item--active .bottomNav__label {
+  color: var(--brass-300);
+  font-weight: var(--fw-semibold);
 }

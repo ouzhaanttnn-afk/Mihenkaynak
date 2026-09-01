@@ -73,6 +73,7 @@ import {
 
 import {
   IconClock,
+  IconCash,
   IconCollection,
   IconCounter,
   IconDensity,
@@ -89,6 +90,7 @@ import {
   IconSend,
   IconServiceResale,
   IconSpectrometer,
+  IconStock,
   IconTouchstone,
   IconVideo,
   IconWarning,
@@ -535,17 +537,26 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
 
         <button type="button" className="position" onClick={() => s.setTab('stock')}>
           <span className="position__cell">
-            <span className="position__label">Nakit</span>
-            <span className="position__value num">{tl(s.store.cash)}</span>
+            <span className="position__icon" aria-hidden="true"><IconCash size={15} /></span>
+            <span className="position__copy">
+              <span className="position__label">Nakit</span>
+              <span className="position__value num">{tl(s.store.cash)}</span>
+            </span>
           </span>
           <span className="position__cell">
-            <span className="position__label">Stok Değeri</span>
-            <span className="position__value num">{tl(position.metalValue)}</span>
+            <span className="position__icon" aria-hidden="true"><IconCollection size={15} /></span>
+            <span className="position__copy">
+              <span className="position__label">Stok Değeri</span>
+              <span className="position__value num">{tl(position.metalValue)}</span>
+            </span>
           </span>
           <span className="position__cell">
-            <span className="position__label">Stok</span>
-            <span className="position__value num">
-              {stockCount === 0 ? 'Stok yok' : `${stockCount} ürün`}
+            <span className="position__icon" aria-hidden="true"><IconStock size={15} /></span>
+            <span className="position__copy">
+              <span className="position__label">Stok</span>
+              <span className="position__value num">
+                {stockCount === 0 ? 'Stok yok' : `${stockCount} ürün`}
+              </span>
             </span>
           </span>
 
