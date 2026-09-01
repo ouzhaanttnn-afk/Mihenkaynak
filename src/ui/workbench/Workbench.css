@@ -996,19 +996,30 @@
 .idle__sub {
   font-size: var(--fs-caption);
   color: var(--text-dark-3);
-  margin-top: -6px;
+  margin-top: 2px;
 }
 
 /* ---- Pozisyon paneli — sarrafın "kaç param, kaç malım var" sorusu ---- */
+
+.shopOverview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line-dark);
+  border-radius: var(--r-card);
+  background: linear-gradient(145deg, rgba(29, 38, 50, 0.92), rgba(8, 11, 15, 0.72));
+}
 
 .position {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 2px var(--sp-3);
-  padding: var(--sp-3);
-  border-radius: var(--r-card);
-  background: var(--ink-900);
-  border: 1px solid var(--line-dark);
+  padding: var(--sp-2) 0 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--line-dark);
   text-align: left;
   cursor: pointer;
   font: inherit;
@@ -1092,21 +1103,57 @@
 }
 
 .waitingQueue__head {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: var(--touch-min);
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: rgba(8, 11, 15, 0.32);
   color: var(--text-dark-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.waitingQueue__head h3 {
+.waitingQueue__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.waitingQueue__heading strong {
   font-size: var(--fs-caption);
   font-weight: var(--fw-semibold);
   color: var(--text-dark-1);
 }
 
-.waitingQueue__head span {
+.waitingQueue__heading small {
   font-size: var(--fs-micro);
   color: var(--text-dark-3);
+}
+
+.waitingQueue__count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+.waitingQueue__chevron {
+  display: inline-block;
+  color: var(--brass-400);
+  font-size: 18px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform var(--t-fast) var(--ease-standard);
+}
+
+.waitingQueue__chevron--open {
+  transform: rotate(180deg);
 }
 
 .waitingQueue__list {
@@ -1116,6 +1163,25 @@
   gap: var(--sp-2);
   overflow: visible;
   scrollbar-width: none;
+}
+
+@media (max-height: 720px) {
+  .idle {
+    gap: var(--sp-2);
+  }
+
+  .shopOverview {
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .idle__art {
+    height: 48px;
+    max-width: 54px;
+  }
+
+  .idle__title {
+    font-size: var(--fs-subtitle);
+  }
 }
 
 .waitingQueue__list::-webkit-scrollbar {

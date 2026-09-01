@@ -504,22 +504,6 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         yüzden yeni bir blok açmaz, zaten var olan iki metin satırının
         yüksekliğine (64 px) oturur ve toplam yüksekliği artırmaz.
       */}
-      <div className="idle__head">
-        <Art
-          art={NAV_ART.shop}
-          size={64}
-          decorative
-          className="idle__art art--onDark"
-          fallback={null}
-        />
-        <div className="idle__headText">
-          <h2 className="idle__title">{shopDisplayName(s.profile.jewelerName)}</h2>
-          <p className="idle__sub">
-            Gün {s.market.day} · {weekdayLabel(s.market.day)} · Semt itibarı {Math.round(s.store.reputation)}
-          </p>
-        </div>
-      </div>
-
       {/*
         POZİSYON PANELİ.
 
@@ -532,31 +516,49 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         Gizli gerçek sızmaz (GDD 6.6): buradaki hiçbir sayı tek bir ürünün
         gerçeğini açmaz; hepsi zaten oyuncunun kendi stoğunun toplamıdır.
       */}
-      <button type="button" className="position" onClick={() => s.setTab('stock')}>
-        <span className="position__cell">
-          <span className="position__label">Nakit</span>
-          <span className="position__value num">{tl(s.store.cash)}</span>
-        </span>
-        <span className="position__cell">
-          <span className="position__label">Stok Değeri</span>
-          <span className="position__value num">{tl(position.metalValue)}</span>
-        </span>
-        <span className="position__cell">
-          <span className="position__label">Stok</span>
-          <span className="position__value num">
-            {stockCount === 0 ? 'Stok yok' : `${stockCount} ürün`}
-          </span>
-        </span>
+      <section className="shopOverview" aria-label="Dükkan kimliği ve mali durum">
+        <div className="idle__head">
+          <Art
+            art={NAV_ART.shop}
+            size={56}
+            decorative
+            className="idle__art art--onDark"
+            fallback={null}
+          />
+          <div className="idle__headText">
+            <h2 className="idle__title">{shopDisplayName(s.profile.jewelerName)}</h2>
+            <p className="idle__sub">
+              Gün {s.market.day} · {weekdayLabel(s.market.day)} · Semt itibarı {Math.round(s.store.reputation)}
+            </p>
+          </div>
+        </div>
 
-        {/* Nakit–altın dengesi tek çubukta; sarrafın asıl gerilimi bu. */}
-        <span className="position__bar" aria-hidden="true">
-          <span className="position__barFill" style={{ width: `${metalShare}%` }} />
-        </span>
-        <span className="position__legend">
-          Altın %{metalShare} · Nakit %{100 - metalShare}
-          <span className="position__go">Stok ›</span>
-        </span>
-      </button>
+        <button type="button" className="position" onClick={() => s.setTab('stock')}>
+          <span className="position__cell">
+            <span className="position__label">Nakit</span>
+            <span className="position__value num">{tl(s.store.cash)}</span>
+          </span>
+          <span className="position__cell">
+            <span className="position__label">Stok Değeri</span>
+            <span className="position__value num">{tl(position.metalValue)}</span>
+          </span>
+          <span className="position__cell">
+            <span className="position__label">Stok</span>
+            <span className="position__value num">
+              {stockCount === 0 ? 'Stok yok' : `${stockCount} ürün`}
+            </span>
+          </span>
+
+          {/* Nakit–altın dengesi tek çubukta; sarrafın asıl gerilimi bu. */}
+          <span className="position__bar" aria-hidden="true">
+            <span className="position__barFill" style={{ width: `${metalShare}%` }} />
+          </span>
+          <span className="position__legend">
+            Altın %{metalShare} · Nakit %{100 - metalShare}
+            <span className="position__go">Stok ›</span>
+          </span>
+        </button>
+      </section>
 
       {!s.inventory.some(p => {
         const item = s.items[p.itemId];
@@ -606,16 +608,30 @@ function WaitingCustomerQueue() {
   const queue = useGame((s) => s.queue);
   const capacity = useGame((s) => queueCapacity(s.store));
   const greetCustomer = useGame((s) => s.greetCustomer);
+  const [expanded, setExpanded] = useState(false);
+  const visibleQueue = expanded ? queue : queue.slice(0, 1);
 
   return (
     <section className="waitingQueue" aria-labelledby="waiting-queue-title">
-      <div className="waitingQueue__head">
-        <h3 id="waiting-queue-title">Bekleyen Müşteriler</h3>
-        <span>{queue.length}/{capacity}</span>
-      </div>
+      <button
+        type="button"
+        className="waitingQueue__head"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        aria-controls="waiting-customer-list"
+      >
+        <span className="waitingQueue__heading">
+          <strong id="waiting-queue-title">Bekleyen Müşteriler</strong>
+          <small>{expanded ? 'Kuyruğu daralt' : queue.length > 1 ? `${queue.length - 1} müşteriyi daha göster` : 'Sıradaki müşteri'}</small>
+        </span>
+        <span className="waitingQueue__count">
+          {queue.length}/{capacity}
+          <span className={`waitingQueue__chevron ${expanded ? 'waitingQueue__chevron--open' : ''}`} aria-hidden="true">⌄</span>
+        </span>
+      </button>
 
-      <div className="waitingQueue__list">
-        {queue.map(({ customer, items }, index) => {
+      <div className="waitingQueue__list" id="waiting-customer-list">
+        {visibleQueue.map(({ customer, items }, index) => {
           const archetype = getArchetype(customer.archetype);
           const isNext = index === 0;
 
