@@ -66,6 +66,13 @@ const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
 // ===========================================================================
 
 describe('Standart sarrafiye ölçülmeden de bilinir', () => {
+  it('müşteriden gelen standart yatırım bileziği test yapılmadan doğrulanmış sayılmaz', () => {
+    const item = spawnItem(SEED, 41, 'investment_bangle_22k_40');
+    const knowledge = initialKnowledge(item);
+    expect(knowledge.find((field) => field.field === 'weight')?.status).not.toBe('verified');
+    expect(knowledge.find((field) => field.field === 'purity')?.status).not.toBe('verified');
+  });
+
   it('test yapılmadan band dar kalır', () => {
     for (const id of BULLION) {
       const w = widthOf(id);

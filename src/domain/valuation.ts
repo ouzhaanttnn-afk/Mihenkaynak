@@ -113,11 +113,13 @@ export function initialKnowledge(item: ItemInstance): FieldKnowledge[] {
   // zaten belirsiz saymaz (taşsız üründe taş belirsizliği yoktur), bu yüzden
   // hesaplanan değer aynı kalır (§8 "değerleme formülleri değişmez").
   /*
-   * STANDART SARRAFİYE ZATEN BİLİNİR.
+   * STANDART SARRAFİYENİN KATALOG BEYANI GÜÇLÜDÜR, FİZİKSELİ DOĞRULANMIŞ
+   * SAYILMAZ.
    *
-   * Çeyreğin gramajı 1,75 g ve ayarı 22'dir — bu ölçülerek ÖĞRENİLEN değil,
-   * ürünün TANIMINDA olan bir bilgidir. Damgalıdır, darphane çıkışlıdır,
-   * fiyatı her sarrafın ekranında yazar.
+   * Çeyreğin katalog gramajı 1,75 g ve beyan ayarı 22'dir. Bunlar güçlü bir
+   * başlangıç bilgisi sağlar; fakat müşterinin getirdiği fiziksel parçanın
+   * gerçekten o ağırlık ve saflıkta olduğunu kanıtlamaz. Bu nedenle başlangıç
+   * durumu `partial` kalır, terazi/mihenk sonrası `verified` olur.
    *
    * Eskiden çeyrek de ikinci el bir bilezik gibi işleniyordu: test edilmemiş
    * bir çeyreğin değer bandı %53 genişlikte çıkıyordu. Alış tavanı band
@@ -144,11 +146,20 @@ export function initialKnowledge(item: ItemInstance): FieldKnowledge[] {
     if (field === 'stone') certainty = item.truth.stoneData.kind === 'none' ? 1 : 0.1;
     if (field === 'coreIntegrity') certainty = 0.2;
 
+    const credibleDeclaration = standardBullion && (field === 'weight' || field === 'purity');
     return {
       field,
       certainty,
       testsApplied: [],
-      status: certainty >= 0.85 ? 'verified' : certainty > 0.3 ? 'partial' : 'unverified',
+      // Yüksek katalog güveni ekonomik bandı daraltır; ancak müşterinin
+      // fiziksel ürünü ölçülmeden "doğrulandı" etiketi üretmez.
+      status: credibleDeclaration
+        ? 'partial'
+        : certainty >= 0.85
+          ? 'verified'
+          : certainty > 0.3
+            ? 'partial'
+            : 'unverified',
     };
   });
 }
