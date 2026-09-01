@@ -22,6 +22,22 @@ interface Props {
 export function MarketStrip({ market, onOpenMarket }: Props) {
   const regime = MARKET_REGIME[market.regime];
   const closed = market.marketOpen === false;
+  const gramAsset = market.assets.find((asset) => asset.id === 'goldGram');
+  /*
+   * HAS, piyasa motorundaki saf 1.000 altın spotunun kendisidir. Gram Altın
+   * ise ürün saflığıyla fiyatlandığı için aynı etiket altında gösterilmesi
+   * iki farklı referansı birbirine karıştırıyordu. Yeni bir fiyat üretmeden
+   * canonical goldSpot'u şeritte ayrı ve açık bir kart olarak gösteriyoruz.
+   */
+  const visibleAssets = [
+    {
+      id: 'hasGold',
+      label: 'HAS Altın',
+      price: market.goldSpot,
+      changePct: gramAsset?.changePct ?? 0,
+    },
+    ...market.assets,
+  ].slice(0, 5);
 
   /*
    * ŞERİT TEK BİR <button> DEĞİLDİR.
@@ -56,7 +72,7 @@ export function MarketStrip({ market, onOpenMarket }: Props) {
         </span>
       </button>
 
-      {market.assets.slice(0, 4).map((asset) => (
+      {visibleAssets.map((asset) => (
         <button
           key={asset.id}
           type="button"

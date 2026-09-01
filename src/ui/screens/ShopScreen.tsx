@@ -544,7 +544,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         <span className="position__cell">
           <span className="position__label">Stok</span>
           <span className="position__value num">
-            {stockCount} <span className="position__unit">kalem</span>
+            {stockCount === 0 ? 'Stok yok' : `${stockCount} ürün`}
           </span>
         </span>
 

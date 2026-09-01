@@ -75,7 +75,7 @@ export function StockScreen() {
       <header className="pageHead">
         <h1 className="pageHead__title">Stok</h1>
         <p className="pageHead__sub">
-          {s.inventory.length} kalem · Vitrin {counts.display}/{s.store.displaySlots} · Arka stok{' '}
+          {s.inventory.length === 0 ? 'Stok boş' : `${s.inventory.length} ürün`} · Vitrin {counts.display}/{s.store.displaySlots} · Arka stok{' '}
           {counts.backStock}/{s.store.backStockSlots}
         </p>
 
@@ -151,7 +151,7 @@ export function StockScreen() {
               />
             </div>
             <p className="empty__title">
-              {s.inventory.length === 0 ? 'Stok boş' : 'Bu filtrede kalem yok'}
+              {s.inventory.length === 0 ? 'Stok boş' : 'Bu filtrede ürün yok'}
             </p>
             <p className="empty__text">
               {s.inventory.length === 0
