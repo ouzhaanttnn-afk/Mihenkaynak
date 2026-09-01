@@ -477,13 +477,16 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
 
   /*
     §7 — TAKVİM SATIRI UYARI OLMAKTAN ÇIKTI.
-    "Sonraki müşteri ~2 dk" bir uyarı değil, ekranın ASIL durumudur; artık
-    aşağıdaki dinamik operasyon alanında, o durumun kendi başlığının
-    altında duruyor. Uyarı şeridinde yalnız gerçekten bağlam bozan iki şey
-    kalıyor: piyasa olayı ve likidite.
-  */
-  const nextIn = Math.max(0, Math.round(s.nextCustomerAtMinutes - s.market.clockMinutes));
+    Uyarı şeridinde yalnız gerçekten bağlam bozan iki şey kalıyor: piyasa
+    olayı ve likidite.
 
+    "SONRAKİ MÜŞTERİ ~N DK" SATIRI TAMAMEN KALDIRILDI (oyuncu geri bildirimi).
+    Sarraf sonraki müşterinin ne zaman geleceğini BİLMEZ; bu sayı motorun iç
+    durumuydu (`nextCustomerAtMinutes`) ve ekranda olması oyunun temel
+    bilinmezini ücretsiz açıyordu. Dükkânın sakin mi yoğun mu olduğu bir
+    tahmin konusudur — geri sayım gösterilseydi oyuncu ekrana değil sayaca
+    bakardı. Kapanış saati kalıyor: onu sarraf gerçekten bilir.
+  */
   const position = selectors.position(s);
   const metalShare = Math.round(position.metalShare * 100);
   const stockCount = s.inventory.reduce((n, p) => n + p.quantity, 0);
@@ -593,7 +596,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         </div>
       )}
 
-      <OperationArea nextIn={nextIn} />
+      <OperationArea />
     </div>
   );
 }
@@ -622,7 +625,7 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
  * GDD 6.6: bekleyen müşteri satırı ürünün ADINI söyler, gizli gerçeğini
  * değil — cümle müşterinin kendi beyanıdır.
  */
-function OperationArea({ nextIn }: { nextIn: number }) {
+function OperationArea() {
   const s = useGame();
   const head = s.queue[0];
 
@@ -691,10 +694,10 @@ function OperationArea({ nextIn }: { nextIn: number }) {
   /*
     PAZAR — DÜKKÂN KAPALI (calendar.ts · isShopOpen).
 
-    "Sonraki müşteri ~1 dk" pazar günü DÜZ YALANDI: kimse gelmeyecek ve
-    oyuncu ekranın en büyük kartına bakıp bekliyordu. "Dükkânı Canlandır"
-    da burada anlamsız — canlandırılacak bir akış yok, para vermeyen bir
-    CTA'yı çalışmadığı yerde göstermek güveni yer.
+    Kart pazar günü "sakin" diyemez: sakinlik bir olasılıktır, kapalılık
+    bir gerçektir. "Dükkânı Canlandır" da burada anlamsız — canlandırılacak
+    bir akış yok, para vermeyen bir CTA'yı çalışmadığı yerde göstermek
+    güveni yer.
 
     Kart pazar günü ne olduğunu söyler ve günün gerçek işini işaret eder:
     stok, atölye ve toptancı. Pazar kayıp bir gün değil, planlama günüdür.
@@ -718,9 +721,7 @@ function OperationArea({ nextIn }: { nextIn: number }) {
   return (
     <div className="op op--calm">
       <span className="op__title">Dükkan şu an sakin</span>
-      <span className="op__line">
-        Sonraki müşteri ~{nextIn} dk · Dükkan {clock(DAY.closeMinutes)}'da kapanıyor.
-      </span>
+      <span className="op__line">Dükkan {clock(DAY.closeMinutes)}'da kapanıyor.</span>
 
       {/*
        * GDD 23.10.1 — "ana akışı bozmayan ikincil rewarded CTA".
