@@ -1130,6 +1130,15 @@
   transition: filter var(--t-fast) var(--ease-standard), transform var(--t-fast) var(--ease-standard);
 }
 
+/* Gerçekçi mikro ikonlar: tüm eski Icon* çağrıları aynı semantik dosya adına gider. */
+.microIcon {
+  display: inline-block;
+  flex: 0 0 auto;
+  object-fit: contain;
+  vertical-align: middle;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.28));
+}
+
 .bottomNav__item--active .bottomNav__art {
   filter: saturate(1.08) brightness(1.08) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
   transform: translateY(-1px);
