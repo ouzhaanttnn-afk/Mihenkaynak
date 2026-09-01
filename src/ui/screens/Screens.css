@@ -1237,3 +1237,25 @@
   border-radius: 999px;
   background: rgba(201, 157, 66, 0.42);
 }
+
+/* İkincil rotalar masaüstü genişliğini kullanırken aynı cam yüzeyi korur. */
+@media (min-width: 900px) and (min-height: 720px) {
+  .pageHead {
+    padding-inline: var(--sp-6);
+  }
+
+  .page__scroll {
+    padding-inline: var(--sp-6);
+  }
+
+  .page .row,
+  .page .group__body,
+  .page .eventCard,
+  .page .marketPlaceholder__card,
+  .page .counter,
+  .page .personnelDisclosure,
+  .page .deliveryResult {
+    border-color: var(--line-glass);
+    box-shadow: var(--sh-glass);
+  }
+}

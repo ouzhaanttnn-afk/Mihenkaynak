@@ -1466,20 +1466,27 @@ function PurchaseDock({
           ]}
         >
           {!isFinal && (
-            <OfferControl
-              value={offer}
-              onChange={setOffer}
-              min={bounds.min}
-              max={bounds.max}
-              step={bounds.step}
-              impacts={impacts}
-              disabled={isTerminal(session.state)}
-              unitLabel={offerUnitLabel(
-                purchase.lines.map((l) => s.items[l.itemId]).filter(Boolean) as ItemInstance[],
-                purchase.lines.filter((l) => s.items[l.itemId]).map((l) => l.quantity),
-                offer,
+            <>
+              {profit < 0 && (
+                <p className="dock__lossWarning" role="status">
+                  Zararına satış · maliyetin {tl(Math.abs(profit))} altında
+                </p>
               )}
-            />
+              <OfferControl
+                value={offer}
+                onChange={setOffer}
+                min={bounds.min}
+                max={bounds.max}
+                step={bounds.step}
+                impacts={impacts}
+                disabled={isTerminal(session.state)}
+                unitLabel={offerUnitLabel(
+                  purchase.lines.map((l) => s.items[l.itemId]).filter(Boolean) as ItemInstance[],
+                  purchase.lines.filter((l) => s.items[l.itemId]).map((l) => l.quantity),
+                  offer,
+                )}
+              />
+            </>
           )}
         </DecisionDock>
       );

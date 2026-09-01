@@ -159,6 +159,10 @@
   /* ---- Kompozit yüzeyler ---- */
   --surface-workbench: linear-gradient(180deg, var(--ink-700) 0%, var(--ink-800) 62%, var(--ink-900) 100%);
   --surface-brass: linear-gradient(180deg, var(--brass-400) 0%, var(--brass-500) 52%, var(--brass-600) 100%);
+  --surface-glass: linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012));
+  --surface-glass-strong: rgba(10, 15, 22, 0.9);
+  --line-glass: rgba(215, 170, 74, 0.28);
+  --sh-glass: inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 12px 30px rgba(0, 0, 0, 0.2);
   --hairline-brass: linear-gradient(
     90deg,
     transparent 0%,

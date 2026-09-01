@@ -935,6 +935,7 @@
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   overflow-anchor: none;
+  scroll-padding-block: var(--sp-3);
 }
 
 .workbench--idle {
@@ -972,6 +973,19 @@
  */
 .idle--coaching {
   justify-content: flex-start;
+}
+
+/*
+ * Kuyruk dersi açıkken üst şerit zaten gün/nakit bilgisini gösterir ve ders
+ * müşteriyi karşılamayı ister. Geçici ders boyunca tekrar eden kimlik ve stok
+ * uyarısını saklayarak ilk müşteri kartının ders şeridi altında kırpılmasını
+ * engelleriz; ders kapanınca içerik eksiksiz geri gelir.
+ */
+.idle--coaching.idle--hasQueue .shopOverview,
+.idle--coaching.idle--hasQueue > .alert,
+.idle--coaching.idle--hasQueue .alerts,
+.idle--coaching.idle--hasQueue .rewardedLine {
+  display: none;
 }
 
 @media (max-height: 720px) {
@@ -1218,6 +1232,15 @@
   scrollbar-width: none;
 }
 
+/* Açılan kuyruk kendi içinde büyür ama karar dock'unu ekran dışına itemez. */
+.waitingQueue__head[aria-expanded='true'] + .waitingQueue__list {
+  max-height: min(248px, 32dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
 @media (max-height: 720px) {
   .idle {
     gap: var(--sp-2);
@@ -1356,6 +1379,24 @@
 .waitingCustomer__greet:active {
   transform: translateY(1px);
   box-shadow: inset 0 1px 3px rgba(36, 26, 6, 0.22);
+}
+
+@media (max-width: 390px) {
+  .waitingCustomer {
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .waitingCustomer__avatar {
+    flex-basis: 38px;
+    width: 38px;
+    height: 38px;
+  }
+
+  .waitingCustomer__greet {
+    min-width: 62px;
+    padding-inline: 10px;
+  }
 }
 
 @media (max-height: 450px) {
@@ -1559,6 +1600,59 @@
   min-height: var(--touch-min);
   padding: 5px var(--sp-4);
   background: transparent;
+}
+
+/*
+ * PC düzeni: ana kimlik/sermaye solda, kuyruk ve günlük durum sağda.
+ * Mobil DOM sırası değişmez; yalnız geniş ekranda boş alan işe koşulur.
+ */
+@media (min-width: 900px) and (min-height: 720px) {
+  .wb {
+    padding-inline: var(--sp-6);
+  }
+
+  .idle {
+    display: grid;
+    grid-template-columns: minmax(0, 1.06fr) minmax(300px, 0.94fr);
+    grid-auto-rows: max-content;
+    align-content: center;
+    justify-content: stretch;
+    column-gap: var(--sp-4);
+    row-gap: var(--sp-3);
+    overflow: hidden;
+  }
+
+  .idle .shopOverview {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .idle > .alert,
+  .idle > .rewardedLine {
+    grid-column: 1;
+  }
+
+  .idle .waitingQueue,
+  .idle .alerts {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: start;
+  }
+
+  .idle--hasQueue .alerts {
+    grid-row: 2;
+  }
+
+  .waitingQueue__head[aria-expanded='true'] + .waitingQueue__list {
+    max-height: 360px;
+  }
+
+  .shopOverview,
+  .waitingQueue__head,
+  .waitingCustomer,
+  .alert {
+    box-shadow: var(--sh-glass);
+  }
 }
 
 /* ------------------------------------------------------------------ */
