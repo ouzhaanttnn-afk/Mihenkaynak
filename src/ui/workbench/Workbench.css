@@ -1398,6 +1398,111 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
 }
 
+/* Ana Dükkan'dan ayrılmadan sarrafiye alımı. */
+.quickStockScrim {
+  position: absolute;
+  z-index: 75;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(5, 8, 12, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.quickStockSheet {
+  width: 100%;
+  max-height: min(82%, 700px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-4) var(--gutter) calc(var(--sp-4) + var(--safe-bottom));
+  border: 1px solid rgba(215, 170, 74, 0.62);
+  border-bottom: 0;
+  border-radius: 26px 26px 0 0;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(104, 63, 160, 0.09), transparent 34%),
+    var(--stone-50);
+  color: var(--text-light-1);
+  box-shadow: 0 -22px 70px rgba(0, 0, 0, 0.48);
+  animation: quickStockIn 180ms var(--ease-standard);
+}
+
+@keyframes quickStockIn {
+  from { transform: translateY(18px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.quickStockSheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.quickStockSheet__eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--amethyst-600);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.quickStockSheet__head h2 {
+  margin: 0;
+  font: var(--fw-semibold) var(--fs-title)/var(--lh-tight) var(--font-display);
+}
+
+.quickStockSheet__close {
+  flex: 0 0 var(--touch-min);
+  width: var(--touch-min);
+  height: var(--touch-min);
+  border: 1px solid var(--line-light-strong);
+  border-radius: var(--r-pill);
+  background: var(--stone-100);
+  color: var(--text-light-2);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.quickStockSheet__intro {
+  margin: var(--sp-2) 0 var(--sp-3);
+  color: var(--text-light-2);
+  font-size: var(--fs-caption);
+  line-height: 1.4;
+}
+
+.quickStockSheet__scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line-light);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.quickStockSheet__scroll .counter__list {
+  border: 0;
+  border-radius: 0;
+}
+
+.quickStockSheet__done {
+  flex: 0 0 auto;
+  min-height: var(--touch-min);
+  margin-top: var(--sp-3);
+  border: 1px solid var(--brass-600);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, #efc45a, #bd851d);
+  color: #241a06;
+  font-weight: var(--fw-bold);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.38), 0 5px 16px rgba(168, 130, 58, 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quickStockSheet { animation: none; }
+}
+
 .alert--warning {
   border-left-color: var(--warning);
 }

@@ -455,7 +455,9 @@ export const useGame = create<GameState>((set, get) => {
 
     // -----------------------------------------------------------------------
     setTab: (tab) => set({ tab }),
-    openStockCatalog: () => set({ tab: 'stock', stockCatalogOpen: true }),
+    // Ana Dükkan'daki hızlı alım, oyuncuyu bağlamından koparmadan sheet açar.
+    // Stok ekranındaki aynı katalog kendi açılır tezgâhı olarak yaşamaya devam eder.
+    openStockCatalog: () => set({ stockCatalogOpen: true }),
     setStockCatalogOpen: (stockCatalogOpen) => set({ stockCatalogOpen }),
     setPersonnelCount: (count) => {
       const s = get();

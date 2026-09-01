@@ -94,6 +94,7 @@ export function BusinessScreen() {
 function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
   const s = useGame();
   const [pendingPersonnel, setPendingPersonnel] = useState<number | null>(null);
+  const [personnelOpen, setPersonnelOpen] = useState(false);
   const wealth = summarizeWealth({
     market: s.market,
     store: s.store,
@@ -153,8 +154,21 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
         {/* Addendum §5 — gecelik pozisyon ve sonucu */}
         <OvernightPanel />
         <div className="group">
-          <h2 className="group__title">Kuyruk Personeli</h2>
-          <div className="group__body v5Controls">
+          <button
+            type="button"
+            className="personnelDisclosure"
+            onClick={() => setPersonnelOpen((open) => !open)}
+            aria-expanded={personnelOpen}
+            aria-controls="personnel-controls"
+          >
+            <span className="personnelDisclosure__icon"><IconBusiness size={18} /></span>
+            <span className="personnelDisclosure__copy">
+              <strong>Kuyruk Personeli</strong>
+              <small>{personnelCount(s.store)} personel · Kapasite {queueCapacity(s.store)} · Günlük {tl(personnelDaily(s.store))}</small>
+            </span>
+            <span className={`personnelDisclosure__chevron ${personnelOpen ? 'personnelDisclosure__chevron--open' : ''}`} aria-hidden="true">⌄</span>
+          </button>
+          {personnelOpen && <div className="group__body v5Controls personnelControls" id="personnel-controls">
             <p>Personel {personnelCount(s.store)} · Bekleme kapasitesi {queueCapacity(s.store)}</p>
             <p>Aylık {tl(PERSONNEL_MONTHLY[personnelCount(s.store)]!)} · Günlük {tl(personnelDaily(s.store))}</p>
             <p>Maaşlar kişi başına eklenir: {PERSONNEL_SALARIES.map(salary => tl(salary)).join(' + ')} / ay.</p>
@@ -167,7 +181,7 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               <button type="button" className="chip" onClick={() => { s.setPersonnelCount(pendingPersonnel); setPendingPersonnel(null); }}>Personeli Onayla</button>
               <button type="button" className="chip" onClick={() => setPendingPersonnel(null)}>Vazgeç</button>
             </div>}
-          </div>
+          </div>}
         </div>
         <div className="group">
           <h2 className="group__title">Günlük Akış</h2>

@@ -304,6 +304,72 @@
   font: inherit;
 }
 
+.personnelDisclosure {
+  width: 100%;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--card-pad);
+  border: 1px solid var(--line-light);
+  border-radius: var(--r-md);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(104, 63, 160, 0.1), transparent 34%),
+    var(--stone-50);
+  color: var(--text-light-1);
+  text-align: left;
+  box-shadow: 0 5px 16px rgba(35, 28, 20, 0.05);
+}
+
+.personnelDisclosure__icon {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(196, 141, 43, 0.42);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(104, 63, 160, 0.16), rgba(196, 141, 43, 0.1));
+  color: var(--amethyst-600);
+}
+
+.personnelDisclosure__copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.personnelDisclosure__copy strong {
+  font-size: var(--fs-caption);
+}
+
+.personnelDisclosure__copy small {
+  overflow: hidden;
+  color: var(--text-light-3);
+  font-size: var(--fs-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personnelDisclosure__chevron {
+  flex: 0 0 auto;
+  color: var(--brass-600);
+  font-size: 22px;
+  transition: transform var(--t-fast) var(--ease-standard);
+}
+
+.personnelDisclosure__chevron--open {
+  transform: rotate(180deg);
+}
+
+.personnelControls {
+  margin-top: var(--sp-2);
+  border-color: rgba(196, 141, 43, 0.35);
+  box-shadow: inset 3px 0 0 var(--amethyst-500);
+}
+
 .statLine {
   display: flex;
   align-items: center;

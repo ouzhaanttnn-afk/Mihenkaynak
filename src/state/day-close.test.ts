@@ -49,6 +49,17 @@ describe('personnel additive salaries and level gates', () => {
   });
 });
 
+describe('shop quick stock disclosure', () => {
+  it('opens the shared catalog without navigating away from the shop', () => {
+    useGame.setState({ tab: 'shop', stockCatalogOpen: false });
+
+    useGame.getState().openStockCatalog();
+
+    expect(useGame.getState().tab).toBe('shop');
+    expect(useGame.getState().stockCatalogOpen).toBe(true);
+  });
+});
+
 describe('day confirmation and persistent summary', () => {
   it('keeps simultaneous equal-length notification keys unique without game RNG', () => {
     vi.spyOn(Date, 'now').mockReturnValue(123);

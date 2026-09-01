@@ -203,9 +203,14 @@ function BullionCounter() {
         </span>
       </span>
     </button>
-    {s.stockCatalogOpen && <div className="counter__list" id="bullion-catalog">
-      {POOL_SUPPLY.map(product => <BullionOffer key={product.templateId} product={product} />)}
-    </div>}
+    {s.stockCatalogOpen && <BullionCatalog id="bullion-catalog" />}
+  </div>;
+}
+
+/** Ana Dükkan hızlı alım sheet'i ile Stok ekranı aynı gerçek kataloğu paylaşır. */
+export function BullionCatalog({ id }: { id?: string }) {
+  return <div className="counter__list" id={id}>
+    {POOL_SUPPLY.map(product => <BullionOffer key={product.templateId} product={product} />)}
   </div>;
 }
 

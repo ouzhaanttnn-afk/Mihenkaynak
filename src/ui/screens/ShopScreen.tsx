@@ -105,6 +105,7 @@ import { RETAIL_BULLION_CATALOG } from '@data/bullion';
 import { showcaseStock } from '@domain/purchase';
 import { poolForItem, poolForTemplate } from '@domain/stock-pools';
 import { customerPriceBand } from '@domain/customer-pricing';
+import { BullionCatalog } from '@ui/screens/StockScreen';
 import { clock, pct, tl, tlSigned, tonWord, preciseGrams } from '@ui/format';
 import { offerUnitLabel } from '@ui/offer-view';
 import type {
@@ -428,7 +429,36 @@ export function ShopScreen() {
       <ContextualToolRail liquidity={liquidity} />
 
       <ShopDock offer={offer} setOffer={setOffer} bounds={offerBounds} liquidity={liquidity} />
+
+      {s.stockCatalogOpen && (
+        <QuickStockSheet onClose={() => s.setStockCatalogOpen(false)} />
+      )}
     </>
+  );
+}
+
+function QuickStockSheet({ onClose }: { onClose: () => void }) {
+  const cash = useGame((s) => s.store.cash);
+
+  return (
+    <div className="quickStockScrim" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="quickStockSheet" role="dialog" aria-modal="true" aria-labelledby="quick-stock-title">
+        <header className="quickStockSheet__head">
+          <span>
+            <span className="quickStockSheet__eyebrow">Hızlı Stok</span>
+            <h2 id="quick-stock-title">İlk Sarrafiyeni Al</h2>
+          </span>
+          <button type="button" className="quickStockSheet__close" onClick={onClose} aria-label="Hızlı stok ekranını kapat">×</button>
+        </header>
+        <p className="quickStockSheet__intro">Dükkan ekranından ayrılmadan satılabilir sarrafiye oluştur. Kullanılabilir nakit: <strong>{tl(cash)}</strong></p>
+        <div className="quickStockSheet__scroll">
+          <BullionCatalog />
+        </div>
+        <button type="button" className="quickStockSheet__done" onClick={onClose}>Alımı Bitir</button>
+      </section>
+    </div>
   );
 }
 
