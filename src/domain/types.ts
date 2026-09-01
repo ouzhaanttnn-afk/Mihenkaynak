@@ -508,6 +508,11 @@ export interface MarketState {
   assets: MarketAsset[];
   /** Gün içi ±%3 bandının sabit açılış çapası. */
   dayOpen?: { goldSpot: number; silverSpot: number; fxIndex: number };
+  /**
+   * Yaklaşık 100 açık günlük hafızayla fiyatı izleyen makro çapa. Eski
+   * kayıtlarda yoksa başlangıç referanslarından geriye uyumlu kurulur.
+   */
+  macroAnchor?: { goldSpot: number; silverSpot: number; fxIndex: number };
   /** Cumartesi–pazar false; kotasyon ve gün içi hareket donar. */
   marketOpen?: boolean;
   /** Pazartesi açılışında biriken kapalı gün sayısı (normalde 2). */

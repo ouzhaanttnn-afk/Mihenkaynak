@@ -205,12 +205,14 @@ export const MARKET_DAILY_CAP = 0.03;
  * üretir. Böylece 30 günlük trendler yaşar, 365 günlük bileşik uçuşlar yaşamaz.
  */
 export const MARKET_MEAN_REVERSION = {
-  /** Bu sapma içinde piyasa serbest hareket eder. */
-  freeBand: 0.08,
+  /** Hareketli makro çapanın çevresindeki geniş serbest hareket alanı. */
+  freeBand: 0.2,
+  /** Makro çapa her açık gün fiyatın %1'ini izler (~100 işlem günü hafıza). */
+  anchorFollow: 0.01,
   /** Serbest bandın dışındaki sapmanın günlük geri besleme payı. */
-  strength: 0.055,
-  /** Dengeleyici hiçbir günde fiyatı tek başına %0,25'ten fazla itemez. */
-  dailyCap: 0.0025,
+  strength: 0.025,
+  /** Dengeleyici hiçbir günde fiyatı tek başına %0,15'ten fazla itemez. */
+  dailyCap: 0.0015,
 } as const;
 
 /**

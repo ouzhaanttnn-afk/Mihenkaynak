@@ -100,6 +100,16 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
   const prevGold = prev?.goldSpot ?? MARKET_BASE.goldGram;
   const prevSilver = prev?.silverSpot ?? MARKET_BASE.silverGram;
   const prevFx = prev?.fxIndex ?? MARKET_BASE.usd;
+  const previousAnchor = prev?.macroAnchor ?? {
+    goldSpot: MARKET_BASE.goldGram,
+    silverSpot: MARKET_BASE.silverGram,
+    fxIndex: MARKET_BASE.usd,
+  };
+  const macroAnchor = {
+    goldSpot: followMacroAnchor(previousAnchor.goldSpot, prevGold),
+    silverSpot: followMacroAnchor(previousAnchor.silverSpot, prevSilver),
+    fxIndex: followMacroAnchor(previousAnchor.fxIndex, prevFx),
+  };
 
   // Pazartesi iki kapalı günün haberini tek açılışta fiyatlar: √3 ölçeği.
   const span = closedDaysBefore(day) + 1;
@@ -113,12 +123,12 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
   const move = composeDailyMove(rng, { regime, trend, volatility, activeEvent, day });
 
   const cap = MARKET_DAILY_CAP * spanScale;
-  const goldMove = (move.total + meanReversionNudge(prevGold, MARKET_BASE.goldGram)) * spanScale;
+  const goldMove = (move.total + meanReversionNudge(prevGold, macroAnchor.goldSpot)) * spanScale;
   const silverMove =
-    (move.total * rng.range(0.8, 1.6) + meanReversionNudge(prevSilver, MARKET_BASE.silverGram)) *
+    (move.total * rng.range(0.8, 1.6) + meanReversionNudge(prevSilver, macroAnchor.silverSpot)) *
     spanScale;
   const fxMove =
-    (move.total * 0.3 + meanReversionNudge(prevFx, MARKET_BASE.usd)) * spanScale;
+    (move.total * 0.3 + meanReversionNudge(prevFx, macroAnchor.fxIndex)) * spanScale;
   const goldSpot = bandedPrice(prevGold * (1 + goldMove), prevGold, cap);
   const silverSpot = bandedPrice(prevSilver * (1 + silverMove), prevSilver, cap);
   const fxIndex = bandedPrice(prevFx * (1 + fxMove), prevFx, cap);
@@ -142,11 +152,18 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
     activeEvent,
     assets,
     dayOpen,
+    macroAnchor,
     marketOpen: true,
     gapDays: span - 1,
     lastIntradayStepIndex: Math.floor((9 * 60) / 15) - 1,
     seed: rootSeed,
   };
+}
+
+function followMacroAnchor(anchor: number, observedPrice: number): number {
+  if (!(anchor > 0)) return observedPrice;
+  if (!(observedPrice > 0)) return anchor;
+  return anchor + (observedPrice - anchor) * MARKET_MEAN_REVERSION.anchorFollow;
 }
 
 /**

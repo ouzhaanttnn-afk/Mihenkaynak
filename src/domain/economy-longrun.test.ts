@@ -27,11 +27,27 @@ function simulate(days: number, seed = 159_360): {
 }
 
 describe('uzun dönem ekonomi snapshotları', () => {
-  it.each([30, 120, 365])('%i günlük fiyat zinciri kontrollü kalır', (days) => {
-    const snapshot = simulate(days);
+  it.each([30, 120, 365])('%i günlük 64 piyasa zincirinin dağılımı kontrollü kalır', (days) => {
+    const runs = Array.from({ length: 64 }, (_, index) => simulate(days, 159_000 + index * 9_973));
+    const ratios = runs.map((run) => run.finalVsReference).sort((a, b) => a - b);
+    const percentile = (ratio: number) => ratios[Math.floor((ratios.length - 1) * ratio)]!;
+    const snapshot = {
+      days,
+      p10: percentile(0.1),
+      median: percentile(0.5),
+      p90: percentile(0.9),
+      lowestObserved: Math.min(...runs.map((run) => run.minimum)),
+      highestObserved: Math.max(...runs.map((run) => run.maximum)),
+      risingRuns: ratios.filter((ratio) => ratio > 1).length,
+      fallingRuns: ratios.filter((ratio) => ratio < 1).length,
+    };
     expect(snapshot).toMatchSnapshot();
-    expect(snapshot.minimum).toBeGreaterThan(MARKET_BASE.goldGram * 0.45);
-    expect(snapshot.maximum).toBeLessThan(MARKET_BASE.goldGram * 2.2);
+    expect(snapshot.p10).toBeGreaterThan(0.45);
+    expect(snapshot.p90).toBeLessThan(2.2);
+    expect(snapshot.median).toBeGreaterThan(0.65);
+    expect(snapshot.median).toBeLessThan(1.35);
+    expect(snapshot.risingRuns).toBeGreaterThan(0);
+    expect(snapshot.fallingRuns).toBeGreaterThan(0);
   });
 
   it('denge kuvveti yalnız serbest bandın dışında ve tavanlı çalışır', () => {

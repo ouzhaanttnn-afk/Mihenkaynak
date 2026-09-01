@@ -1,31 +1,40 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`uzun dönem ekonomi snapshotları > 30 günlük fiyat zinciri kontrollü kalır 1`] = `
+exports[`uzun dönem ekonomi snapshotları > 30 günlük 64 piyasa zincirinin dağılımı kontrollü kalır 1`] = `
 {
   "days": 30,
-  "final": 3487,
-  "finalVsReference": 0.822,
-  "maximum": 4380,
-  "minimum": 3487,
+  "fallingRuns": 36,
+  "highestObserved": 5827,
+  "lowestObserved": 3207,
+  "median": 0.98,
+  "p10": 0.816,
+  "p90": 1.189,
+  "risingRuns": 28,
 }
 `;
 
-exports[`uzun dönem ekonomi snapshotları > 120 günlük fiyat zinciri kontrollü kalır 1`] = `
+exports[`uzun dönem ekonomi snapshotları > 120 günlük 64 piyasa zincirinin dağılımı kontrollü kalır 1`] = `
 {
   "days": 120,
-  "final": 4399,
-  "finalVsReference": 1.037,
-  "maximum": 4735,
-  "minimum": 3487,
+  "fallingRuns": 37,
+  "highestObserved": 7571,
+  "lowestObserved": 2547,
+  "median": 0.931,
+  "p10": 0.706,
+  "p90": 1.35,
+  "risingRuns": 27,
 }
 `;
 
-exports[`uzun dönem ekonomi snapshotları > 365 günlük fiyat zinciri kontrollü kalır 1`] = `
+exports[`uzun dönem ekonomi snapshotları > 365 günlük 64 piyasa zincirinin dağılımı kontrollü kalır 1`] = `
 {
   "days": 365,
-  "final": 3921,
-  "finalVsReference": 0.924,
-  "maximum": 4735,
-  "minimum": 3076,
+  "fallingRuns": 32,
+  "highestObserved": 9465,
+  "lowestObserved": 1807,
+  "median": 0.983,
+  "p10": 0.618,
+  "p90": 1.542,
+  "risingRuns": 32,
 }
 `;
