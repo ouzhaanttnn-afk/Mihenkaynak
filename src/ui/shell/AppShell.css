@@ -258,11 +258,23 @@
   color: var(--text-dark-3);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  line-height: 1;
+}
+
+.statusStrip__weekday {
+  margin-block: 1px;
+  color: var(--brass-400);
+  font-size: 9px;
+  font-weight: var(--fw-bold);
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .statusStrip__time {
   font-size: var(--fs-label);
   font-weight: var(--fw-semibold);
+  line-height: 1.05;
 }
 
 .statusStrip__cash {

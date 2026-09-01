@@ -6,6 +6,7 @@
  */
 
 import { SPEED_STEPS, type SpeedStep } from '@domain/balance';
+import { weekdayLabel, weekdayShort } from '@domain/calendar';
 import { IconLock, IconPencil, BrandMark } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { avatarArt } from '@ui/assets';
@@ -89,8 +90,12 @@ export function StatusStrip({
         </span>
       </button>
 
-      <div className="statusStrip__clock">
+      <div
+        className="statusStrip__clock"
+        aria-label={`Gün ${market.day}, ${weekdayLabel(market.day)}, saat ${clock(market.clockMinutes)}`}
+      >
         <div className="statusStrip__day">Gün {market.day}</div>
+        <div className="statusStrip__weekday">{weekdayShort(market.day)}</div>
         <div className="statusStrip__time num">{clock(market.clockMinutes)}</div>
       </div>
 
