@@ -36,16 +36,22 @@ describe('uzun dönem ekonomi snapshotları', () => {
       p10: percentile(0.1),
       median: percentile(0.5),
       p90: percentile(0.9),
+      lowestFinal: ratios[0],
+      highestFinal: ratios[ratios.length - 1],
       lowestObserved: Math.min(...runs.map((run) => run.minimum)),
       highestObserved: Math.max(...runs.map((run) => run.maximum)),
       risingRuns: ratios.filter((ratio) => ratio > 1).length,
       fallingRuns: ratios.filter((ratio) => ratio < 1).length,
     };
     expect(snapshot).toMatchSnapshot();
-    expect(snapshot.p10).toBeGreaterThan(0.45);
-    expect(snapshot.p90).toBeLessThan(2.2);
-    expect(snapshot.median).toBeGreaterThan(0.65);
-    expect(snapshot.median).toBeLessThan(1.35);
+    expect(snapshot.p10).toBeGreaterThan(0.55);
+    expect(snapshot.p90).toBeLessThan(1.65);
+    expect(snapshot.median).toBeGreaterThan(0.8);
+    expect(snapshot.median).toBeLessThan(1.25);
+    expect(snapshot.lowestObserved).toBeGreaterThan(MARKET_BASE.goldGram * 0.45);
+    expect(snapshot.highestObserved).toBeLessThan(MARKET_BASE.goldGram * 2.1);
+    expect(snapshot.lowestFinal).toBeGreaterThan(0.5);
+    expect(snapshot.highestFinal).toBeLessThan(1.9);
     expect(snapshot.risingRuns).toBeGreaterThan(0);
     expect(snapshot.fallingRuns).toBeGreaterThan(0);
   });

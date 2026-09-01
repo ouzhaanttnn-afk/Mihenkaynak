@@ -285,12 +285,22 @@ export function quotePackage(
     baseUnitValue: unitFair,
     relationship: customer.trust,
   });
+  const bulkDiscount =
+    channel === 'bulkCustomer' && Number.isInteger(units)
+      ? Math.min(
+          PURCHASE.bulkUnitDiscountMax,
+          Math.max(1, units - PURCHASE.bulkChannelThreshold + 1) *
+            PURCHASE.bulkUnitDiscountPerExtraUnit,
+        )
+      : 0;
 
   return {
     fair,
-    suggested: quote.totalPrice,
+    suggested: roundMoney(quote.totalPrice * (1 - bulkDiscount)),
     channel,
-    rationale: `${CHANNEL_LABEL_TR[channel]} · ${quote.rationale}`,
+    rationale: `${CHANNEL_LABEL_TR[channel]} · ${quote.rationale}${
+      bulkDiscount > 0 ? ` · Hacim indirimi %${(bulkDiscount * 100).toFixed(1)}` : ''
+    }`,
   };
 }
 

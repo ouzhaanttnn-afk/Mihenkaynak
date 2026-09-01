@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { MARKET_DAILY_CAP } from './balance';
 import { isMarketOpen, isShopOpen, weekdayLabel } from './calendar';
-import { createMarketForDay, stepMarketIntraday } from './market';
+import { createMarketForDay, softLimitMove, stepMarketIntraday } from './market';
 
 function series(seed: number, throughDay: number) {
   let market = createMarketForDay(seed, 1);
@@ -31,7 +31,7 @@ describe('takvim ve piyasa kapanışı', () => {
     expect(stepMarketIntraday(saturday, 16 * 60).goldSpot).toBe(friday.goldSpot);
   });
 
-  it('normal gün ±%3, pazartesi açılışı ±%3×√3 bandını aşmaz', () => {
+  it('her açık gün ±%3 güvenlik tavanını aşmaz; pazartesi de istisna değildir', () => {
     for (let seed = 1; seed <= 100; seed += 1) {
       const monday = series(seed, 1);
       const tuesday = createMarketForDay(seed, 2, monday);
@@ -45,9 +45,34 @@ describe('takvim ve piyasa kapanışı', () => {
       const nextMonday = createMarketForDay(seed, 8, sunday);
       expect(nextMonday.gapDays).toBe(2);
       expect(Math.abs(nextMonday.goldSpot / friday.goldSpot - 1)).toBeLessThanOrEqual(
-        MARKET_DAILY_CAP * Math.sqrt(3) + 0.00001,
+        MARKET_DAILY_CAP + 0.00001,
       );
     }
+  });
+
+  it('günlük hareket tavana clamp edilmez, yaklaştıkça yumuşar', () => {
+    expect(softLimitMove(0.01)).toBe(0.01);
+    expect(softLimitMove(0.03)).toBeGreaterThan(0.02);
+    expect(softLimitMove(0.03)).toBeLessThan(MARKET_DAILY_CAP);
+    expect(softLimitMove(0.3)).toBeLessThan(MARKET_DAILY_CAP);
+    expect(softLimitMove(-0.3)).toBeGreaterThan(-MARKET_DAILY_CAP);
+  });
+
+  it('günlük sonuçlar şansa bağlı dağılır ve hiçbiri doğrudan ±%3 olmaz', () => {
+    const moves: number[] = [];
+    for (let seed = 1; seed <= 1_000; seed += 1) {
+      const first = series(seed, 1);
+      const second = createMarketForDay(seed, 2, first);
+      moves.push(second.goldSpot / first.goldSpot - 1);
+    }
+    const absolute = moves.map(Math.abs).sort((a, b) => a - b);
+    const p50 = absolute[Math.floor(absolute.length * 0.5)]!;
+    const p90 = absolute[Math.floor(absolute.length * 0.9)]!;
+    expect(moves.some((move) => move > 0)).toBe(true);
+    expect(moves.some((move) => move < 0)).toBe(true);
+    expect(moves.every((move) => Math.abs(move) < MARKET_DAILY_CAP)).toBe(true);
+    expect(p50).toBeLessThan(0.012);
+    expect(p90).toBeLessThan(0.024);
   });
 });
 

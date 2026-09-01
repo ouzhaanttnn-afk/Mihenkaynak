@@ -200,19 +200,30 @@ export const MARKET_REGIME: Record<
 export const MARKET_DAILY_CAP = 0.03;
 
 /**
+ * TL cinsinden kotasyonların küçük nominal eğilimi. İşlem günü başına oranlar
+ * pasif beklemeyi zenginlik makinesine çevirmeyecek kadar düşük; buna karşın
+ * gram altının uzun vadede sürekli aşağı sürüklenmesini önler.
+ */
+export const MARKET_NOMINAL_DRIFT = {
+  gold: 0.0005,
+  silver: 0.00045,
+  fx: 0.00035,
+} as const;
+
+/**
  * Uzun dönem fiyat çapası. Günlük hareketi yönetmez; fiyat başlangıç
  * referansından kalıcı biçimde uzaklaştığında yalnız küçük bir karşı kuvvet
  * üretir. Böylece 30 günlük trendler yaşar, 365 günlük bileşik uçuşlar yaşamaz.
  */
 export const MARKET_MEAN_REVERSION = {
   /** Hareketli makro çapanın çevresindeki geniş serbest hareket alanı. */
-  freeBand: 0.2,
+  freeBand: 0.15,
   /** Makro çapa her açık gün fiyatın %1'ini izler (~100 işlem günü hafıza). */
   anchorFollow: 0.01,
   /** Serbest bandın dışındaki sapmanın günlük geri besleme payı. */
-  strength: 0.025,
-  /** Dengeleyici hiçbir günde fiyatı tek başına %0,15'ten fazla itemez. */
-  dailyCap: 0.0015,
+  strength: 0.035,
+  /** Dengeleyici hiçbir günde fiyatı tek başına %0,20'den fazla itemez. */
+  dailyCap: 0.002,
 } as const;
 
 /**
@@ -282,6 +293,9 @@ export const INTENT_MIX = {
 export const PURCHASE = {
   /** Bu adetten itibaren toplu müşteri kanal profili kullanılır (§4.1). */
   bulkChannelThreshold: 8,
+  /** Toplu pakette adet arttıkça birim satış önerisini kademeli daraltır. */
+  bulkUnitDiscountPerExtraUnit: 0.0002,
+  bulkUnitDiscountMax: 0.012,
 
   /** Toplu müşterinin kısmi karşılamayı kabul etme olasılığı (§4.1). */
   bulkPartialChance: 0.65,
@@ -497,11 +511,12 @@ export const CHANNEL = {
  * basar.
  */
 export const MARKET_COMPOSITION = {
-  regime: 0.9,
-  trend: 1.1,
-  event: 1,
+  regime: 0.65,
+  trend: 0.8,
+  /** Haber hissedilir; tek başına fiyatı günlük tavana yapıştırmaz. */
+  event: 0.55,
   /** Kontrollü RNG payı — "keyfi veya tamamen bağımsız" olmaması için sınırlı. */
-  noise: 0.55,
+  noise: 0.5,
 } as const;
 
 /** Rejimin kendi fiyat eğilimi. Stres aşağı, sakin nötre yakın. */

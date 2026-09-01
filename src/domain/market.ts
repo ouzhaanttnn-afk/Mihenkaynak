@@ -16,6 +16,7 @@ import {
   MARKET_COMPOSITION,
   MARKET_DAILY_CAP,
   MARKET_MEAN_REVERSION,
+  MARKET_NOMINAL_DRIFT,
   MARKET_REGIME,
   REGIME_DRIFT,
   REGIME_TRANSITIONS,
@@ -89,7 +90,10 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
   const trend = nextTrend(rng, prev?.trend ?? 0, regime);
 
   const cfg = MARKET_REGIME[regime];
-  const volatility = rng.band(cfg.dailyMove);
+  // Volatilite bandın her noktasında eşit olasılıklı değildir. Üç örneğin
+  // ortalaması normal günleri merkeze toplar, uç günleri doğal olarak seyrek
+  // bırakır.
+  const volatility = rng.centered(...cfg.dailyMove);
 
   // --- 3. OLAY: "SÜRELİ değişken" (§5.1) ---
   // Olay her gün yeniden çekilmez; süresi dolana kadar taşınır ve etkisi
@@ -122,16 +126,27 @@ export function createMarketForDay(rootSeed: number, day: GameDay, prev?: Market
   // hiçbiri tek başına yönü belirlemez:
   const move = composeDailyMove(rng, { regime, trend, volatility, activeEvent, day });
 
-  const cap = MARKET_DAILY_CAP * spanScale;
-  const goldMove = (move.total + meanReversionNudge(prevGold, macroAnchor.goldSpot)) * spanScale;
+  // Hafta sonu haber yükü hareketin olasılığını/büyüklüğünü artırabilir; ancak
+  // pazartesi de tek bir işlem günüdür ve ±%3 güvenlik tavanını aşamaz.
+  const cap = MARKET_DAILY_CAP;
+  const goldMove =
+    (move.total +
+      MARKET_NOMINAL_DRIFT.gold +
+      meanReversionNudge(prevGold, macroAnchor.goldSpot)) *
+    spanScale;
   const silverMove =
-    (move.total * rng.range(0.8, 1.6) + meanReversionNudge(prevSilver, macroAnchor.silverSpot)) *
+    (move.total * rng.range(0.8, 1.6) +
+      MARKET_NOMINAL_DRIFT.silver +
+      meanReversionNudge(prevSilver, macroAnchor.silverSpot)) *
     spanScale;
   const fxMove =
-    (move.total * 0.3 + meanReversionNudge(prevFx, macroAnchor.fxIndex)) * spanScale;
-  const goldSpot = bandedPrice(prevGold * (1 + goldMove), prevGold, cap);
-  const silverSpot = bandedPrice(prevSilver * (1 + silverMove), prevSilver, cap);
-  const fxIndex = bandedPrice(prevFx * (1 + fxMove), prevFx, cap);
+    (move.total * 0.3 +
+      MARKET_NOMINAL_DRIFT.fx +
+      meanReversionNudge(prevFx, macroAnchor.fxIndex)) *
+    spanScale;
+  const goldSpot = priceAfterSoftLimit(prevGold, goldMove, cap);
+  const silverSpot = priceAfterSoftLimit(prevSilver, silverMove, cap);
+  const fxIndex = priceAfterSoftLimit(prevFx, fxMove, cap);
   const dayOpen = { goldSpot, silverSpot, fxIndex };
 
   const assets = buildAssets(
@@ -201,13 +216,31 @@ function frozenMarket(day: GameDay, prev: MarketState): MarketState {
   };
 }
 
-/** Fiyatı çapaya göre belirlenen yüzde bandında tutar. */
-function bandedPrice(raw: number, anchor: number, cap = MARKET_DAILY_CAP): number {
-  const value = round2(raw);
-  if (!(anchor > 0)) return value;
-  const low = Math.ceil(anchor * (1 - cap) * 100) / 100;
-  const high = Math.floor(anchor * (1 + cap) * 100) / 100;
-  return Math.max(low, Math.min(high, value));
+/**
+ * Hareketin merkezdeki bölümünü aynen bırakır; tavanın son %28'ine girince
+ * üstel biçimde yumuşatır. Böylece ±%3 bir sonuç seçeneği değil güvenlik
+ * sınırıdır: fiyat yaklaşabilir ama clamp yüzünden tam %3'e yapışmaz.
+ */
+export function softLimitMove(move: number, cap = MARKET_DAILY_CAP): number {
+  if (!(cap > 0) || !Number.isFinite(move)) return 0;
+  const sign = Math.sign(move);
+  const magnitude = Math.abs(move);
+  const inner = cap * 0.72;
+  if (magnitude <= inner) return move;
+  const room = cap - inner;
+  const softened = inner + room * (1 - Math.exp(-(magnitude - inner) / room));
+  return sign * Math.min(softened, cap * (1 - 1e-9));
+}
+
+function priceAfterSoftLimit(anchor: number, move: number, cap = MARKET_DAILY_CAP): number {
+  if (!(anchor > 0)) return round2(anchor);
+  return round2(anchor * (1 + softLimitMove(move, cap)));
+}
+
+/** Gün içi ham fiyatı açılışa göre aynı yumuşak güvenlik bandına alır. */
+function softBoundedPrice(raw: number, anchor: number, cap = MARKET_DAILY_CAP): number {
+  if (!(anchor > 0)) return round2(raw);
+  return priceAfterSoftLimit(anchor, raw / anchor - 1, cap);
 }
 
 /** §5.1 fiyat bileşenlerinin tek tek katkısı — §5.2 sinyalleri buradan okur. */
@@ -258,7 +291,7 @@ export function composeDailyMove(
   }
 
   // Kontrollü RNG: yönü değil, sapmayı üretir.
-  const noise = (rng.next() - 0.5) * 2 * input.volatility * w.noise;
+  const noise = rng.centered(-1, 1) * input.volatility * w.noise;
 
   return {
     regimeDrift,
@@ -356,12 +389,12 @@ export function stepMarketIntraday(market: MarketState, newClockMinutes: number)
   for (let stepIndex = lastApplied + 1; stepIndex <= targetStep; stepIndex += 1) {
     const rng = new Rng(deriveSeed(market.seed, `market/intraday/${market.day}`, stepIndex));
     const nudge = (rng.next() - 0.5) * 2 * stepScale + market.trend * stepScale * 0.35;
-    goldSpot = bandedPrice(goldSpot * (1 + nudge), open.goldSpot);
-    silverSpot = bandedPrice(
+    goldSpot = softBoundedPrice(goldSpot * (1 + nudge), open.goldSpot);
+    silverSpot = softBoundedPrice(
       silverSpot * (1 + nudge * rng.range(0.9, 1.4)),
       open.silverSpot,
     );
-    fxIndex = bandedPrice(fxIndex * (1 + nudge * 0.25), open.fxIndex);
+    fxIndex = softBoundedPrice(fxIndex * (1 + nudge * 0.25), open.fxIndex);
   }
 
   const assets = market.assets.map((asset) => {

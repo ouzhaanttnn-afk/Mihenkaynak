@@ -3,38 +3,44 @@
 exports[`uzun dönem ekonomi snapshotları > 30 günlük 64 piyasa zincirinin dağılımı kontrollü kalır 1`] = `
 {
   "days": 30,
-  "fallingRuns": 36,
-  "highestObserved": 5827,
-  "lowestObserved": 3207,
-  "median": 0.98,
-  "p10": 0.816,
-  "p90": 1.189,
-  "risingRuns": 28,
+  "fallingRuns": 29,
+  "highestFinal": 1.228,
+  "highestObserved": 5210,
+  "lowestFinal": 0.785,
+  "lowestObserved": 3292,
+  "median": 1.008,
+  "p10": 0.892,
+  "p90": 1.099,
+  "risingRuns": 35,
 }
 `;
 
 exports[`uzun dönem ekonomi snapshotları > 120 günlük 64 piyasa zincirinin dağılımı kontrollü kalır 1`] = `
 {
   "days": 120,
-  "fallingRuns": 37,
-  "highestObserved": 7571,
-  "lowestObserved": 2547,
-  "median": 0.931,
-  "p10": 0.706,
-  "p90": 1.35,
-  "risingRuns": 27,
+  "fallingRuns": 33,
+  "highestFinal": 1.423,
+  "highestObserved": 6038,
+  "lowestFinal": 0.768,
+  "lowestObserved": 3093,
+  "median": 0.99,
+  "p10": 0.79,
+  "p90": 1.229,
+  "risingRuns": 31,
 }
 `;
 
 exports[`uzun dönem ekonomi snapshotları > 365 günlük 64 piyasa zincirinin dağılımı kontrollü kalır 1`] = `
 {
   "days": 365,
-  "fallingRuns": 32,
-  "highestObserved": 9465,
-  "lowestObserved": 1807,
-  "median": 0.983,
-  "p10": 0.618,
-  "p90": 1.542,
-  "risingRuns": 32,
+  "fallingRuns": 29,
+  "highestFinal": 1.838,
+  "highestObserved": 7802,
+  "lowestFinal": 0.638,
+  "lowestObserved": 2490,
+  "median": 1.021,
+  "p10": 0.786,
+  "p90": 1.411,
+  "risingRuns": 35,
 }
 `;
