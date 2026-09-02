@@ -349,55 +349,6 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               value={`${tl(Math.max(0, creditLimit(s.store) - usedLimit(s.store.supplier)))} kullanılabilir · ${creditTermDays(s.store)} gün vade`}
             />
           </Collapsible>
-
-        {/* İkincil rotalar (GDD 23.9.1) */}
-        <div className="group">
-          <h2 className="group__title">Rotalar</h2>
-          <div className="group__body">
-            <MenuLine
-              title="Piyasa"
-              sub={`${MARKET_REGIME[s.market.regime].label} · ${s.market.assets.length} varlık`}
-              icon={<IconLiquidity size={17} />}
-              onPress={() => onOpen('market')}
-            />
-            <MenuLine
-              title="İşlem Defteri"
-              sub={`${s.ledger.deals.length} kayıt · vaka özetleri`}
-              icon={<IconReason size={17} />}
-              onPress={() => onOpen('journal')}
-            />
-            <MenuLine
-              title="Toptancı Hesabı"
-              sub={supplierSub(s)}
-              icon={<IconWholesale size={17} />}
-              onPress={() => onOpen('wholesaler')}
-            />
-            <MenuLine
-              title="Esnaf Ağı"
-              sub={networkSub(s)}
-              icon={<IconTrust size={17} />}
-              onPress={() => onOpen('network')}
-            />
-            <MenuLine
-              title="Kayıt"
-              sub="Gün sonunda otomatik · elle kaydet veya geri yükle"
-              icon={<IconReason size={17} />}
-              onPress={() => onOpen('save')}
-            />
-            <MenuLine
-              title="Mağaza"
-              sub={storeSub(s)}
-              icon={<IconBusiness size={17} />}
-              onPress={() => onOpen('store')}
-            />
-            <MenuLine
-              title="Kariyer / Yetenekler"
-              sub={`Seviye ${s.store.level} · ${s.store.xp}/${s.store.xpToNext} XP`}
-              icon={<IconBusiness size={17} />}
-              onPress={() => onOpen('career')}
-            />
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -1993,9 +1944,10 @@ function SettingsRoute({ onBack }: { onBack: () => void }) {
         <div className="group">
           <h2 className="group__title">{t('settings.haptics', 'Titreşim')}</h2>
           <div className="group__body">
+            {/* Grup başlığı zaten "Titreşim"; satır ANAHTARIN ne yaptığını yazar. */}
             <ToggleRow
               icon={<IconVibrate size={17} />}
-              label={t('settings.haptics', 'Titreşim')}
+              label={t('settings.hapticsToggle', 'Dokunsal geri bildirim')}
               checked={settings.haptics && hapticsOk}
               disabled={!hapticsOk}
               /* §12 — pasif düğmenin nedeni metin ve erişilebilir adda. */
