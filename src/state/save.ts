@@ -56,7 +56,12 @@ export interface SaveFile {
   nextCustomerAtMinutes?: number;
   intentTelemetry?: GameState['intentTelemetry'];
   missedGuestCountToday?: number;
-  lastDayReport?: GameState['lastDayReport'];
+  /**
+   * Gün kapanış özeti. Panel açıkken sayfa yenilenirse özetin geri gelmesi
+   * gerekir; aksi hâlde `dayReportOpen` true kalır ama gösterilecek bir şey
+   * olmaz ve oyun boş bir panelde donar.
+   */
+  lastDayClose?: GameState['lastDayClose'];
   customerMessage?: string;
   version: number;
   /** GDD 28.3 — RNG'nin tek kaynağı. Seed olmadan hiçbir şey türetilemez. */
@@ -139,7 +144,7 @@ export function serialize(state: GameState): SaveFile {
     nextCustomerAtMinutes: state.nextCustomerAtMinutes,
     intentTelemetry: state.intentTelemetry,
     missedGuestCountToday: state.missedGuestCountToday,
-    lastDayReport: state.lastDayReport,
+    lastDayClose: state.lastDayClose,
     dayReportOpen: state.dayReportOpen,
     customerMessage: state.customerMessage,
     seed: state.seed,
@@ -194,7 +199,7 @@ export type LoadedState = Pick<
   | 'lastOvernight'
   | 'nextCustomerAtMinutes'
   | 'missedGuestCountToday'
-  | 'lastDayReport'
+  | 'lastDayClose'
   | 'dayReportOpen'
   | 'customerMessage'
 >;
@@ -250,8 +255,13 @@ export function deserialize(file: SaveFile): LoadedState {
     activeDeal: save.activeDeal ?? null,
     nextCustomerAtMinutes: save.nextCustomerAtMinutes ?? save.clockMinutes + 3,
     missedGuestCountToday: save.missedGuestCountToday ?? 0,
-    lastDayReport: save.lastDayReport ?? null,
-    dayReportOpen: !!save.dayReportOpen && !!save.lastDayReport,
+    /*
+      Gün özeti paneli yalnız GERÇEKTEN bir özet varsa açılır. Eskiden
+      `lastDayReport` alanına bakıyordu; o alan `lastDayClose` ile
+      birleştirildi (aynı günü iki kez saklıyorlardı).
+    */
+    lastDayClose: save.lastDayClose ?? null,
+    dayReportOpen: !!save.dayReportOpen && !!save.lastDayClose,
     customerMessage: save.customerMessage ?? '',
     overnight: null,
     lastOvernight: null,

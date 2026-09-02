@@ -230,7 +230,12 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
           <h2 className="group__title">Günlük Akış</h2>
           <div className="group__body v5Controls">
             <p>Kaçırılan Misafir: {s.missedGuestCountToday}</p>
-            {s.lastDayReport && <p>Gün {s.lastDayReport.day}: {s.lastDayReport.missedGuestCountToday ?? 0} misafir kaçırıldı · Gider {tl(s.lastDayReport.overhead)} (personel dahil).</p>}
+            {s.lastDayClose && (
+              <p>
+                Gün {s.lastDayClose.day}: {s.lastDayClose.missedGuests} misafir kaçırıldı · Gider{' '}
+                {tl(s.lastDayClose.overhead)} (personel dahil).
+              </p>
+            )}
           </div>
         </div>
 

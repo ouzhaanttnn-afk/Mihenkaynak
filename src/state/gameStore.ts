@@ -215,6 +215,14 @@ export interface DayCloseSummary {
   missedDemand: MissedDemandRow[];
   /** Bugün toplam kaç talep karşılanamadı. */
   missedDemandTotal: number;
+  /**
+   * Kuyruk dolu olduğu için içeri alınamayan ziyaretçi sayısı (UPDATEv5).
+   *
+   * "Karşılanamayan talep"ten AYRI bir şeydir: orada müşteri girdi ama
+   * istediği mal yoktu; burada müşteri hiç giremedi. İkisini tek sayıda
+   * toplamak, personel kararı ile stok kararını birbirine karıştırırdı.
+   */
+  missedGuests: number;
 }
 
 /**
@@ -296,21 +304,6 @@ export interface ToastMessage {
   id: string;
   text: string;
   tone: 'info' | 'positive' | 'negative';
-}
-
-export interface ServiceDeliverySummary {
-  jobId: string;
-  jobName: string;
-  customerName: string;
-  succeeded: boolean;
-  fee: Money;
-  compensation: Money;
-  cashDelta: Money;
-  netContribution: Money;
-  trustDelta: number;
-  reputationDelta: number;
-  risk: number;
-  message: string;
 }
 
 export interface GameState {
@@ -405,7 +398,6 @@ export interface GameState {
   /** Kapıda bekleyen müşteriler. */
   queue: { customer: Customer; items: ItemInstance[] }[];
   missedGuestCountToday: number;
-  lastDayReport: import('@domain/settlement').DayReport | null;
   dayCloseConfirmOpen: boolean;
   dayReportOpen: boolean;
   requestDayClose: () => void;
@@ -437,7 +429,6 @@ export interface GameState {
 
   /** Atölyedeki tüm servis işleri (GDD 28.2 ServiceJob). */
   jobs: ServiceJob[];
-  lastServiceDelivery: ServiceDeliverySummary | null;
   /** Deterministik iş kimliği için artan sayaç. */
   jobCounter: number;
 
@@ -500,7 +491,6 @@ export interface GameState {
   issueReport: () => void;
   declineAppraisal: () => void;
   deliverJob: (jobId: string) => void;
-  dismissServiceDelivery: () => void;
 
   // --- Müşteri alış akışı (GDD 23.23 · Addendum §3, §4.1) ---
   togglePackageItem: (itemId: string) => void;
@@ -744,14 +734,12 @@ export const useGame = create<GameState>((set, get) => {
 
     queue: [],
     missedGuestCountToday: 0,
-    lastDayReport: null,
     dayCloseConfirmOpen: false,
     dayReportOpen: false,
     stockCatalogOpen: false,
     nextCustomerAtMinutes: DAY.openMinutes + 3,
 
     jobs: [],
-    lastServiceDelivery: null,
     jobCounter: 0,
 
     activeCustomer: null,
@@ -1402,34 +1390,11 @@ export const useGame = create<GameState>((set, get) => {
           errorRisk: job.risk,
           lateDays: Math.max(0, s.market.day - job.promisedDay),
         },
-        /*
-          UPDATEv5 İKİNCİ ÖZET — Atölye ekranının kendi satırı.
-
-          `lastDelivery` işlem masasının kalıcı sonuç panelini besler;
-          bu ise Atölye listesinin üstündeki teslim şeridini. Aynı olayın
-          iki ayrı yüzeyi olduğu için ikisi de yazılır; ikisi de aynı
-          `applyTransaction` başarısından sonra doğar, uydurma sayı yok.
-        */
-        lastServiceDelivery: {
-          jobId: job.jobId,
-          jobName: `${getServiceType(job.type).label} · ${job.itemName}`,
-          customerName: job.customerName,
-          succeeded: delivery.succeeded,
-          fee: delivery.succeeded ? job.fee : 0,
-          compensation: delivery.succeeded ? 0 : job.compensation,
-          cashDelta: delivery.cashDelta,
-          netContribution: delivery.netContribution,
-          trustDelta: delivery.trustDelta,
-          reputationDelta: delivery.reputationDelta,
-          risk: job.risk,
-          message: delivery.message,
-        },
       });
 
       pushToast(set, get, delivery.message, delivery.succeeded ? 'positive' : 'negative');
     },
 
-    dismissServiceDelivery: () => set({ lastServiceDelivery: null }),
 
     // -----------------------------------------------------------------------
     // Ekspertiz / danışma akışı (GDD 23.23 · İncele → Test → Rapor/Ücret → Sonuç)
@@ -2658,7 +2623,6 @@ export const useGame = create<GameState>((set, get) => {
         lastOvernight: overnightOutcome,
         queue: [],
         missedGuestCountToday: 0,
-        lastDayReport: { ...report, overnightSummary: overnightOutcome.summary },
         dayCloseConfirmOpen: false,
         dayReportOpen: true,
         activeCustomer: null,
@@ -2691,6 +2655,7 @@ export const useGame = create<GameState>((set, get) => {
           retailSales: vitrinSatislari,
           missedDemand: topMissedDemand(s.missedDemand, 3).filter((r) => r.today > 0),
           missedDemandTotal: missedToday(s.missedDemand),
+          missedGuests: s.missedGuestCountToday,
         },
       };
 

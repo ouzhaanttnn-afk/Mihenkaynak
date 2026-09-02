@@ -15,7 +15,7 @@ beforeEach(() => {
   });
   useGame.setState({ ...initial, store: { ...initial.store, cash: 1_000_000, dailyOverhead: 1200, level: 1, personnelCount: 0 },
     market: createMarketForDay(initial.seed, 1), ledger: createLedger(), queue: [], inventory: [], items: {},
-    jobs: [], activeDeal: null, activeCustomer: null, profileOpen: false, lastDayReport: null,
+    jobs: [], activeDeal: null, activeCustomer: null, profileOpen: false, lastDayClose: null,
     dayCloseConfirmOpen: false, dayReportOpen: false }, true);
 });
 afterEach(() => { useGame.setState(initial, true); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -83,7 +83,12 @@ describe('day confirmation and persistent summary', () => {
     const closed = useGame.getState();
     expect(closed.store.cash).toBe(993800);
     expect(closed.market.day).toBe(2);
-    expect(closed.lastDayReport).toMatchObject({ day: 1, overhead: 6200, personnelExpense: 5000, closingCash: 993800, netCashChange: -6200 });
+    /*
+      Gün özeti TEK ALANDA tutulur: `lastDayClose`. Eskiden `lastDayReport`
+      ile ikisi birden yazılıyordu ve aynı günü iki kez saklıyorlardı.
+      `personnelExpense` artık `overhead` içinde (kira + personel + şahsi).
+    */
+    expect(closed.lastDayClose).toMatchObject({ day: 1, overhead: 6200, cashAfter: 993800, netCashChange: -6200 });
     expect(closed.dayReportOpen).toBe(true);
     expect(closed.dayCloseConfirmOpen).toBe(false);
     closed.advanceDay();
@@ -92,7 +97,7 @@ describe('day confirmation and persistent summary', () => {
     expect(useGame.getState().market).toEqual(closed.market);
     const restored = readSave()!;
     expect(restored.dayReportOpen).toBe(true);
-    expect(restored.lastDayReport).toEqual(closed.lastDayReport);
+    expect(restored.lastDayClose).toEqual(closed.lastDayClose);
     useGame.setState(restored);
     useGame.getState().startNewDay();
     useGame.getState().startNewDay();

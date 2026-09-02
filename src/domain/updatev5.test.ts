@@ -124,7 +124,7 @@ describe('UPDATEv5 · master acceptance edge cases', () => {
     useGame.setState({ ...economy([item]), seed: 456, market, dayCharacter: character, missedGuestCountToday: 7 });
     useGame.getState().advanceDay();
     const after = useGame.getState();
-    expect(after.market.day).toBe(6); expect(after.lastDayReport?.missedGuestCountToday).toBe(7);
+    expect(after.market.day).toBe(6); expect(after.lastDayClose?.missedGuests).toBe(7);
     expect(after.missedGuestCountToday).toBe(0); expect(after.inventory[0]?.itemId).toBe(item.id);
     expect(after.items[item.id]?.buyCost).toBe(39000);
   });
