@@ -925,6 +925,8 @@
  * parça hâlinde operasyon alanının olur (`.op` aşağıda).
  */
 .idle {
+  position: relative;
+  isolation: isolate;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -932,29 +934,36 @@
   justify-content: flex-start;
   gap: var(--sp-3);
   /*
-   * KUYRUK UZUNSA BURASI KAYAR.
-   *
-   * GDD 23.22'nin kuralı "AKTİF MÜŞTERİDE dikey scroll yok; CTA scroll
-   * altında kalmaz" — ikisi de burada çiğnenmiyor: bu alan yalnız işlem
-   * YOKKEN çizilir ve birincil eylem ("Müşteriyi Karşıla") Karar Dock'unda,
-   * bu kutunun tamamen dışında sabit duruyor. Yani kuyruk üç kişiye
-   * çıktığında kaybolan hiçbir kontrol yok, yalnız liste uzuyor.
-   *
-   * Alternatifi kuyruk listesine kendi `overflow`unu vermekti; o da §8'de
-   * Sarrafiye kataloğundan kaldırılan iç içe kaydırmanın aynısı olurdu.
+   * Orijinal sürümdeki mobil davranış: aktif işlem yokken tüm boş-dükkan
+   * sütunu tek parça kayar. Dock bu alanın dışında kaldığı için ana eylem
+   * sabittir; kimlik, pozisyon, uyarı ve müşteri kartları ise ezilmeden
+   * doğal yüksekliklerini korur.
    */
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  /*
-   * KAYDIRMA ÇAPASI KAPALI.
-   *
-   * Kuyruğa yeni müşteri EKLENDİĞİNDE Chrome, görünen içeriği yerinde
-   * tutmak için kaydırmayı kendiliğinden aşağı kaydırıyordu: oyuncu hiçbir
-   * şey yapmadan dükkânın adı yukarı kaçıyor, ekran yarısından açılmış gibi
-   * görünüyordu. Burada çapaya ihtiyaç yok — liste alttan uzuyor, üstten
-   * değil.
-   */
   overflow-anchor: none;
+  scroll-padding-block: var(--sp-3);
+}
+
+.workbench--idle {
+  background:
+    linear-gradient(180deg, rgba(10, 15, 22, 0.72), rgba(10, 15, 22, 0.9)),
+    url('/assets/realistic/backgrounds/shop-interior-liquid-v1.webp') center 42% / cover no-repeat;
+}
+
+.workbench--theme_nocturne {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(111, 64, 168, 0.26), transparent 38%),
+    linear-gradient(180deg, rgba(10, 12, 24, 0.74), rgba(8, 7, 18, 0.94)),
+    url('/assets/realistic/backgrounds/shop-interior-liquid-v1.webp') center 42% / cover no-repeat;
+}
+
+.workbench--theme_ivory {
+  background:
+    linear-gradient(180deg, rgba(102, 82, 52, 0.32), rgba(11, 14, 19, 0.88)),
+    url('/assets/realistic/backgrounds/shop-interior-liquid-v1.webp') center 42% / cover no-repeat;
 }
 
 .idle::-webkit-scrollbar {
@@ -972,7 +981,10 @@
  *
  * Çocuklar doğal boylarında kalınca taşma gerçek olur ve `.idle` kayar.
  */
+/* Küçülen flex çocuğu içerik taşmak yerine kartların üstüne biner. */
 .idle > * {
+  position: relative;
+  z-index: 1;
   flex-shrink: 0;
 }
 
@@ -994,6 +1006,19 @@
  */
 .idle--coaching {
   justify-content: flex-start;
+}
+
+/*
+ * Kuyruk dersi açıkken üst şerit zaten gün/nakit bilgisini gösterir ve ders
+ * müşteriyi karşılamayı ister. Geçici ders boyunca tekrar eden kimlik ve stok
+ * uyarısını saklayarak ilk müşteri kartının ders şeridi altında kırpılmasını
+ * engelleriz; ders kapanınca içerik eksiksiz geri gelir.
+ */
+.idle--coaching.idle--hasQueue .shopOverview,
+.idle--coaching.idle--hasQueue > .alert,
+.idle--coaching.idle--hasQueue .alerts,
+.idle--coaching.idle--hasQueue .rewardedLine {
+  display: none;
 }
 
 @media (max-height: 720px) {
@@ -1029,25 +1054,61 @@
 .idle__sub {
   font-size: var(--fs-caption);
   color: var(--text-dark-3);
-  margin-top: -6px;
+  margin-top: 2px;
+}
+
+.idle__badge {
+  display: inline-flex;
+  margin-left: 7px;
+  color: var(--brass-300);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  filter: drop-shadow(0 0 5px rgba(215, 170, 74, 0.55));
+  vertical-align: middle;
 }
 
 /* ---- Pozisyon paneli — sarrafın "kaç param, kaç malım var" sorusu ---- */
 
-/*
- * §7 FİNANS ÖZETİ — hedef 72-80 px. Ölçülen 110 px'ti.
- * Kısılan yer bilgiden değil boşluktan geldi: dolgu 12 → 8 px, çubuğun üst
- * boşluğu 8 → 5 px. Üç sayı, denge çubuğu ve "Stok ›" kapısı olduğu gibi
- * duruyor.
- */
+.shopOverview {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid rgba(215, 170, 74, 0.38);
+  border-radius: var(--r-card);
+  background:
+    radial-gradient(circle at 8% 5%, rgba(104, 63, 160, 0.2), transparent 34%),
+    linear-gradient(145deg, rgba(29, 38, 50, 0.96), rgba(8, 11, 15, 0.88));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.shopOverview::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  opacity: 0.32;
+  pointer-events: none;
+  background-image:
+    linear-gradient(115deg, transparent 0 48%, rgba(215, 170, 74, 0.07) 49%, transparent 50%),
+    linear-gradient(65deg, transparent 0 48%, rgba(104, 63, 160, 0.06) 49%, transparent 50%);
+  background-size: 34px 34px;
+}
+
 .position {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 2px var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-card);
-  background: var(--ink-900);
-  border: 1px solid var(--line-dark);
+  padding: var(--sp-2) 0 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--line-dark);
   text-align: left;
   cursor: pointer;
   font: inherit;
@@ -1055,10 +1116,29 @@
 }
 
 .position__cell {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.position__icon {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(215, 170, 74, 0.22);
+  border-radius: 7px;
+  background: rgba(196, 141, 43, 0.08);
+  color: var(--brass-400);
+}
+
+.position__copy {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 1px;
-  min-width: 0;
 }
 
 .position__label {
@@ -1086,8 +1166,8 @@
 /* Nakit–altın dengesi: dolu kısım altın, boş kısım nakit. */
 .position__bar {
   grid-column: 1 / -1;
-  margin-top: 5px;
-  height: 4px;
+  margin-top: var(--sp-2);
+  height: 5px;
   border-radius: var(--r-pill);
   background: rgba(242, 236, 222, 0.1);
   overflow: hidden;
@@ -1096,7 +1176,8 @@
 .position__barFill {
   display: block;
   height: 100%;
-  background: var(--surface-brass);
+  background: linear-gradient(90deg, var(--amethyst-500), var(--brass-400));
+  box-shadow: 0 0 9px rgba(215, 170, 74, 0.35);
 }
 
 .position__legend {
@@ -1113,6 +1194,268 @@
   color: var(--brass-400);
   font-weight: var(--fw-semibold);
   white-space: nowrap;
+}
+
+/* Kuyruk varken boş durum dekoru değil, müşteri listesi ana içeriktir. */
+.idle--hasQueue {
+  justify-content: flex-start;
+}
+
+/* ---- Bekleyen müşteri kuyruğu — FIFO sırasını görünür kılan kompakt liste ---- */
+
+.waitingQueue {
+  flex: 0 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.waitingQueue__head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--touch-min);
+  padding: 0 var(--sp-2);
+  border: 1px solid rgba(215, 170, 74, 0.2);
+  border-radius: var(--r-sm);
+  background:
+    linear-gradient(90deg, rgba(104, 63, 160, 0.13), transparent 45%),
+    rgba(8, 11, 15, 0.52);
+  color: var(--text-dark-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.waitingQueue__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.waitingQueue__heading strong {
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  color: var(--text-dark-1);
+}
+
+.waitingQueue__heading small {
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+.waitingQueue__count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--text-dark-3);
+}
+
+.waitingQueue__chevron {
+  display: inline-block;
+  color: var(--brass-400);
+  font-size: 18px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform var(--t-fast) var(--ease-standard);
+}
+
+.waitingQueue__chevron--open {
+  transform: rotate(180deg);
+}
+
+.waitingQueue__list {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  overflow: visible;
+  scrollbar-width: none;
+}
+
+/* Açılan kuyruk kendi içinde büyür ama karar dock'unu ekran dışına itemez. */
+.waitingQueue__head[aria-expanded='true'] + .waitingQueue__list {
+  max-height: min(248px, 32dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
+@media (max-height: 720px) {
+  .idle {
+    gap: var(--sp-2);
+  }
+
+  .shopOverview {
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .idle__art {
+    height: 48px;
+    max-width: 54px;
+  }
+
+  .idle__title {
+    font-size: var(--fs-subtitle);
+  }
+}
+
+.waitingQueue__list::-webkit-scrollbar {
+  display: none;
+}
+
+.waitingCustomer {
+  position: relative;
+  overflow: hidden;
+  flex: 0 0 auto;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border-radius: var(--r-md);
+  border: 1px solid rgba(242, 236, 222, 0.12);
+  background: linear-gradient(120deg, rgba(24, 31, 41, 0.94), rgba(8, 11, 15, 0.72));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.waitingCustomer--next {
+  border-color: rgba(215, 170, 74, 0.58);
+  background:
+    radial-gradient(circle at 12% 50%, rgba(104, 63, 160, 0.18), transparent 38%),
+    linear-gradient(90deg, rgba(215, 170, 74, 0.12), rgba(8, 11, 15, 0.78));
+  box-shadow:
+    inset 3px 0 0 var(--brass-500),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.waitingCustomer__avatar {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--brass-600);
+  box-shadow:
+    0 0 0 2px rgba(104, 63, 160, 0.28),
+    0 4px 10px rgba(0, 0, 0, 0.24);
+  overflow: hidden;
+}
+
+.waitingCustomer__initial {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--brass-400);
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+}
+
+.waitingCustomer__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.waitingCustomer__identity,
+.waitingCustomer__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.waitingCustomer__identity strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dark-1);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waitingCustomer__identity > span {
+  flex: 0 0 auto;
+  color: var(--brass-400);
+  font-size: var(--fs-micro);
+  padding: 2px 6px;
+  border: 1px solid rgba(215, 170, 74, 0.25);
+  border-radius: var(--r-pill);
+  background: rgba(196, 141, 43, 0.08);
+}
+
+.waitingCustomer__body p {
+  overflow: hidden;
+  color: var(--text-dark-2);
+  font-size: var(--fs-micro);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.waitingCustomer__meta {
+  margin-top: 2px;
+  color: var(--text-dark-3);
+  font-size: var(--fs-micro);
+}
+
+.waitingCustomer__greet {
+  flex: 0 0 auto;
+  min-width: 68px;
+  min-height: var(--touch-min);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--brass-600);
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, #e7ba50 0%, #c18b20 55%, #a97616 100%);
+  color: #241a06;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-semibold);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 4px 12px rgba(196, 141, 43, 0.22);
+}
+
+.waitingCustomer__greet:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 3px rgba(36, 26, 6, 0.22);
+}
+
+@media (max-width: 390px) {
+  .waitingCustomer {
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .waitingCustomer__avatar {
+    flex-basis: 38px;
+    width: 38px;
+    height: 38px;
+  }
+
+  .waitingCustomer__greet {
+    min-width: 62px;
+    padding-inline: 10px;
+  }
+}
+
+@media (max-height: 450px) {
+  .waitingCustomer {
+    box-sizing: border-box;
+    height: 56px;
+    min-height: 56px;
+    padding: 4px 6px;
+  }
+
+  .waitingCustomer__avatar {
+    flex-basis: 36px;
+    width: 36px;
+    height: 36px;
+  }
 }
 
 /* En fazla 3 kompakt uyarı satırı; ayrı büyük kartlar kullanılmaz. */
@@ -1132,6 +1475,127 @@
   border-left: 2px solid var(--line-dark-strong);
   font-size: var(--fs-caption);
   color: var(--text-dark-2);
+}
+
+.idle > .alert {
+  border: 1px solid rgba(104, 63, 160, 0.28);
+  border-left: 3px solid var(--amethyst-500);
+  background:
+    linear-gradient(90deg, rgba(104, 63, 160, 0.1), transparent 58%),
+    rgba(8, 11, 15, 0.54);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.idle > .alert .chip {
+  border-color: rgba(215, 170, 74, 0.46);
+  background: linear-gradient(180deg, #fbf6eb, #e8ddc8);
+  color: #2a2115;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+/* Ana Dükkan'dan ayrılmadan sarrafiye alımı. */
+.quickStockScrim {
+  position: absolute;
+  z-index: 75;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(5, 8, 12, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.quickStockSheet {
+  width: 100%;
+  max-height: min(82%, 700px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-4) var(--gutter) calc(var(--sp-4) + var(--safe-bottom));
+  border: 1px solid rgba(215, 170, 74, 0.62);
+  border-bottom: 0;
+  border-radius: 26px 26px 0 0;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(104, 63, 160, 0.09), transparent 34%),
+    var(--stone-50);
+  color: var(--text-light-1);
+  box-shadow: 0 -22px 70px rgba(0, 0, 0, 0.48);
+  animation: quickStockIn 180ms var(--ease-standard);
+}
+
+@keyframes quickStockIn {
+  from { transform: translateY(18px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.quickStockSheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.quickStockSheet__eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--amethyst-600);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.quickStockSheet__head h2 {
+  margin: 0;
+  font: var(--fw-semibold) var(--fs-title)/var(--lh-tight) var(--font-display);
+}
+
+.quickStockSheet__close {
+  flex: 0 0 var(--touch-min);
+  width: var(--touch-min);
+  height: var(--touch-min);
+  border: 1px solid var(--line-light-strong);
+  border-radius: var(--r-pill);
+  background: var(--stone-100);
+  color: var(--text-light-2);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.quickStockSheet__intro {
+  margin: var(--sp-2) 0 var(--sp-3);
+  color: var(--text-light-2);
+  font-size: var(--fs-caption);
+  line-height: 1.4;
+}
+
+.quickStockSheet__scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line-light);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.quickStockSheet__scroll .counter__list {
+  border: 0;
+  border-radius: 0;
+}
+
+.quickStockSheet__done {
+  flex: 0 0 auto;
+  min-height: var(--touch-min);
+  margin-top: var(--sp-3);
+  border: 1px solid var(--brass-600);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, #efc45a, #bd851d);
+  color: #241a06;
+  font-weight: var(--fw-bold);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.38), 0 5px 16px rgba(168, 130, 58, 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quickStockSheet { animation: none; }
 }
 
 .alert--warning {
@@ -1394,6 +1858,59 @@
   min-height: var(--touch-min);
   padding: 5px var(--sp-4);
   background: transparent;
+}
+
+/*
+ * PC düzeni: ana kimlik/sermaye solda, kuyruk ve günlük durum sağda.
+ * Mobil DOM sırası değişmez; yalnız geniş ekranda boş alan işe koşulur.
+ */
+@media (min-width: 900px) and (min-height: 720px) {
+  .wb {
+    padding-inline: var(--sp-6);
+  }
+
+  .idle {
+    display: grid;
+    grid-template-columns: minmax(0, 1.06fr) minmax(300px, 0.94fr);
+    grid-auto-rows: max-content;
+    align-content: center;
+    justify-content: stretch;
+    column-gap: var(--sp-4);
+    row-gap: var(--sp-3);
+    overflow: hidden;
+  }
+
+  .idle .shopOverview {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .idle > .alert,
+  .idle > .rewardedLine {
+    grid-column: 1;
+  }
+
+  .idle .waitingQueue,
+  .idle .alerts {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: start;
+  }
+
+  .idle--hasQueue .alerts {
+    grid-row: 2;
+  }
+
+  .waitingQueue__head[aria-expanded='true'] + .waitingQueue__list {
+    max-height: 360px;
+  }
+
+  .shopOverview,
+  .waitingQueue__head,
+  .waitingCustomer,
+  .alert {
+    box-shadow: var(--sh-glass);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -2101,6 +2618,14 @@
   font-size: var(--fs-label);
   font-weight: var(--fw-semibold);
   color: var(--text-dark-1);
+}
+
+input.qtyStep__value {
+  width: 76px;
+  min-height: 44px;
+  background: transparent;
+  border: 1px solid var(--line-dark);
+  border-radius: 6px;
 }
 
 .pkgLines__qty {

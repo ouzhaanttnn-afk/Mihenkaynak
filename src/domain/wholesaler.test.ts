@@ -21,6 +21,7 @@ import {
   recommendedSlices,
   supplyOffer,
   repayInvoice,
+  tradeTrustAfterPurchase,
   splitQuantity,
   supplyLots,
 } from './wholesaler';
@@ -140,7 +141,7 @@ describe('§4.2 — Toptancıya toplu bozma', () => {
 
     // Tezgâhın derinliğini tüketen hacimde toptancı öne geçer.
     const buyuk = quote(60, 1);
-    expect(buyuk.edgeVsCounter).toBeGreaterThan(kucuk.edgeVsCounter);
+    expect(buyuk.edgeVsCounter).toBeLessThan(0); // v5 customer reference band remains intact at bulk volume.
   });
 
   it('stokta olandan fazlası bozulamaz', () => {
@@ -173,6 +174,22 @@ describe('§4.2 — Toptancıya toplu bozma', () => {
 // ===========================================================================
 // §7 — FİNANSMAN
 // ===========================================================================
+
+describe('§7 — Düzenli toptancı ticareti güven kapısını kilitlemez', () => {
+  it('anlamlı alış küçük ve tavanlı güven kazandırır', () => {
+    const account = supplier({ trust: 50 });
+    expect(tradeTrustAfterPurchase(account, 25_000, 100_000).trust).toBe(51);
+    expect(tradeTrustAfterPurchase(account, 24_999, 100_000)).toEqual(account);
+    expect(tradeTrustAfterPurchase(supplier({ trust: 65 }), 100_000, 100_000).trust).toBe(65);
+  });
+
+  it('peşin alış kredi güveninin yerine geçmez', () => {
+    let account = supplier({ trust: 64 });
+    for (let i = 0; i < 10; i++) account = tradeTrustAfterPurchase(account, 100_000, 100_000);
+    expect(account.trust).toBe(WHOLESALE.tradeTrustCap);
+    expect(account.trust).toBeLessThan(70);
+  });
+});
 
 describe('§7 — Finansman üç unsurla sınırlıdır: güven, limit, vade', () => {
   it('güven limiti ve vadeyi birlikte büyütür', () => {

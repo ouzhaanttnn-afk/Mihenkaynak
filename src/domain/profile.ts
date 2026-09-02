@@ -50,12 +50,6 @@ export const DEFAULT_AVATAR_ID: AvatarId = 'male-01';
  */
 export const DEFAULT_JEWELER_NAME = 'MIHENKAYNAK';
 
-/**
- * Dükkân adının sistem tarafından eklenen sabit eki (§2).
- * Oyuncu bunu yazmaz, silemez ve iki kez alamaz.
- */
-export const SHOP_SUFFIX = 'Kuyumculuk';
-
 export interface PlayerProfile {
   jewelerName: string;
   avatarId: AvatarId;
@@ -67,6 +61,43 @@ export function defaultProfile(): PlayerProfile {
 
 export const NAME_MIN = 2;
 export const NAME_MAX = 24;
+
+/**
+ * Dükkân adının sistem tarafından eklenen sabit eki (§2).
+ * Oyuncu bunu yazmaz, silemez ve iki kez alamaz.
+ */
+export const SHOP_SUFFIX = 'Kuyumculuk';
+
+/**
+ * Profilde yalnız temel ad saklanır; sistem eki sondan temizlenir.
+ *
+ * İKİ ADIM, ÇÜNKÜ TEK REGEX YETMİYORDU: `(?:\s+kuyumculuk)+$` kalıbı ekten
+ * önce BOŞLUK arıyor, dolayısıyla oyuncu tek başına "Kuyumculuk" yazınca
+ * hiçbir şey kırpılmıyor ve ad geçerli sayılıyordu (ölçüldü: dükkân adı
+ * "Kuyumculuk Kuyumculuk" oluyordu). İkinci adım o deliği kapatır:
+ * kırpmadan sonra geriye YALNIZ ek kalmışsa isim yok demektir.
+ */
+export function normalizeShopBaseName(raw: string): string {
+  const trimmed = raw
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/(?:\s+kuyumculuk)+\s*$/giu, '')
+    .trim();
+
+  return trimmed.toLocaleLowerCase('tr') === SHOP_SUFFIX.toLocaleLowerCase('tr') ? '' : trimmed;
+}
+
+/**
+ * Ekranda görünen dükkân adı: temel isim + sabit ek (§2).
+ *
+ * Tek kapı olması bilinçli — iki ekranda (Dükkan başlığı, İşletme alt
+ * satırı) ayrı ayrı birleştirmek, birinin ekini alıp diğerinin almadığı bir
+ * durumu er geç doğururdu.
+ */
+export function shopDisplayName(baseName: string): string {
+  const normalized = normalizeShopBaseName(baseName) || DEFAULT_JEWELER_NAME;
+  return `${normalized} ${SHOP_SUFFIX}`;
+}
 
 export type NameCheck =
   | { ok: true; value: string }
@@ -83,7 +114,7 @@ export type NameCheck =
  * yalnız uçlardan yapılsaydı sınır anlamını yitirirdi.
  */
 export function checkJewelerName(raw: string): NameCheck {
-  const value = stripShopSuffix(raw.trim().replace(/\s+/g, ' '));
+  const value = normalizeShopBaseName(raw);
 
   if (value.length === 0) {
     return { ok: false, error: 'Kuyumcu adı boş bırakılamaz.' };
@@ -125,18 +156,6 @@ export function stripShopSuffix(value: string): string {
   // Yalnız ekin kendisi yazıldıysa geriye isim kalmaz; doğrulama yakalar.
   if (lower === SHOP_SUFFIX.toLocaleLowerCase('tr')) return '';
   return value;
-}
-
-/**
- * Ekranda görünen dükkân adı: temel isim + sabit ek (§2).
- *
- * Tek kapı olması bilinçli — iki ekranda (Dükkan başlığı, İşletme alt
- * satırı) ayrı ayrı birleştirmek, birinin ekini alıp diğerinin almadığı bir
- * durumu er geç doğururdu.
- */
-export function shopDisplayName(baseName: string): string {
-  const base = stripShopSuffix(baseName.trim().replace(/\s+/g, ' '));
-  return base.length > 0 ? `${base} ${SHOP_SUFFIX}` : `${DEFAULT_JEWELER_NAME} ${SHOP_SUFFIX}`;
 }
 
 /** Bilinmeyen avatar kimliğini varsayılana çeker — bozuk kayıt çökertmez. */

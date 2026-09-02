@@ -8,13 +8,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import {
-  ITEM_TEMPLATES,
-  PLAIN_BRACELET_GRAMS,
-  getTemplate,
-  plainBraceletId,
-} from '@data/item-templates';
-import { bullionMeta, isBullion } from '@data/bullion';
+import { ITEM_TEMPLATES, getTemplate } from '@data/item-templates';
+import { INVESTMENT_BANGLE_WEIGHTS, investmentBangleTemplateId, bullionMeta, isBullion } from '@data/bullion';
 import {
   customerBuyDemandPool,
   sellableToCustomer,
@@ -40,52 +35,58 @@ const TIER = 1;
 
 describe('§1 — bilezik satılabilir kataloğa girer', () => {
   it('10 gramın katı olan her gramaj satılabilir', () => {
-    for (const g of PLAIN_BRACELET_GRAMS) {
-      const template = getTemplate(plainBraceletId(g));
+    for (const g of INVESTMENT_BANGLE_WEIGHTS) {
+      const template = getTemplate(investmentBangleTemplateId(g));
       expect(sellableToCustomer(template, TIER), `${g} g satılabilir değil`).toBe(true);
     }
   });
 
   it('10 g ile 100 g arası, tam on adet gramaj destekleniyor', () => {
-    expect([...PLAIN_BRACELET_GRAMS]).toEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+    expect([...INVESTMENT_BANGLE_WEIGHTS]).toEqual([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
   });
 
   it('tedarik tezgâhında ve talep havuzunda ikisi de görünür', () => {
     const counter = supplierCounterIds(TIER);
     const demand = customerBuyDemandPool(TIER);
-    for (const g of PLAIN_BRACELET_GRAMS) {
-      expect(counter, `${g} g tezgâhta yok`).toContain(plainBraceletId(g));
-      expect(demand, `${g} g talep havuzunda yok`).toContain(plainBraceletId(g));
+    for (const g of INVESTMENT_BANGLE_WEIGHTS) {
+      expect(counter, `${g} g tezgâhta yok`).toContain(investmentBangleTemplateId(g));
+      expect(demand, `${g} g talep havuzunda yok`).toContain(investmentBangleTemplateId(g));
     }
   });
 
   it('sarrafiye sayılır — yani mevcut fiyat/kanal motorunu kullanır', () => {
-    for (const g of PLAIN_BRACELET_GRAMS) {
-      expect(isBullion(plainBraceletId(g))).toBe(true);
+    for (const g of INVESTMENT_BANGLE_WEIGHTS) {
+      expect(isBullion(investmentBangleTemplateId(g))).toBe(true);
     }
   });
 });
 
 describe('§1 — kurallar ürünün kendisinde tutuluyor', () => {
   it('yalnız 22 ayar', () => {
-    for (const g of PLAIN_BRACELET_GRAMS) {
-      expect(getTemplate(plainBraceletId(g)).nominalKarat).toBe('22K');
-      expect(bullionMeta(plainBraceletId(g))!.unitPurity).toBeCloseTo(0.916, 3);
+    for (const g of INVESTMENT_BANGLE_WEIGHTS) {
+      expect(getTemplate(investmentBangleTemplateId(g)).nominalKarat).toBe('22K');
+      /*
+        UPDATEv5 MİLYEM TABLOSU: yatırım bileziğinin saflığı 0,922'dir.
+        UPDATEv3 döneminde 0,916 (22 ayar nominal) yazılıydı; v5 HAS
+        kotasyonunu milyem üzerinden kurunca bu ürünün gerçek milyemi
+        merkezî tabloya taşındı. Nominal ayar hâlâ 22K'dır.
+      */
+      expect(bullionMeta(investmentBangleTemplateId(g))!.unitPurity).toBeCloseTo(0.922, 3);
     }
   });
 
   it('işçilik değeri SIFIR ve işçilik primi SIFIR', () => {
-    for (const g of PLAIN_BRACELET_GRAMS) {
-      expect(getTemplate(plainBraceletId(g)).craftsmanshipRatioBand).toEqual([0, 0]);
-      expect(bullionMeta(plainBraceletId(g))!.premiumRatio).toBe(0);
+    for (const g of INVESTMENT_BANGLE_WEIGHTS) {
+      expect(getTemplate(investmentBangleTemplateId(g)).craftsmanshipRatioBand).toEqual([0, 0]);
+      expect(bullionMeta(investmentBangleTemplateId(g))!.premiumRatio).toBe(0);
     }
   });
 
   it('gramaj SABİT — bant açık uçlu değil, tek değer', () => {
-    for (const g of PLAIN_BRACELET_GRAMS) {
-      const t = getTemplate(plainBraceletId(g));
+    for (const g of INVESTMENT_BANGLE_WEIGHTS) {
+      const t = getTemplate(investmentBangleTemplateId(g));
       expect(t.weightBand).toEqual([g, g]);
-      expect(bullionMeta(plainBraceletId(g))!.unitWeightGrams).toBe(g);
+      expect(bullionMeta(investmentBangleTemplateId(g))!.unitWeightGrams).toBe(g);
       // Net metal = brüt: taş yok, aksesuar yok.
       expect(t.netRatioBand).toEqual([1, 1]);
       expect(t.hasStone).toBe(false);
@@ -95,11 +96,11 @@ describe('§1 — kurallar ürünün kendisinde tutuluyor', () => {
 
 describe('§1 — YASAKLAR', () => {
   it('10un katı olmayan hiçbir gramaj üretilmez', () => {
-    for (const g of PLAIN_BRACELET_GRAMS) expect(g % 10).toBe(0);
+    for (const g of INVESTMENT_BANGLE_WEIGHTS) expect(g % 10).toBe(0);
     // Uydurma gramajlar şablon tablosunda hiç yok.
     for (const bad of [5, 15, 25, 33, 75.5, 110]) {
       expect(
-        ITEM_TEMPLATES.some((t) => t.id === plainBraceletId(bad)),
+        ITEM_TEMPLATES.some((t) => t.id === investmentBangleTemplateId(bad)),
         `${bad} g şablonu var`,
       ).toBe(false);
     }
@@ -142,7 +143,7 @@ describe('§1 — YASAKLAR', () => {
     const bracelets = customerBuyDemandPool(TIER).filter(
       (id) => getTemplate(id).silhouette === 'bracelet',
     );
-    expect(bracelets.length, 'katalogda hiç bilezik yok').toBe(PLAIN_BRACELET_GRAMS.length);
+    expect(bracelets.length, 'katalogda hiç bilezik yok').toBe(INVESTMENT_BANGLE_WEIGHTS.length);
     for (const id of bracelets) {
       expect(getTemplate(id).craftsmanshipRatioBand[1], `${id} işçilikli`).toBe(0);
       expect(getTemplate(id).nominalKarat, `${id} 22 ayar değil`).toBe('22K');

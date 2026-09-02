@@ -12,21 +12,22 @@
 
 import { TERM } from '@ui/terms';
 import { useMemo, useState } from 'react';
+import { isCrafted } from '@domain/customer-pricing';
+import { fromMg, toMg, roundMoney, isHasTradingDay } from '@domain/v5-rules';
+import { hasQuote, maxHasBuyMg } from '@domain/has-account';
+import { poolForTemplate } from '@domain/stock-pools';
 
 import { KARAT_LABEL } from '@domain/balance';
 import { CHANNEL_SHORT } from '@domain/thesis';
-import { liquidityBand, liquidityRatio, summarizeWealth } from '@domain/settlement';
+import { liquidationEstimate, liquidityBand, liquidityRatio, summarizeWealth } from '@domain/settlement';
 import { getTemplate } from '@data/item-templates';
-import { spawnItem } from '@domain/item-spawn';
-import { unitPriceView } from '@domain/channels';
-import { supplyOffer } from '@domain/wholesaler';
+import { POOL_SUPPLY, poolSupplyQuote, maxPoolSupplyQuantity, hasPoolSupplySpace } from '@domain/pool-supply';
 import { useGame } from '@state/gameStore';
 
 import { IconStock, IconWarning, ProductSilhouette } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { NAV_ART, productArt } from '@ui/assets';
-import { supplierCounterIds } from '@domain/sales-catalog';
-import { grams, pct, tl, tlBare, tlSigned } from '@ui/format';
+import { grams, pct, tl, tlBare, tlSigned, preciseGrams } from '@ui/format';
 import type { ExitChannel, InventoryPosition } from '@domain/types';
 
 type Filter = 'all' | 'display' | 'backStock' | 'workshop' | 'dead';
@@ -56,9 +57,7 @@ export function StockScreen() {
     Tam ekran rota hem o iç yüzeyi kaldırır hem de nakdin yapışkan başlıkta
     kalmasına yer açar.
   */
-  const [route, setRoute] = useState<'list' | 'buy'>('list');
 
-  if (route === 'buy') return <BullionRoute onBack={() => setRoute('list')} />;
 
   const wealth = summarizeWealth({
     store: s.store,
@@ -88,7 +87,7 @@ export function StockScreen() {
       <header className="pageHead">
         <h1 className="pageHead__title">Stok</h1>
         <p className="pageHead__sub">
-          {s.inventory.length} kalem · Vitrin {counts.display}/{s.store.displaySlots} · Arka stok{' '}
+          {s.inventory.length === 0 ? 'Stok boş' : `${s.inventory.length} ürün`} · Vitrin {counts.display}/{s.store.displaySlots} · Arka stok{' '}
           {counts.backStock}/{s.store.backStockSlots}
         </p>
 
@@ -98,7 +97,7 @@ export function StockScreen() {
             <span className="summaryRow__value num">{tl(wealth.stockCost)}</span>
           </div>
           <div className="summaryRow__item">
-            <span className="summaryRow__label">Potansiyel</span>
+            <span className="summaryRow__label">Net Çıkış</span>
             <span
               className={`summaryRow__value num ${
                 wealth.stockPotential >= 0
@@ -134,11 +133,9 @@ export function StockScreen() {
       </header>
 
       <div className="page__scroll">
-        {/* Playtest revizyonu §4 · UPDATEv2 §8 — katalog artık ayrı rotada. */}
-        <button type="button" className="counter__toggle counter" onClick={() => setRoute('buy')}>
-          <span>Sarrafiye Al</span>
-          <span className="counter__hint num">Nakit {tl(s.store.cash)} ›</span>
-        </button>
+        {/* Playtest revizyonu §4 · UPDATEv5 — ortak havuz tezgâhı ve HAS. */}
+        <BullionCounter />
+        <HasCounter />
 
         <div className="filterRail">
           {FILTERS.map((f) => (
@@ -166,7 +163,7 @@ export function StockScreen() {
               />
             </div>
             <p className="empty__title">
-              {s.inventory.length === 0 ? 'Stok boş' : 'Bu filtrede kalem yok'}
+              {s.inventory.length === 0 ? 'Stok boş' : 'Bu filtrede ürün yok'}
             </p>
             <p className="empty__text">
               {s.inventory.length === 0
@@ -197,143 +194,128 @@ export function StockScreen() {
  * Fiyat hardcode DEĞİL: mevcut toptancı kanalından (`supplyOffer`) türer,
  * yani piyasa, ürün tipi ve makas kuralları aynen işler.
  */
-function BullionRoute({ onBack }: { onBack: () => void }) {
-  const s = useGame();
-
-  return (
-    <div className="page">
-      {/*
-        §8 — "Mevcut nakit YAPIŞKAN BAŞLIKTA görülsün." `.pageHead` zaten
-        sticky; nakit oraya taşındı ve katalog boyunca ekranda kalıyor.
-      */}
-      <header className="pageHead">
-        <button type="button" className="chip" onClick={onBack} style={{ marginBottom: 8 }}>
-          ← Stok
-        </button>
-        <h1 className="pageHead__title">Sarrafiye Al</h1>
-        <p className="pageHead__sub">
-          Nakit <span className="num">{tl(s.store.cash)}</span> · fiyatlar toptancı kanalından
-          gelir
-        </p>
-      </header>
-
-      {/* TEK kaydırma yüzeyi: iç `max-height` / `overflow` YOK. */}
-      <div className="page__scroll">
-        {supplierCounterIds(s.store.storeTier).map((templateId) => (
-          <BullionOffer key={templateId} templateId={templateId} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BullionOffer({ templateId }: { templateId: string }) {
-  const s = useGame();
-  const [qty, setQtyState] = useState(counterMemory.qty[templateId] ?? 1);
-  const setQty = (next: number) => {
-    counterMemory.qty[templateId] = next;
-    setQtyState(next);
-  };
-
-  // Sonda sabit: fiyat ürünün ŞABLONUNA bağlıdır, örneğin kimliğine değil.
-  const probe = useMemo(() => spawnItem(s.seed, 990_001, templateId), [s.seed, templateId]);
-  const lot = supplyOffer(probe, Math.max(1, qty), s.market, s.store);
-  if (!lot) return null;
-
-  const view = unitPriceView(probe, lot.unitPrice);
-  // Elde bu üründen kaç adet var.
-  const held = s.inventory
-    .filter((p) => s.items[p.itemId]?.templateId === templateId)
-    .reduce((sum, p) => sum + p.quantity, 0);
-
-  const affordable = lot.total <= s.store.cash;
-  const shortfall = Math.max(0, lot.total - s.store.cash);
-
-  return (
-    <div className="offerRow">
-      <div className="offerRow__head">
-        <span className="offerRow__name">{probe.displayName}</span>
-        <span className="offerRow__unit num">
-          {tlBare(view.unitPrice)} {view.unit}
-        </span>
-      </div>
-
-      <div className="offerRow__meta">
-        Stokta {held} · {view.perGram ? `${lot.grams.toFixed(1)} g` : `${lot.quantity} adet`} ·
-        en çok {lot.maxQuantity}
-      </div>
-
-      <div className="offerRow__controls">
-        <div className="qtyStep" role="group" aria-label={`${probe.displayName} adedi`}>
-          <button
-            type="button"
-            className="qtyStep__btn"
-            onClick={() => setQty(Math.max(1, qty - 1))}
-            aria-label="Bir azalt"
-          >
-            −
-          </button>
-          <span className="qtyStep__value num">{lot.quantity}</span>
-          <button
-            type="button"
-            className="qtyStep__btn"
-            onClick={() => setQty(Math.min(lot.maxQuantity, qty + 1))}
-            disabled={lot.quantity >= lot.maxQuantity}
-            aria-label="Bir artır"
-          >
-            +
-          </button>
-        </div>
-
-        <span className="offerRow__total num">{tl(lot.total)}</span>
-
-        <button
-          type="button"
-          className="offerRow__buy"
-          onClick={() => s.buyFromWholesaler(templateId, lot.quantity)}
-          disabled={!affordable}
-          /* §12 — pasif düğmenin nedeni erişilebilir adda da yazılı. */
-          aria-label={affordable ? undefined : `Al — nakit yetersiz, ${tl(shortfall)} eksik`}
-          title={affordable ? undefined : `Nakit yetersiz · ${tl(shortfall)} eksik`}
-        >
-          {affordable ? 'Al' : 'Nakit yok'}
-        </button>
-      </div>
-
-      {/* §8 — "Nakit yetersizliği açıkça yazsın." */}
-      {!affordable && (
-        <div className="offerRow__short">
-          Nakit yetersiz · {tl(shortfall)} eksik. Adedi azaltabilir ya da stok satıp nakde
-          geçebilirsin.
-        </div>
-      )}
-    </div>
-  );
-}
-
 /**
- * Tezgâhın ekran hafızası. Oyun durumunun parçası DEĞİL: kaydedilmez,
- * yüklenmez, ekonomiyi etkilemez. Yalnız sekme ya da rota gidip gelirken
- * oyuncunun adet seçimini korur.
+ * SARRAFİYE TEZGÂHI — UPDATEv5 ortak havuz tedariki.
  *
- * §8 sonrası `open` alanı düştü: katalog artık açılır panel değil, kendi
- * rotası. Rotanın açık olup olmadığını ekranın kendi state'i tutuyor.
+ * Eski hâli ayrı bir ROTAYDI (`BullionRoute`) ve tek tek SKU satardı.
+ * UPDATEv5 stoğu ortak mg havuzlarında topladığı için tezgâh da havuz
+ * ürünlerini satar; katalog açılır panel olarak Stok ekranında ve Dükkan
+ * ekranının hızlı stok sayfasında AYNI bileşenden gelir.
  */
-const counterMemory: { qty: Record<string, number> } = {
-  qty: {},
-};
+function BullionCounter() {
+  const s = useGame();
+
+  return <div className="counter">
+    <button
+      type="button"
+      className="counter__toggle"
+      onClick={() => s.setStockCatalogOpen(!s.stockCatalogOpen)}
+      aria-expanded={s.stockCatalogOpen}
+      aria-controls="bullion-catalog"
+    >
+      <span>Sarrafiye Al</span>
+      <span className="counter__meta">
+        <span className="counter__hint num">{tl(s.store.cash)}</span>
+        <span
+          className={`counter__chevron ${s.stockCatalogOpen ? 'counter__chevron--open' : ''}`}
+          aria-hidden="true"
+        >
+          ▼
+        </span>
+      </span>
+    </button>
+    {s.stockCatalogOpen && <BullionCatalog id="bullion-catalog" />}
+  </div>;
+}
+
+/** Ana Dükkan hızlı alım sheet'i ile Stok ekranı aynı gerçek kataloğu paylaşır. */
+export function BullionCatalog({ id }: { id?: string }) {
+  return <div className="counter__list" id={id}>
+    {POOL_SUPPLY.map(product => <BullionOffer key={product.templateId} product={product} />)}
+  </div>;
+}
+
+function BullionOffer({ product }: { product: typeof POOL_SUPPLY[number] }) {
+  const s = useGame();
+  const { templateId, name, gramsPerUnit } = product;
+  const [amount, setAmount] = useState(counterMemory.qty[templateId] ?? '1');
+  const [confirmation, setConfirmation] = useState<string | null>(null);
+  const qty = Number(amount.replace(',', '.'));
+  const setQty = (next: string) => {
+    counterMemory.qty[templateId] = next;
+    setAmount(next);
+    setConfirmation(null);
+  };
+  const lot = poolSupplyQuote(templateId, qty, s.market, s.store);
+  const max = useMemo(() => maxPoolSupplyQuantity(templateId, s.market, s.store), [templateId, s.market, s.store]);
+  const sliderStep = templateId === 'gram_gold_1' ? 0.001 : 1;
+  const sliderValue = Number.isFinite(qty) ? Math.min(max, Math.max(0, qty)) : 0;
+  const unitQuote = lot ?? poolSupplyQuote(templateId, 1, s.market, s.store)!;
+  const poolId = poolForTemplate(templateId);
+  const held = s.inventory.filter(p => p.poolId === poolId)
+    .reduce((sum, p) => sum + (p.quantityMg === undefined ? p.quantity : fromMg(p.quantityMg)), 0);
+  const space = hasPoolSupplySpace(templateId, s.inventory, s.store);
+  const affordable = !!lot && lot.totalPrice <= s.store.cash && space;
+  const signature = lot ? `${qty}:${lot.totalPrice}` : '';
+  const expensive = !!lot && lot.totalPrice >= Math.max(100_000, Math.round(s.store.cash * .2));
+  const confirmed = confirmation === signature;
+  const buy = () => {
+    if (!affordable || !lot) return;
+    if (expensive && !confirmed) { setConfirmation(signature); return; }
+    s.buyPoolStock(templateId, qty);
+    setQty('1');
+  };
+  return <section className="offerRow" aria-label={name}>
+    <div className="offerRow__head">
+      <span className="offerRow__name">{name}</span>
+      <span className="offerRow__unit num">{tlBare(unitQuote.unitPrice / (gramsPerUnit || 1))} TL/{gramsPerUnit ? 'g' : 'adet'}</span>
+    </div>
+    <div className="offerRow__meta">Stokta {gramsPerUnit ? preciseGrams(held) : `${held} adet`}</div>
+    <div className="offerRow__controls">
+      {templateId === 'gram_gold_1'
+        ? <label className="poolAmount">Gram <input aria-label="Gram Altın miktarı" type="text" inputMode="decimal" value={amount}
+            onChange={e => setQty(e.target.value)} /></label>
+        : <div className="qtyStep" role="group" aria-label={`${name} miktarı`}>
+          <button type="button" className="qtyStep__btn" aria-label={gramsPerUnit ? '10 gram azalt' : 'Bir adet azalt'}
+            disabled={qty <= 1} onClick={() => setQty(String(Math.max(1, qty - 1)))}>−</button>
+          <span className="qtyStep__value num">{gramsPerUnit ? `${qty * gramsPerUnit} g` : qty}</span>
+          <button type="button" className="qtyStep__btn" aria-label={gramsPerUnit ? '10 gram artır' : 'Bir adet artır'}
+            disabled={qty + 1 > max || !space} onClick={() => setQty(String(qty + 1))}>+</button>
+        </div>}
+      <span className="offerRow__total num">{lot ? tl(lot.totalPrice) : '—'}</span>
+      <button type="button" className="offerRow__buy" disabled={!affordable} onClick={buy}>{expensive && confirmed ? 'Onayla' : 'Al'}</button>
+    </div>
+    <label className="poolSlider">
+      <span>Seçilen: {gramsPerUnit ? `${sliderValue * gramsPerUnit} g` : `${sliderValue} adet`}</span>
+      <input type="range" aria-label={`${name} miktar sliderı`} min={0} max={max} step={sliderStep} value={sliderValue}
+        disabled={max <= 0 || !space}
+        onChange={e => setQty(templateId === 'gram_gold_1' ? Number(e.target.value).toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : String(Math.round(Number(e.target.value))))} />
+      <span className="poolSlider__range">0 — {gramsPerUnit ? `${max * gramsPerUnit} g` : `${max} adet`}</span>
+    </label>
+    {expensive && confirmed && <p className="offerRow__confirm" role="status">Yüksek tutar: {tl(lot.totalPrice)}. Satın almak için tekrar onayla.</p>}
+    {!lot && <p className="offerRow__shortfall">Pozitif, geçerli bir miktar seçin. Gram altın hassasiyeti 0,001 g.</p>}
+    {lot && !affordable && <p className="offerRow__shortfall">{!space
+      ? 'Arka stokta yeni ürün ailesi için yer yok.'
+      : `Minimum ${templateId === 'gram_gold_1' ? '0,001 g' : '1 adet'} · Yetersiz Nakit · ${tl(lot.totalPrice)} gerekli, ${tl(s.store.cash)} mevcut`}</p>}
+  </section>;
+}
+
+/** Uncommitted UI choice survives tab changes; inventory is always held in game state. */
+const counterMemory: { qty: Record<string, string> } = { qty: {} };
 
 function StockRow({ position }: { position: InventoryPosition }) {
+  const s = useGame();
   const item = useGame((s) => s.items[position.itemId]);
-  const [open, setOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   if (!item) return null;
 
   const template = getTemplate(item.templateId);
-  const delta = position.currentValue - position.costBasis;
+  const liquidation = liquidationEstimate(position);
+  const delta = liquidation.value - position.costBasis;
   const isDead = position.age >= DEAD_STOCK_AGE;
 
   return (
-    <div className={`row ${open ? 'row--open' : ''}`}>
+    <div className={`row ${detailsOpen ? 'row--open' : ''}`}>
       {/*
         Ürün görseli 64 px — 44 px'lik eski silüet yuvası gerçekçi bandın
         altındaydı. Satırın kendi yüksekliği (başlık + meta + üç rakam)
@@ -355,10 +337,10 @@ function StockRow({ position }: { position: InventoryPosition }) {
           {item.displayName}
           {/* §4.1 — yığılmış sarrafiyede adet gizlenmez; maliyet ve değer
               toplamdır, tek parçanınki değil. */}
-          {position.quantity > 1 && <span className="row__qty num"> ×{position.quantity}</span>}
+          <span className="row__qty num"> · {position.quantityMg === undefined ? `${position.quantity} adet` : preciseGrams(fromMg(position.quantityMg))}</span>
         </div>
         <div className="row__meta">
-          {KARAT_LABEL[item.declared.claimedKarat]} · {grams(item.truth.grossWeight)} ·{' '}
+          {KARAT_LABEL[item.declared.claimedKarat]} · {position.poolId ? 'Ortak havuz' : grams(item.truth.grossWeight)} ·{' '}
           {position.age} gün{' '}
           {/* GDD 8.3 — "her kalemin neden tutulduğunu görünür kılan plan etiketi" */}
           <span className={`tag ${position.thesis ? '' : 'tag--neutral'}`}>
@@ -370,12 +352,12 @@ function StockRow({ position }: { position: InventoryPosition }) {
 
         <div className="row__figures">
           <span className="figure">
-            <span className="figure__label">Maliyet</span>
+            <span className="figure__label">Gerçek Alış Maliyeti</span>
             <span className="figure__value num">{tl(position.costBasis)}</span>
           </span>
           <span className="figure">
-            <span className="figure__label">Bugünkü Değer</span>
-            <span className="figure__value num">{tl(position.currentValue)}</span>
+            <span className="figure__label">Net Satış Tahmini</span>
+            <span className="figure__value num">{tl(liquidation.value)}</span>
           </span>
           <span className="figure">
             <span className="figure__label">Tahmini Marj</span>
@@ -389,6 +371,10 @@ function StockRow({ position }: { position: InventoryPosition }) {
           </span>
         </div>
 
+        <div className="row__exitEstimate">
+          Hızlı çıkış: <strong>{liquidation.channel}</strong> · Tahmini süre {liquidation.time}
+        </div>
+
         {/* Satır uyarısı — tek satır durum (GDD 23.15) */}
         {isDead && (
           <div className="rowAlert">
@@ -398,21 +384,34 @@ function StockRow({ position }: { position: InventoryPosition }) {
         )}
 
         {/*
-          UPDATEv2 §8 — "Stok kartları yalnız bilgi kartı olarak kalmamalı."
-          Eylemler satırı şişirmesin diye açılır panelde; kapalıyken liste
-          eskisi kadar kalem gösterir.
+          UPDATEv2 §8 + UPDATEv5 — TEK AÇILIR PANEL.
+
+          İki ayrı açılır bölüm vardı (biri eylemler, biri konum/çıkış planı)
+          ve ikisi de aynı kartın altına iniyordu: oyuncu aynı bilgi için iki
+          düğme görüyordu. Panel tek; içinde önce eylemler, sonra durum.
         */}
         <button
           type="button"
-          className="row__disclosure"
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
+          className="row__disclosure rowDetailToggle"
+          onClick={() => setDetailsOpen(!detailsOpen)}
+          aria-expanded={detailsOpen}
         >
-          {open ? 'Eylemleri gizle' : 'Eylemler ve çıkış planı'}
-          <span aria-hidden="true">{open ? ' ▾' : ' ›'}</span>
+          {detailsOpen ? 'Eylemleri gizle' : 'Eylemler ve çıkış planı'}
+          <span aria-hidden="true">{detailsOpen ? ' ▾' : ' ›'}</span>
         </button>
 
-        {open && <StockActions position={position} />}
+        {detailsOpen && (
+          <div className="rowDetailPanel">
+            <StockActions position={position} />
+            {isCrafted(item) && position.location !== 'workshop' && <>
+              <button type="button" className="chip" disabled={position.location === 'display'} onClick={() => s.displayStock(item.id)}>Vitrine Koy</button>
+              <button type="button" className="chip" onClick={() => { if (window.confirm('Ürün fiziksel stoktan çıkarılıp HAS bakiyesine dönüşecek. Mevcut 180 ₺ eritme bedeli alınır. Onaylıyor musunuz?')) s.meltStock(item.id); }}>Erit → HAS</button>
+            </>}
+            <p><strong>Konum:</strong> {position.location === 'display' ? 'Vitrin' : position.location === 'backStock' ? 'Arka stok' : position.location === 'workshop' ? 'Serviste' : 'Müşteride'}</p>
+            <p><strong>Çıkış planı:</strong> {position.thesis ? CHANNEL_SHORT[position.thesis] : 'Henüz seçilmedi.'}</p>
+            {!position.thesis && <p>Çıkış planı, ürünün müşteri işleminde değerlendirilip bir satış kanalı seçildiğinde atanır.</p>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -571,3 +570,47 @@ const LOCATION_LABEL: Record<InventoryPosition['location'], string> = {
   backStock: 'Arka stok',
   workshop: 'Atölyede',
 };
+function HasCounter() {
+  const s = useGame();
+  const [side, setSide] = useState<'buy' | 'sell'>('buy');
+  const [amountMg, setAmountMg] = useState(0);
+  const [pending, setPending] = useState<string | null>(null);
+  const quote = hasQuote(s.market, s.store);
+  const open = isHasTradingDay(s.market.day);
+  const maxMg = side === 'buy' ? maxHasBuyMg(s.store.cash, quote.buy) : s.store.hasBalanceMg ?? 0;
+  const selectedMg = Math.min(amountMg, maxMg);
+  const qty = fromMg(selectedMg);
+  const total = roundMoney(qty * (side === 'buy' ? quote.buy : quote.sell));
+  const valid = selectedMg > 0 && selectedMg <= maxMg && total > 0;
+  const signature = `${s.market.day}:${side}:${selectedMg}:${total}:${s.ledger.transactions.length}`;
+  const changeSide = (next: 'buy' | 'sell') => { setSide(next); setAmountMg(0); setPending(null); };
+  return <section className="group" aria-label="HAS hesabı">
+    <h2 className="group__title">HAS hesabı · {preciseGrams(fromMg(s.store.hasBalanceMg ?? 0))}</h2>
+    <div className="group__body v5Controls">
+      <p>Saflık 1.000 · Değer {tl(fromMg(s.store.hasBalanceMg ?? 0) * s.market.goldSpot)}</p>
+      <p>Toptancıdan al {tl(quote.buy)}/g · Toptancıya sat {tl(quote.sell)}/g</p>
+      <p>{open ? 'Cuma: HAS işlemleri açık.' : 'Miktarı şimdi seçebilirsiniz; alım-satım onayı yalnız cuma günü açılır.'}</p>
+      <div role="group" aria-label="HAS işlem yönü">
+        <button type="button" className="chip" aria-pressed={side === 'buy'} onClick={() => changeSide('buy')}>HAS Al</button>
+        <button type="button" className="chip" aria-pressed={side === 'sell'} onClick={() => changeSide('sell')}>HAS Sat</button>
+      </div>
+      <label className="hasSlider">{side === 'buy' ? 'Seçilen' : 'Satılacak'}: {preciseGrams(qty)}
+        <input type="range" aria-label="HAS miktarı" min={0} max={fromMg(maxMg)} step={0.001} value={qty}
+          disabled={maxMg <= 0} onChange={e => { setAmountMg(Math.min(maxMg, Math.max(0, toMg(Number(e.target.value))))); setPending(null); }} />
+      </label>
+      <p>0 g — {preciseGrams(fromMg(maxMg))}</p>
+      <p>{side === 'buy' ? 'Yaklaşık Tutar' : 'Alınacak'}: {tl(total)}</p>
+      <button type="button" className="chip" disabled={maxMg <= 0}
+        onClick={() => { setAmountMg(maxMg); setPending(null); }}>{side === 'buy' ? 'MAX AL' : 'TÜM HAS'}</button>
+      <button type="button" className="chip" disabled={!open || !valid} onClick={() => setPending(signature)}>İşleme Devam Et</button>
+      {pending === signature && open && valid && <div role="group" aria-label="HAS işlem onayı">
+        <p>{preciseGrams(qty)} · {tl(total)} — {side === 'buy' ? 'alım' : 'satış'} onayı</p>
+        <button type="button" className="chip" onClick={() => {
+          s.tradeHas(side, qty, `has_${s.market.day}_${s.ledger.transactions.length}_${side}`);
+          setPending(null); setAmountMg(0);
+        }}>İşlemi Onayla</button>
+        <button type="button" className="chip" onClick={() => setPending(null)}>Vazgeç</button>
+      </div>}
+    </div>
+  </section>;
+}

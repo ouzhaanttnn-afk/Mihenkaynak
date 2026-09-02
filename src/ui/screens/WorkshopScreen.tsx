@@ -107,7 +107,7 @@ export function WorkshopScreen() {
               <div className="empty__icon">
                 <Art
                   art={NAV_ART.workshop}
-                  size={96}
+                  size={56}
                   decorative
                   className="art--hero"
                   fallback={<IconWorkshop size={34} />}
@@ -115,9 +115,8 @@ export function WorkshopScreen() {
               </div>
               <p className="empty__title">Kuyruk boş</p>
               <p className="empty__text">
-                Servis işleri müşteriden kabul edildiğinde buraya düşer. Atölye pasif gelir
-                üretmez — gelir kabul edilen gerçek işten, kullanılan kapasiteden ve
-                üstlenilen hata riskinden doğar.
+                Kabul ettiğin servis işleri burada görünür. Gelir yalnız tamamlanan gerçek
+                işlerden doğar.
               </p>
             </div>
           ) : (

@@ -7,49 +7,65 @@
  * BORÇLAR, VADELER, LİMİTLER ve POZİSYONLAR tutarlı biçimde geri yüklenir."
  *
  * ═══════════════════════════════════════════════════════════════════════════
- * NEDEN TÜRETİLEBİLİR ALANLAR KAYDEDİLMEZ
+ * PİYASA SNAPSHOT'I NEDEN KAYDEDİLİR
  *
- * Bu oyunda piyasa, müşteri ve gün karakteri (seed, gün) ikilisinden
- * TÜRETİLİR (GDD 13.4 / 28.3). Türetilebilir bir şeyi kaydetmek iki kopya
- * yaratır ve bir gün ikisi ayrışır — o an oyuncu kaydı yükleyip farklı bir
- * piyasa görür, yani reload avantajı doğar.
+ * Gün başı zinciri seed ve günden türetilir; gün içi mikro adımlar ise o ana
+ * kadar oluşmuş spot/history üzerinden ilerler. Reload avantajını önlemek
+ * için o anki piyasa snapshot'ı da taşınır. Eski kayıtlarda snapshot yoksa
+ * seed/gün zinciri yeniden kurularak geriye uyumluluk korunur.
  *
- * Bu yüzden kayıt yalnız TÜRETİLEMEYEN şeyi taşır: oyuncunun kararlarının
- * biriktirdiği durum. Piyasa ve gün karakteri yüklemede seed'den yeniden
- * kurulur; §11'in "rejim tutarlı geri yüklenir" şartı bu yolla, kopya
- * tutarak değil, YENİDEN TÜRETEREK karşılanır.
- *
- * KAYDEDİLMEYEN, BİLEREK: aktif müşteri ve yarım kalan pazarlık. Yarım bir
- * pazarlığı kaydetmek, oyuncuya "beğenmediğim teklifi geri al" kapısı
- * açardı — GDD 34.3'ün kapattığı şey.
+ * UPDATEv5: aktif müşteri, kuyruk, teklif geçmişi ve terminal settlement
+ * anahtarları birlikte saklanır; reload pazarlığı veya günlük zarları sıfırlamaz.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { createMarketForDay } from '@domain/market';
+import { isMarketOpen } from '@domain/calendar';
+import { consolidatePools, poolForTemplate, poolUnitGrams } from '@domain/stock-pools';
+import { bullionMeta } from '@data/bullion';
+import type { CustomerDemand } from '@domain/types';
 import { dayCharacter, emptyTelemetry } from '@domain/intent';
 import { createLedger, type Ledger } from '@domain/settlement';
 import type { GameState } from './gameStore';
 import { normalizeProfile, type PlayerProfile } from '@domain/profile';
+import { defaultPlayerMarket, type PlayerMarketState } from '@domain/marketplace';
+import {
+  defaultSkillProgress,
+  normalizeSkillProgress,
+  type SkillProgress,
+} from '@domain/skill-tree';
 import type { CustomerRegistry } from '@domain/customer-memory';
 import { normalizeDemandLog, type DemandLog } from '@domain/demand-log';
 import type {
   InventoryPosition,
   ItemInstance,
+  MarketState,
   ServiceJob,
   StoreState,
   TradeNetworkMember,
 } from '@domain/types';
 
 /** Kayıt formatı sürümü. Artırıldığında migrate() bir adım daha kazanır. */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export interface SaveFile {
+  dayReportOpen?: boolean;
+  queue?: GameState['queue'];
+  activeCustomer?: GameState['activeCustomer'];
+  activeDeal?: GameState['activeDeal'];
+  nextCustomerAtMinutes?: number;
+  intentTelemetry?: GameState['intentTelemetry'];
+  missedGuestCountToday?: number;
+  lastDayReport?: GameState['lastDayReport'];
+  customerMessage?: string;
   version: number;
   /** GDD 28.3 — RNG'nin tek kaynağı. Seed olmadan hiçbir şey türetilemez. */
   seed: number;
   /** Türetim anahtarının ikinci yarısı. */
   day: number;
   clockMinutes: number;
+  /** Gün içi spot/history birebir geri gelsin; eski kayıtlarda olmayabilir. */
+  market?: MarketState;
   /** Deterministik spawn zinciri kaldığı yerden devam etsin diye. */
   spawnCounter: number;
   jobCounter: number;
@@ -102,6 +118,10 @@ export interface SaveFile {
    * durumda oyun içi güne düşer.
    */
   savedAt?: number;
+  /** Market sahipliği; eski kayıtlarda boş koleksiyona düşer. */
+  playerMarket?: PlayerMarketState;
+  /** Yetenek ağacı ilerlemesi; eski kayıtlarda tüm kademeler sıfırdır. */
+  skillProgress?: SkillProgress;
 }
 
 /**
@@ -113,9 +133,19 @@ export interface SaveFile {
 export function serialize(state: GameState): SaveFile {
   return {
     version: SAVE_VERSION,
+    queue: state.queue,
+    activeCustomer: state.activeCustomer,
+    activeDeal: state.activeDeal,
+    nextCustomerAtMinutes: state.nextCustomerAtMinutes,
+    intentTelemetry: state.intentTelemetry,
+    missedGuestCountToday: state.missedGuestCountToday,
+    lastDayReport: state.lastDayReport,
+    dayReportOpen: state.dayReportOpen,
+    customerMessage: state.customerMessage,
     seed: state.seed,
     day: state.market.day,
     clockMinutes: state.market.clockMinutes,
+    market: state.market,
     spawnCounter: state.spawnCounter,
     jobCounter: state.jobCounter,
     store: state.store,
@@ -130,6 +160,8 @@ export function serialize(state: GameState): SaveFile {
     seenLessons: state.seenLessons,
     profile: state.profile,
     savedAt: Date.now(),
+    playerMarket: state.playerMarket,
+    skillProgress: state.skillProgress,
   };
 }
 
@@ -153,20 +185,25 @@ export type LoadedState = Pick<
   | 'speed4xUnlocked'
   | 'seenLessons'
   | 'profile'
+  | 'playerMarket'
+  | 'skillProgress'
   | 'queue'
   | 'activeCustomer'
   | 'activeDeal'
   | 'overnight'
   | 'lastOvernight'
+  | 'nextCustomerAtMinutes'
+  | 'missedGuestCountToday'
+  | 'lastDayReport'
+  | 'dayReportOpen'
+  | 'customerMessage'
 >;
 
 /**
  * Kaydı duruma çevirir.
  *
- * Piyasa ve gün karakteri seed'den YENİDEN TÜRETİLİR. Aynı (seed, gün) her
- * zaman aynı rejimi, trendi ve olayı verdiği için §11'in "rejim tutarlı geri
- * yüklenir" şartı sağlanır — üstelik kaydedilmiş bir kopyanın bozulma
- * ihtimali olmadan.
+ * Yeni kayıtta piyasa snapshot'ı birebir yüklenir. Eski kayıtta yoksa aynı
+ * seed/gün zinciri yeniden türetilir.
  *
  * Rejim geçiş zinciri gün 1'den itibaren yeniden koşturulur: rejim artık bir
  * DURUM olduğu için (§5.1) yalnız o günün seed'ini kullanmak, zincirin
@@ -174,7 +211,9 @@ export type LoadedState = Pick<
  */
 export function deserialize(file: SaveFile): LoadedState {
   const save = migrate(file);
-  const market = rebuildMarket(save.seed, save.day, save.clockMinutes);
+  const market = isMarketSnapshot(save.market)
+    ? normalizeMarketSnapshot(save.market, save.clockMinutes)
+    : rebuildMarket(save.seed, save.day, save.clockMinutes);
 
   return {
     seed: save.seed,
@@ -192,9 +231,8 @@ export function deserialize(file: SaveFile): LoadedState {
     // Eski kayıtta defter yok; boş başlar ve ölçüm bugünden birikir.
     missedDemand: normalizeDemandLog(save.missedDemand),
     dayCharacter: dayCharacter(save.seed, save.day, market),
-    // Telemetri bir ÖLÇÜMdür, bir durum değil: yüklemede sıfırlanır ve
-    // yeni örneklem penceresi başlar (§3 "uygun örneklem penceresinde").
-    intentTelemetry: emptyTelemetry(),
+    // Gün içi ölçüm penceresi reload ile sıfırlanmaz.
+    intentTelemetry: save.intentTelemetry ?? emptyTelemetry(),
     speed4xUnlocked: save.speed4xUnlocked,
     // Eski kayıtlarda alan yok; boş liste öğretimi baştan başlatır ki
     // sürüm atlayan oyuncu sessizce derssiz kalmasın.
@@ -202,10 +240,19 @@ export function deserialize(file: SaveFile): LoadedState {
     // Profil alanı olmayan (bu özellikten önceki) kayıtlar varsayılana
     // düşer; bozuk bir ad veya bilinmeyen avatar da normalize edilir.
     profile: normalizeProfile(save.profile),
-    // Yarım işlem taşınmaz.
-    queue: [],
-    activeCustomer: null,
-    activeDeal: null,
+    playerMarket: save.playerMarket ?? defaultPlayerMarket(),
+    skillProgress: save.skillProgress
+      ? normalizeSkillProgress(save.skillProgress)
+      : defaultSkillProgress(),
+    // Aktif ziyaret ve yarım pazarlık aynı durumdan devam eder.
+    queue: save.queue ?? [],
+    activeCustomer: save.activeCustomer ?? null,
+    activeDeal: save.activeDeal ?? null,
+    nextCustomerAtMinutes: save.nextCustomerAtMinutes ?? save.clockMinutes + 3,
+    missedGuestCountToday: save.missedGuestCountToday ?? 0,
+    lastDayReport: save.lastDayReport ?? null,
+    dayReportOpen: !!save.dayReportOpen && !!save.lastDayReport,
+    customerMessage: save.customerMessage ?? '',
     overnight: null,
     lastOvernight: null,
   };
@@ -227,31 +274,185 @@ export function migrate(file: SaveFile): SaveFile {
   if (file.version > SAVE_VERSION) {
     throw new Error(`Kayıt sürümü desteklenmiyor: ${file.version}`);
   }
-  // v1 ilk sürüm; ileride her adım burada zincirlenir.
-  return file;
+  const pooled = consolidatePools(file.inventory, file.items);
+  const normalizeDemand = (d: CustomerDemand | null): CustomerDemand | null => {
+    if (!d || d.poolId || d.targetInventoryItemId || !d.templateId) return d;
+    const poolId = poolForTemplate(d.templateId);
+    if (!poolId) return d;
+    const factor = poolId === 'QUARTER_GOLD_POOL' ? 1 : bullionMeta(d.templateId)!.unitWeightGrams / poolUnitGrams(poolId);
+    return { ...d, poolId, quantity: d.quantity * factor, minQuantity: d.minQuantity * factor,
+      summary: poolId === '24K_GRAM_GOLD_POOL' ? `${d.quantity * factor} gram altın` : poolId === '22K_INVESTMENT_BANGLE_POOL' ? `${d.quantity * factor * 10} gram 22 ayar işçiliksiz bilezik` : d.summary,
+      templateId: poolId === '24K_GRAM_GOLD_POOL' ? 'gram_gold_1' : poolId === '22K_INVESTMENT_BANGLE_POOL' ? 'investment_bangle_22k_10' : d.templateId };
+  };
+  const activeDeal = file.activeDeal ? { ...file.activeDeal } : null;
+  if (activeDeal?.purchase) {
+    activeDeal.purchase = { ...activeDeal.purchase, demand: normalizeDemand(activeDeal.purchase.demand)!,
+      lines: activeDeal.purchase.lines.map(line => {
+        const alias = pooled.aliases[line.itemId];
+        return alias ? { itemId: alias.itemId, quantity: line.quantity * alias.factor } : line;
+      }) };
+    // Merge package lines whose historical SKU positions now share one pool.
+    const combined = new Map<string, number>();
+    for (const line of activeDeal.purchase.lines) combined.set(line.itemId, (combined.get(line.itemId) ?? 0) + line.quantity);
+    activeDeal.purchase.lines = [...combined].map(([itemId, quantity]) => ({ itemId, quantity }));
+    activeDeal.purchase.units = activeDeal.purchase.lines.reduce((sum, line) => sum + line.quantity, 0);
+  }
+  return { ...file, version: SAVE_VERSION, inventory: pooled.inventory, items: pooled.items,
+    store: { ...file.store, personnelCount: file.store.personnelCount ?? 0, hasBalanceMg: file.store.hasBalanceMg ?? 0, hasCostBasis: file.store.hasCostBasis ?? 0 },
+    activeDeal, activeCustomer: file.activeCustomer ? { ...file.activeCustomer, demand: normalizeDemand(file.activeCustomer.demand) } : null,
+    queue: file.queue?.map(entry => ({ ...entry, customer: { ...entry.customer, demand: normalizeDemand(entry.customer.demand) } })) };
 }
 
 const STORAGE_KEY = 'mihenkaynak.save.v1';
+const BACKUP_STORAGE_KEY = 'mihenkaynak.save.v1.backup';
 
-/** Tarayıcı deposuna yazar. Depo yoksa sessizce atlar (SSR / test). */
-export function writeSave(state: GameState): boolean {
+/**
+ * Kaydı iki aşamalı yazar ve tarayıcı deposundan geri okuyarak doğrular.
+ * Bir önceki sağlam kayıt yedekte tutulur; sekme kapanması veya kota hatası
+ * yarım bir JSON bırakırsa oyuncunun son checkpoint'i kaybolmaz.
+ */
+/**
+ * TARAYICI DEPOSU BU ORTAMDA VAR MI?
+ *
+ * "Yazma başarısız" iki AYRI dünyayı anlatır ve ikisine aynı tepkiyi vermek
+ * hata oldu:
+ *
+ *   KOTA DOLU / doğrulama tutmadı → depo VAR, sorun GEÇİCİ. Günü ilerletmemek
+ *     doğrudur: oyuncu yer açıp tekrar dener, ilerlemesini kaybetmez.
+ *
+ *   DEPO HİÇ YOK (gizli pencere, site verisi kapalı, test ortamı) → sorun
+ *     KALICI. Günü ilerletmemek oyuncuyu sonsuza dek kilitler; ölçüldü,
+ *     oyun gün 1'de 18:36'da donuyordu ve bir daha asla açılmıyordu.
+ *
+ * Bu fonksiyon o ayrımı yapar: yalnız deponun ERİŞİLEBİLİR olup olmadığını
+ * söyler, yazmanın başarılı olacağını vaat etmez.
+ */
+export function isStorageAvailable(): boolean {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(serialize(state)));
+    return typeof localStorage !== 'undefined' && localStorage !== null;
+  } catch {
+    // Bazı tarayıcılar site verisi kapalıyken ERİŞİMİN KENDİSİNDE fırlatır.
+    return false;
+  }
+}
+
+function commitRawSave(raw: string): boolean {
+  try {
+    const previous = localStorage.getItem(STORAGE_KEY);
+    if (previous && parseSave(previous)) localStorage.setItem(BACKUP_STORAGE_KEY, previous);
+    localStorage.setItem(STORAGE_KEY, raw);
+
+    if (localStorage.getItem(STORAGE_KEY) !== raw) {
+      if (previous) localStorage.setItem(STORAGE_KEY, previous);
+      return false;
+    }
     return true;
   } catch {
     return false;
   }
 }
 
-/** Depodan okur. Bozuk veya ileri sürümlü kayıt null döner — çökme yok. */
-export function readSave(): LoadedState | null {
+/** Yeni piyasa alanları olmayan kayıtları fiyatı silmeden güvenli modele taşır. */
+function normalizeMarketSnapshot(market: MarketState, clockMinutes: number): MarketState {
+  const open = isMarketOpen(market.day);
+  return {
+    ...market,
+    clockMinutes,
+    marketOpen: open,
+    dayOpen: market.dayOpen ?? {
+      goldSpot: market.goldSpot,
+      silverSpot: market.silverSpot,
+      fxIndex: market.fxIndex,
+    },
+    gapDays: market.gapDays ?? 0,
+    lastIntradayStepIndex:
+      market.lastIntradayStepIndex ?? Math.max(35, Math.floor(clockMinutes / 15) - 1),
+    assets: open
+      ? market.assets
+      : market.assets.map((asset) => ({ ...asset, changePct: 0 })),
+  };
+}
+
+function isMarketSnapshot(market: MarketState | undefined): market is MarketState {
+  return !!market &&
+    typeof market.goldSpot === 'number' &&
+    typeof market.silverSpot === 'number' &&
+    typeof market.fxIndex === 'number' &&
+    typeof market.regime === 'string' &&
+    Array.isArray(market.assets);
+}
+
+function saveCandidates(): string[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return deserialize(JSON.parse(raw) as SaveFile);
+    return [localStorage.getItem(STORAGE_KEY), localStorage.getItem(BACKUP_STORAGE_KEY)].filter(
+      (raw): raw is string => !!raw,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function parseSave(raw: string): SaveFile | null {
+  try {
+    const file = JSON.parse(raw) as SaveFile;
+    if (
+      typeof file !== 'object' ||
+      file === null ||
+      typeof file.version !== 'number' ||
+      file.version > SAVE_VERSION ||
+      typeof file.day !== 'number' ||
+      !file.store ||
+      !Array.isArray(file.inventory)
+    ) {
+      return null;
+    }
+    return file;
   } catch {
     return null;
   }
+}
+
+/** Tarayıcı deposuna yazar. Depo yoksa sessizce atlar (SSR / test). */
+export function writeSave(state: GameState): boolean {
+  return commitRawSave(JSON.stringify({ ...serialize(state), savedAt: Date.now() }));
+}
+
+export interface SaveSummary {
+  day: number;
+  clockMinutes: number;
+  cash: number;
+  stockUnits: number;
+  savedAt: number | null;
+}
+
+/** Kayıt yüklenmeden önce güvenli, kısa önizleme verir. */
+export function readSaveSummary(): SaveSummary | null {
+  for (const raw of saveCandidates()) {
+    const file = parseSave(raw);
+    if (!file) continue;
+    return {
+      day: file.day,
+      clockMinutes: file.clockMinutes,
+      cash: file.store.cash,
+      stockUnits: file.inventory.reduce((sum, position) => sum + position.quantity, 0),
+      savedAt: typeof file.savedAt === 'number' ? file.savedAt : null,
+    };
+  }
+  return null;
+}
+
+/** Depodan okur. Bozuk veya ileri sürümlü kayıt null döner — çökme yok. */
+export function readSave(): LoadedState | null {
+  for (const raw of saveCandidates()) {
+    const file = parseSave(raw);
+    if (!file) continue;
+    try {
+      return deserialize(file);
+    } catch {
+      // Ana kayıt bozuksa yedek denenir.
+    }
+  }
+  return null;
 }
 
 /**
@@ -276,10 +477,11 @@ export function persistProfile(state: GameState): boolean {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return writeSave(state);
-    const file = JSON.parse(raw) as SaveFile;
+    const file = parseSave(raw);
+    if (!file) return writeSave(state);
     file.profile = state.profile;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(file));
-    return true;
+    file.savedAt = Date.now();
+    return commitRawSave(JSON.stringify(file));
   } catch {
     return false;
   }
@@ -311,6 +513,7 @@ export function readSaveMeta(): { savedAt: number | null; day: number; clockMinu
 export function clearSave(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(BACKUP_STORAGE_KEY);
   } catch {
     // Depo yoksa yapacak bir şey yok.
   }

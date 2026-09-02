@@ -122,9 +122,23 @@ describe('Gün içi fiyat açılıştan ±%3ten fazla uzaklaşmaz', () => {
     let cur = open;
     for (let t = 9 * 60; t <= 15 * 60; t += 15) cur = stepMarketIntraday(cur, t);
 
+    /*
+      KIYAS VARLIĞIN KENDİ AÇILIŞ FİYATIYLA YAPILIR, ham spotla değil.
+
+      Şeritteki "Gram Altın" saf spot değildir: ürün saflığı ve primi
+      uygulanıp KURUŞA yuvarlanır. Ham spot oranıyla karşılaştırmak bu
+      yuvarlamayı hata sanıyordu (ölçüldü: %0,8255 ile %0,8254 arasında
+      0,00016 puanlık fark). Testin konusu tabanın KAYMAMASI; onu varlığın
+      kendi açılış fiyatı üzerinden ölçmek doğru olanı.
+    */
     const gold = cur.assets.find((a) => a.id === 'goldGram')!;
-    const expected = ((cur.goldSpot - open.goldSpot) / open.goldSpot) * 100;
+    const openGold = open.assets.find((a) => a.id === 'goldGram')!.price;
+    const expected = ((gold.price - openGold) / openGold) * 100;
     expect(gold.changePct).toBeCloseTo(expected, 6);
+
+    // Ve yön/mertebe ham spotla tutarlı kalır — kayan taban olsaydı kaymazdı.
+    const rawPct = ((cur.goldSpot - open.goldSpot) / open.goldSpot) * 100;
+    expect(gold.changePct).toBeCloseTo(rawPct, 2);
   });
 });
 

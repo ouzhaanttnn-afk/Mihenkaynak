@@ -17,8 +17,6 @@ export interface DockAction {
   label: string;
   onPress: () => void;
   disabled?: boolean;
-  danger?: boolean;
-  icon?: ReactNode;
   /**
    * UPDATEv1 §6/§12 — DÜĞME NEDEN PASİF?
    *
@@ -28,6 +26,8 @@ export interface DockAction {
    * NİÇİN olduğunu hiç öğrenemezdi.
    */
   disabledReason?: string;
+  danger?: boolean;
+  icon?: ReactNode;
 
   /**
    * KİLİTLİ — pasiften farkı: DOKUNULABİLİR.
@@ -55,14 +55,16 @@ interface Props {
   primary: DockAction;
   /** En fazla 2 (GDD 23.9.2). */
   secondary?: DockAction[];
+  /** Yalnız boş Dükkan dock'u; çok kısa ekranda müşteri listesine öncelik verir. */
+  idle?: boolean;
 }
 
-export function DecisionDock({ summaryLabel, summaryValue, children, primary, secondary = [] }: Props) {
+export function DecisionDock({ summaryLabel, summaryValue, children, primary, secondary = [], idle = false }: Props) {
   // GDD 23.9.2 sözleşmesi: en fazla 2 ikincil eylem.
   const actions = secondary.slice(0, 2);
 
   return (
-    <footer className="dock">
+    <footer className={`dock ${idle ? 'dock--idle' : ''}`}>
       <div className="dock__summary">
         <span className="dock__summaryLabel">{summaryLabel}</span>
         <span className="dock__summaryValue">{summaryValue}</span>
@@ -94,6 +96,10 @@ export function DecisionDock({ summaryLabel, summaryValue, children, primary, se
           <SecondaryButton action={actions[0]} />
         )}
       </div>
+
+      {primary.disabled && primary.disabledReason && (
+        <p className="dock__disabledReason" role="status">{primary.disabledReason}</p>
+      )}
 
       {actions.length === 2 && (
         <div className="dock__secondaryRow">

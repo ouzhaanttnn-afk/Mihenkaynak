@@ -1,0 +1,46 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`uzun dönem ekonomi snapshotları > 30 günlük 64 piyasa zincirinin dağılımı kontrollü kalır 1`] = `
+{
+  "days": 30,
+  "fallingRuns": 30,
+  "highestFinal": 1.239,
+  "highestObserved": 5260,
+  "lowestFinal": 0.785,
+  "lowestObserved": 3292,
+  "median": 1.008,
+  "p10": 0.884,
+  "p90": 1.112,
+  "risingRuns": 34,
+}
+`;
+
+exports[`uzun dönem ekonomi snapshotları > 120 günlük 64 piyasa zincirinin dağılımı kontrollü kalır 1`] = `
+{
+  "days": 120,
+  "fallingRuns": 33,
+  "highestFinal": 1.442,
+  "highestObserved": 6119,
+  "lowestFinal": 0.753,
+  "lowestObserved": 3053,
+  "median": 0.99,
+  "p10": 0.788,
+  "p90": 1.255,
+  "risingRuns": 31,
+}
+`;
+
+exports[`uzun dönem ekonomi snapshotları > 365 günlük 64 piyasa zincirinin dağılımı kontrollü kalır 1`] = `
+{
+  "days": 365,
+  "fallingRuns": 31,
+  "highestFinal": 1.902,
+  "highestObserved": 8074,
+  "lowestFinal": 0.633,
+  "lowestObserved": 2451,
+  "median": 1,
+  "p10": 0.757,
+  "p90": 1.425,
+  "risingRuns": 32,
+}
+`;

@@ -28,7 +28,6 @@ import { spawnCustomer } from './customer-spawn';
 import { dayCharacter } from './intent';
 import { spawnItem } from './item-spawn';
 import { createMarketForDay } from './market';
-import { demandIsSellable } from './sales-catalog';
 import { createSession, effectiveReservation } from './negotiation';
 import { liquidityRatio } from './settlement';
 import { effectiveCeiling, thesisFor } from './thesis';
@@ -67,6 +66,13 @@ const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
 // ===========================================================================
 
 describe('Standart sarrafiye ölçülmeden de bilinir', () => {
+  it('müşteriden gelen standart yatırım bileziği test yapılmadan doğrulanmış sayılmaz', () => {
+    const item = spawnItem(SEED, 41, 'investment_bangle_22k_40');
+    const knowledge = initialKnowledge(item);
+    expect(knowledge.find((field) => field.field === 'weight')?.status).not.toBe('verified');
+    expect(knowledge.find((field) => field.field === 'purity')?.status).not.toBe('verified');
+  });
+
   it('test yapılmadan band dar kalır', () => {
     for (const id of BULLION) {
       const w = widthOf(id);
@@ -214,17 +220,8 @@ describe('Müşteri isteği dükkânın tavanıyla aynı dünyada', () => {
   });
 });
 
-describe('Satın alma talebi karşılanabilir olmalı', () => {
-  /*
-   * UPDATEv2 §18 — TESTİN KONUSU DEĞİŞTİ, AMACI DEĞİL.
-   *
-   * Eski hâli "kolye isteyen müşteri çeyreğe razı olmasın" diye bağlıyordu:
-   * doğru bir kuraldı ama yanlış bir dünyayı koruyordu. O müşteri zaten
-   * karşılanamıyordu — dükkânın kolye tedarik edeceği bir yol yok. Artık
-   * korunması gereken şey daha güçlü: ÜRETİLEN HER SATIN ALMA TALEBİ
-   * oyuncunun gerçekten satabildiği bir üründür.
-   */
-  it('üretilen her satın alma talebi satış kataloğunda vardır', () => {
+describe('UPDATEv2 müşteri satın alma kataloğu', () => {
+  it('işçilikli ürün satın alma talebi üretilmez', () => {
     const store = makeStore();
     let checked = 0;
     for (let day = 1; day <= 20; day++) {
@@ -234,16 +231,11 @@ describe('Satın alma talebi karşılanabilir olmalı', () => {
         const c = spawnCustomer(SEED + day, i, market, store, character);
         const d = c.customer.demand;
         if (!d) continue;
-        expect(
-          demandIsSellable(d.templateId, store.storeTier),
-          `karşılanamaz talep: ${d.summary}`,
-        ).toBe(true);
-        // İşçilikli aile satın alma talebine hiç girmemeli.
-        expect(d.families, d.summary).toEqual([]);
         expect(d.wantsBullion, d.summary).toBe(true);
+        expect(d.families, d.summary).toEqual([]);
         checked++;
       }
     }
-    expect(checked).toBeGreaterThan(10);
+    expect(checked).toBeGreaterThan(30);
   });
 });

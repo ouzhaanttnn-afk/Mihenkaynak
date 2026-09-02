@@ -14,7 +14,7 @@ export const PURITY_TABLE: Record<Karat, number> = {
   '8K': 0.333,
   '14K': 0.585,
   '18K': 0.75,
-  '22K': 0.916,
+  '22K': 0.912,
   '24K': 0.995,
   AG925: 0.925,
   AG800: 0.8,
@@ -239,6 +239,33 @@ export const MARKET_REGIME: Record<
 };
 
 /**
+ * TL cinsinden kotasyonların küçük nominal eğilimi. İşlem günü başına oranlar
+ * pasif beklemeyi zenginlik makinesine çevirmeyecek kadar düşük; buna karşın
+ * gram altının uzun vadede sürekli aşağı sürüklenmesini önler.
+ */
+export const MARKET_NOMINAL_DRIFT = {
+  gold: 0.0005,
+  silver: 0.00045,
+  fx: 0.00035,
+} as const;
+
+/**
+ * Uzun dönem fiyat çapası. Günlük hareketi yönetmez; fiyat başlangıç
+ * referansından kalıcı biçimde uzaklaştığında yalnız küçük bir karşı kuvvet
+ * üretir. Böylece 30 günlük trendler yaşar, 365 günlük bileşik uçuşlar yaşamaz.
+ */
+export const MARKET_MEAN_REVERSION = {
+  /** Hareketli makro çapanın çevresindeki geniş serbest hareket alanı. */
+  freeBand: 0.15,
+  /** Makro çapa her açık gün fiyatın %1'ini izler (~100 işlem günü hafıza). */
+  anchorFollow: 0.01,
+  /** Serbest bandın dışındaki sapmanın günlük geri besleme payı. */
+  strength: 0.035,
+  /** Dengeleyici hiçbir günde fiyatı tek başına %0,20'den fazla itemez. */
+  dailyCap: 0.002,
+} as const;
+
+/**
  * Ekonomi Ara Düzeltmesi §2.4 / §6 / §8 — KANAL PROFİLLERİ.
  *
  * DEĞİŞMEZ (§8): "Toptancı ve esnaf ağı aynı fiyat/limit algoritmasının
@@ -265,21 +292,17 @@ export const MARKET_REGIME: Record<
 /**
  * Ekonomi Ara Düzeltmesi §3 — MÜŞTERİ INTENT DAĞILIMI.
  *
- * DEĞİŞMEZ: %38 / %38 SABİT TABANDIR. Dinamik havuz bu iki dilimi azaltamaz;
- * yalnız kalan %24'ün içinde iş görür.
- *
- * DEĞİŞMEZ: "Dinamik havuzun tamamını tek yöne yığarak fiili alış-satış
- * dengesini sürekli biçimde bozmak yasaktır." → `maxDynamicTilt` kelepçesi.
- * Tilt ±0.5 iken havuzun en aşırı günü bile %24'ün 75/25'inden fazlasını tek
- * yöne veremez; toplam sapma en fazla ±%6 puandır.
+ * V5: %35/%35 taban + bağımsız günlük %10 dağılım + %20 sürpriz.
+ * Dinamik havuzun mevcut iç ağırlıkları korunur; kota/rebalancing uygulanmaz.
  */
 export const INTENT_MIX = {
   /** Müşteri alış intenti — oyuncu müşteriye satar. */
-  customerBuys: 0.38,
+  customerBuys: 0.35,
   /** Müşteri satış intenti — müşteri oyuncuya satar. */
-  customerSells: 0.38,
+  customerSells: 0.35,
   /** Kontrollü dinamik/RNG havuzu. */
-  dynamic: 0.24,
+  dynamic: 0.20,
+  dailyAllocation: 0.10,
   /** Dinamik havuzun servise ayrılan payı. */
   dynamicServiceShare: 0.4,
   /**
@@ -333,6 +356,9 @@ export const PURCHASE = {
 
   /** Bu adetten itibaren toplu müşteri kanal profili kullanılır (§4.1). */
   bulkChannelThreshold: 8,
+  /** Toplu pakette adet arttıkça birim satış önerisini kademeli daraltır. */
+  bulkUnitDiscountPerExtraUnit: 0.0002,
+  bulkUnitDiscountMax: 0.012,
 
   /** Toplu müşterinin kısmi karşılamayı kabul etme olasılığı (§4.1). */
   bulkPartialChance: 0.65,
@@ -432,6 +458,8 @@ export const WHOLESALE = {
    */
   tradeTrustGain: 1,
   tradeTrustCap: 65,
+  /** Güven katkısı için alışın güncel kredi limitindeki asgari payı. */
+
   tradeTrustMinShare: 0.25,
   /** Zamanında ödemede limit büyüme katsayısı. */
   onTimeLimitGrowth: 1.06,
@@ -580,11 +608,12 @@ export const CHANNEL = {
  * basar.
  */
 export const MARKET_COMPOSITION = {
-  regime: 0.9,
-  trend: 1.1,
-  event: 1,
+  regime: 0.65,
+  trend: 0.8,
+  /** Haber hissedilir; tek başına fiyatı günlük tavana yapıştırmaz. */
+  event: 0.55,
   /** Kontrollü RNG payı — "keyfi veya tamamen bağımsız" olmaması için sınırlı. */
-  noise: 0.55,
+  noise: 0.5,
 } as const;
 
 /** Rejimin kendi fiyat eğilimi. Stres aşağı, sakin nötre yakın. */

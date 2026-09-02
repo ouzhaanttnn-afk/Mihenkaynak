@@ -76,7 +76,7 @@ describe('§10 — Addendum temel fiyat hesabını değiştirmez', () => {
 
     // Prim ticari katmandır; metal çekirdeği GDD formülüdür.
     expect(bullionUnitValue(item, MARKET)).toBe(
-      Math.round(metal * (1 + meta.premiumRatio)),
+      metal,
     );
   });
 
@@ -105,7 +105,8 @@ describe('§10 — Addendum temel fiyat hesabını değiştirmez', () => {
 describe('§12.2 — Kanallar farklı sonuç üretir ve açıklanabilir', () => {
   it('aynı ürün ve piyasa anında dört kanal farklı fiyat verir', () => {
     const prices = ALL.map((ch) => priceAt(ch, { quantity: 4 }).unitPrice);
-    expect(new Set(prices).size).toBe(4);
+    expect(prices[0]).toBe(prices[1]); // v5: same final retail spread; no bulk double spread.
+    expect(new Set(prices).size).toBe(3);
   });
 
   it('her sonuç açıklanabilir girdilere dayanır — breakdown eksiksiz', () => {
@@ -216,13 +217,13 @@ describe('§12.4 / §6.1 — Toptancı avantajı türetilir, sabit değildir', (
     expect(high).toBeGreaterThan(low);
   });
 
-  it('§6.1 — avantaj istisnai koşullarda TERSİNE DÖNER', () => {
+  it('v5 — sabit müşteri bandı toptancıya zorunlu üstünlük vermez', () => {
     // Tek adet: tezgâh derinliği tükenmez, üstelik dükkân orada fiyatı
     // belirleyen taraftır. Toptancı bu işlemde daha kötüdür.
     expect(edge({ quantity: 1 })).toBeLessThan(0);
 
     // Aynı ürün, toplu hacim: tezgâhın derinliği tükenir, avantaj döner.
-    expect(edge({ quantity: bulkQty('quarter_gold') })).toBeGreaterThan(0);
+    expect(edge({ quantity: bulkQty('quarter_gold') })).toBeLessThan(0);
   });
 
   it('§6.1 — avantaj hacimle büyür, sabit bir plato değildir', () => {
@@ -236,8 +237,8 @@ describe('§12.4 / §6.1 — Toptancı avantajı türetilir, sabit değildir', (
     // Test bir HEDEF ARALIĞI doğrular, bir sabiti değil: toplu bandın
     // ortasında avantaj pozitif ve onlarca TL/gr mertebesindedir.
     const e = edge({ templateId: 'quarter_gold' });
-    expect(e).toBeGreaterThan(0);
-    expect(e).toBeLessThan(200);
+    expect(e).toBeLessThan(0);
+    expect(Math.abs(e)).toBeLessThan(500);
   });
 });
 
@@ -286,10 +287,10 @@ describe('§12.7 — Makas belirleyicilere doğru yönde tepki verir', () => {
     expect(alis).toBeGreaterThan(satis);
 
     const q = { quantity: 200, templateId: 'quarter_gold' } as const;
-    expect(priceAt('retailCustomer', { ...q, side: 'shopSells' }).unitPrice).toBeLessThan(
+    expect(priceAt('retailCustomer', { ...q, side: 'shopSells' }).unitPrice).toBe(
       priceAt('retailCustomer', { ...q, quantity: 1, side: 'shopSells' }).unitPrice,
     );
-    expect(priceAt('retailCustomer', { ...q, side: 'shopBuys' }).unitPrice).toBeLessThan(
+    expect(priceAt('retailCustomer', { ...q, side: 'shopBuys' }).unitPrice).toBe(
       priceAt('retailCustomer', { ...q, quantity: 1, side: 'shopBuys' }).unitPrice,
     );
   });
@@ -309,7 +310,7 @@ describe('§12.7 — Makas belirleyicilere doğru yönde tepki verir', () => {
 
     const buyukTezgah = priceAt('retailCustomer', { quantity: 60 }).unitPrice;
     const buyukToptanci = priceAt('wholesaler', { quantity: 60 }).unitPrice;
-    expect(buyukToptanci).toBeGreaterThan(buyukTezgah);
+    expect(buyukToptanci).toBeLessThan(buyukTezgah); // v5 customer range does not collapse with volume.
   });
 
   it('REJİM: volatil piyasa makası genişletir, sakin daraltır', () => {
@@ -329,7 +330,7 @@ describe('§12.7 — Makas belirleyicilere doğru yönde tepki verir', () => {
     // yani dükkânın marjı daralır.
     const yabanci = priceAt('retailCustomer', { relationship: 0 });
     const dost = priceAt('retailCustomer', { relationship: 100 });
-    expect(dost.spreadRatio).toBeLessThan(yabanci.spreadRatio);
+    expect(dost.spreadRatio).toBe(yabanci.spreadRatio); // relationship affects negotiation inside the band.
     expect(dost.spreadRatio).toBeGreaterThan(0); // riski tamamen sıfırlamaz
 
     // Toptancıda fiyatı toptancı belirler: güven DÜKKÂNIN fiyatını iyileştirir.
@@ -431,8 +432,8 @@ describe('§11 — Edge caseler güvenli sonuçlanır', () => {
 
   it('KAYMA: derinlik tükenmesi birim fiyatı her iki yönde de aşağı çeker', () => {
     for (const side of ['shopBuys', 'shopSells'] as const) {
-      const tek = priceAt('retailCustomer', { quantity: 1, side });
-      const yigin = priceAt('retailCustomer', { quantity: 400, side });
+      const tek = priceAt('tradeNetwork', { quantity: 1, side });
+      const yigin = priceAt('tradeNetwork', { quantity: 400, side });
       expect(yigin.unitPrice).toBeLessThan(tek.unitPrice);
       expect(yigin.priceImpact).toBeLessThan(0);
       expect(tek.priceImpact).toBe(0);

@@ -11,6 +11,8 @@
  */
 
 import type { ConditionGrade, ItemFamily, Karat, MetalKind } from '@domain/types';
+import { MARKET_BASE } from '@domain/balance';
+import { INVESTMENT_BANGLE_WEIGHTS, investmentBangleTemplateId } from './bullion';
 
 export interface ItemTemplate {
   id: string;
@@ -193,7 +195,7 @@ export const ITEM_TEMPLATES: ItemTemplate[] = [
     family: 'bullion',
     metal: 'gold',
     nominalKarat: '22K',
-    weightBand: [1.75, 1.75],
+    weightBand: [MARKET_BASE.quarterGoldWeight, MARKET_BASE.quarterGoldWeight],
     netRatioBand: [1, 1],
     craftsmanshipRatioBand: [0.02, 0.05],
     conditionWeights: { pristine: 7, good: 3 },
@@ -297,6 +299,24 @@ export const ITEM_TEMPLATES: ItemTemplate[] = [
     designNote: 'Tek işlemde likiditeyi kırmızıya çekebilen ölçek testi.',
     silhouette: 'bar',
   },
+  ...INVESTMENT_BANGLE_WEIGHTS.map((weight): ItemTemplate => ({
+    id: investmentBangleTemplateId(weight),
+    displayName: `22 Ayar İşçiliksiz Bilezik (${weight} g)`,
+    family: 'bullion',
+    metal: 'gold',
+    nominalKarat: '22K',
+    weightBand: [weight, weight],
+    netRatioBand: [1, 1],
+    craftsmanshipRatioBand: [0, 0],
+    conditionWeights: { pristine: 10 },
+    hasStone: false,
+    rarityBand: [0, 0],
+    flawChance: 0,
+    demandTags: ['yatırım', 'likit', 'sarrafiye', 'işçiliksiz bilezik'],
+    minTier: 1,
+    designNote: 'UPDATEv3 standart yatırım bileziği; fiyatı 22 ayar saf metal ve kanal makasından gelir.',
+    silhouette: 'bracelet',
+  })),
 
   // --- Klasik takı: metal + işçilik + kondisyon (GDD 5.1) ---
   {
@@ -613,7 +633,7 @@ export const ITEM_TEMPLATES: ItemTemplate[] = [
   },
   {
     id: 'plated_bangle',
-    displayName: 'Sarı Metal Bilezik',
+    displayName: '22 Ayar Kaplama Şüpheli Bilezik',
     family: 'classic',
     metal: 'gold',
     nominalKarat: '22K',
@@ -654,42 +674,16 @@ export const ITEM_TEMPLATES: ItemTemplate[] = [
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-/** §1 — desteklenen gramajlar. 10'un katı olmayan bir sayı buraya giremez. */
-export const PLAIN_BRACELET_GRAMS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
-
-/** Şablon kimliği: gramajdan türer, elle yazılmaz. */
-export function plainBraceletId(grams: number): string {
-  return `bracelet_22k_plain_${grams}`;
-}
-
-const PLAIN_BRACELET_TEMPLATES: ItemTemplate[] = PLAIN_BRACELET_GRAMS.map((g) => ({
-  id: plainBraceletId(g),
-  displayName: `22 Ayar Yatırım Bileziği (${g} g)`,
-  /*
-    AİLE `bullion`: bu ürün ekonomik olarak sarrafiyedir — standart gramaj,
-    standart ayar, işçilik yok. `classic` deseydik hızlı işlem sınıfına
-    giremez ve her satışta test angaryası doğardı.
-  */
-  family: 'bullion',
-  metal: 'gold',
-  nominalKarat: '22K',
-  /* Gramaj SABİT: yatırım bileziği tartıyla değil, standart ağırlıkla satılır. */
-  weightBand: [g, g],
-  netRatioBand: [1, 1],
-  /* §1 "İşçilik değeri sıfır olacak." */
-  craftsmanshipRatioBand: [0, 0],
-  conditionWeights: { pristine: 10 },
-  hasStone: false,
-  rarityBand: [0, 0],
-  flawChance: 0,
-  demandTags: ['yatırım', 'likit', 'sarrafiye', 'bilezik'],
-  minTier: 1,
-  designNote:
-    'Standart yatırım bileziği: 22 ayar, işçiliksiz. Fiyatı yalnız gram, saflık ve piyasadan gelir; ziynetin aksine darphane primi taşımaz.',
-  silhouette: 'bracelet',
-}));
-
-ITEM_TEMPLATES.push(...PLAIN_BRACELET_TEMPLATES);
+/*
+ * TEK KİMLİK: `investment_bangle_22k_{g}` (bullion.ts).
+ *
+ * Bu ürün bir dönem `bracelet_22k_plain_{g}` kimliğiyle de tanımlanmıştı ve
+ * iki tanım yan yana durunca `bullion.ts` ile bu dosya birbirini import eden
+ * bir DÖNGÜ kuruyordu (ölçüldü: modül yüklenirken
+ * `INVESTMENT_BANGLE_WEIGHTS` undefined geliyor, bütün test dosyaları
+ * çöküyordu). Aynı ürünün iki kimliği ayrıca havuz muhasebesini de ikiye
+ * bölerdi. Eski kimlik yalnız KAYIT GÖÇÜNDE tanınır (stock-pools.ts).
+ */
 
 export const TEMPLATE_BY_ID = new Map(ITEM_TEMPLATES.map((t) => [t.id, t]));
 

@@ -71,6 +71,15 @@ export function createSession(lineId: string, itemId: string): NegotiationSessio
 }
 
 export interface NegotiationContext {
+  /**
+   * UPDATEv5 EKONOMİK BANDI — kişilik ve ilişki bu bandın İÇİNDE çalışır.
+   *
+   * Sarrafiyede fiyat kamuya açıktır: `dealerBuy = R − S×W/2`,
+   * `dealerSell = R + S×W/2`. Güven, aciliyet, gerekçe ve jest eşiği aynı
+   * yönde oynatmaya devam eder; bandın DIŞINA taşıyamaz. Verilmezse
+   * kelepçe uygulanmaz ve davranış eskisiyle aynıdır.
+   */
+  economicBand?: { min: number; max: number };
   customer: Customer;
   /**
    * Pazarlığın YÖNÜ (Addendum §3 terminolojisi).
@@ -178,7 +187,10 @@ export function effectiveReservation(ctx: NegotiationContext, session: Negotiati
   const base = sign === 1 ? customer.reservationPrice : purchaseThresholdBase(ctx);
   const raw = base * a.closeThreshold * (1 - sign * flex);
 
-  return Math.round(scaleToFair(raw, ctx));
+  const threshold = scaleToFair(raw, ctx);
+  return Math.round(
+    ctx.economicBand ? clamp(threshold, ctx.economicBand.min, ctx.economicBand.max) : threshold,
+  );
 }
 
 /**
@@ -567,10 +579,28 @@ function deriveCounter(
   // Müşteri oyuncunun teklifine kısmen yaklaşır — ama asla eşiği geçmez.
   const meetInMiddle = anchored - (anchored - playerOffer) * 0.18;
 
-  if (sign === 1) {
-    return Math.max(threshold, Math.round(Math.max(meetInMiddle, playerOffer)));
-  }
-  return Math.min(threshold, Math.round(Math.min(meetInMiddle, playerOffer)));
+  const derived =
+    sign === 1
+      ? Math.max(threshold, Math.round(Math.max(meetInMiddle, playerOffer)))
+      : Math.min(threshold, Math.round(Math.min(meetInMiddle, playerOffer)));
+
+  /*
+    AYNI DURUMDA KARŞI TEKLİF TERS YÖNE KAÇAMAZ.
+
+    Oyuncu müşteriye yaklaşırken müşterinin rakamının uzaklaşması, pazarlığı
+    bir hile gibi gösteriyordu. Sertleşme ve son teklif GEÇİŞLERİ bu
+    korumanın dışındadır: orada değişimin sebebi ekranda açıkça yazar.
+  */
+  const counter =
+    session.activeCounter !== null && session.state === state
+      ? sign === 1
+        ? Math.min(session.activeCounter, derived)
+        : Math.max(session.activeCounter, derived)
+      : derived;
+
+  return ctx.economicBand
+    ? Math.round(clamp(counter, ctx.economicBand.min, ctx.economicBand.max))
+    : counter;
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useGame } from './gameStore';
 import { customerBuyDemandPool, supplierCounterIds } from '@domain/sales-catalog';
 import { START } from '@domain/balance';
+import type { InventoryPosition } from '@domain/types';
+import { isBullion } from '@data/bullion';
 
 /** Stoğa gerçek bir kalem koyar — uydurma pozisyon enjekte edilmez. */
 function stockOneItem(): string {
@@ -67,48 +69,89 @@ describe('moveStock — konum değişikliği işlem DEĞİLDİR', () => {
       Yığın kimliği konumu da içerir (`stackKey`). Birleştirmeden taşımak
       aynı anahtara sahip iki pozisyon bırakır ve sonraki alımlarda hangi
       satıra ekleneceği belirsizleşir.
+
+      UPDATEv5 SONRASI TEST FİZİKSEL ÜRÜNLE KURULUR.
+
+      Eski hâli toptancıdan gram altın alıp arka stokta yeni bir satır
+      arıyordu. v5'te sarrafiye ORTAK HAVUZDA tutuluyor: aynı şablonun
+      tamamı tek pozisyondur ve alım mevcut satıra birleşir, arka stokta
+      yeni satır oluşmaz (ölçüldü: 3 pozisyon → 3 pozisyon, gram altın
+      vitrindeki yığına eklendi). Yani testin ARADIĞI durum sarrafiyede
+      artık üretilemiyor. İşçilikli ürün hâlâ ayrılabilir fiziksel kalem
+      olduğu için birleştirme kuralının asıl konusu odur.
     */
-    const s = useGame.getState();
-    const templateId = supplierCounterIds(s.store.storeTier)[0]!;
+    const base = useGame.getState();
 
     /*
-      KONUM + ŞABLONA GÖRE ARANIR, "yeni kalem"e göre değil.
+      SENARYO ELLE KURULUR: aynı sarrafiye şablonundan biri VİTRİNDE, biri
+      ARKA STOKTA iki pozisyon. `stackKey` konumu içerdiği için bunlar iki
+      ayrı yığındır; taşıma onları birleştirmek zorundadır.
 
-      İki varsayım birden çürüdü: oyun artık boş dükkânla başlamıyor
-      (açılış vitrini) ve `resetGame` yalnız kaydı siliyor, bellekteki
-      durumu sıfırlamıyor — yani aynı dosyadaki önceki testlerin aldığı
-      mallar duruyor ve yeni alım onlara BİRLEŞİYOR. Yeni bir itemId
-      aramak bu yüzden boş dönüyordu.
+      İşçilikli ürün bu testin konusu OLAMAZ: `stackKey` sarrafiye dışında
+      null döner, yani takı hiç birleşmez (ayrılabilir fiziksel kalemdir) —
+      ölçüldü, iki yüzük taşımadan sonra iki satır olarak kaldı ve bu doğru
+      davranıştır.
     */
-    const ofTemplate = (loc: 'display' | 'backStock') =>
+    const displayed = base.inventory.find((p) => {
+      const item = base.items[p.itemId];
+      return p.location === 'display' && !!item && isBullion(item.templateId);
+    });
+    expect(displayed, 'açılış vitrininde sarrafiye yok').toBeDefined();
+
+    const source = base.items[displayed!.itemId]!;
+    const twin = { ...source, id: `${source.id}_twin` };
+
+    useGame.setState({
+      items: { ...base.items, [twin.id]: twin },
+      inventory: [
+        ...base.inventory,
+        {
+          itemId: twin.id,
+          quantity: 2,
+          costBasis: 12_000,
+          currentValue: 13_000,
+          demand: 'steady',
+          thesis: null,
+          location: 'backStock',
+          expectedExitValues: {},
+          age: 5,
+        } as InventoryPosition,
+      ],
+      store: { ...base.store, displaySlots: 20 },
+    });
+
+    const sameTemplate = (loc: 'display' | 'backStock') =>
       useGame
         .getState()
         .inventory.filter(
-          (p) => p.location === loc && useGame.getState().items[p.itemId]?.templateId === templateId,
+          (p) =>
+            p.location === loc &&
+            useGame.getState().items[p.itemId]?.templateId === source.templateId,
         );
 
-    s.buyFromWholesaler(templateId, 2);
-    const first = ofTemplate('backStock')[0];
-    expect(first, 'alım arka stoğa düşmedi').toBeDefined();
-    useGame.getState().moveStock(first!.itemId, 'display');
-
-    // İkinci alım arka stoğa düşer: aynı ürün, farklı konum → ayrı yığın.
-    useGame.getState().buyFromWholesaler(templateId, 3);
-    const back = ofTemplate('backStock')[0];
-    expect(back, 'ikinci alım arka stoğa düşmedi').toBeDefined();
+    expect(sameTemplate('display')).toHaveLength(1);
+    expect(sameTemplate('backStock')).toHaveLength(1);
 
     const totalBefore = useGame.getState().inventory.reduce((n, p) => n + p.quantity, 0);
     const costBefore = useGame.getState().inventory.reduce((n, p) => n + p.costBasis, 0);
 
-    useGame.getState().moveStock(back!.itemId, 'display');
+    useGame.getState().moveStock(twin.id, 'display');
 
     const inv = useGame.getState().inventory;
-    // Bu şablonun vitrindeki yığını TEK olmalı; açılış vitrinindeki diğer
-    // ürünler sayılmaz, onlar farklı yığınlar.
-    expect(ofTemplate('display')).toHaveLength(1);
+    // İki yığın vitrinde buluşur; aynı anahtarla iki satır kalmaz.
+    expect(sameTemplate('display')).toHaveLength(1);
     // Adet ve maliyet KORUNUR — birleşme kaybetmez.
     expect(inv.reduce((n, p) => n + p.quantity, 0)).toBe(totalBefore);
     expect(inv.reduce((n, p) => n + p.costBasis, 0)).toBeCloseTo(costBefore, 6);
+    // Yaşta ESKİ olan kazanır: ölü stok uyarısı taşımayla silinmez.
+    expect(sameTemplate('display')[0]!.age).toBe(Math.max(displayed!.age, 5));
+
+    /*
+      KURULUMU GERİ AL. `resetGame` belleği temizlemediği için enjekte edilen
+      pozisyon sonraki testlerin servet ve katalog beklentilerini bozuyordu
+      (ölçüldü: "mal BEDAVA değil" testi 1.022.000 ₺ görüyordu).
+    */
+    useGame.setState({ items: base.items, inventory: base.inventory, store: base.store });
   });
 
   it('vitrin doluysa taşımaz ve stoğu bozmaz', () => {

@@ -32,7 +32,9 @@ export function tlBare(n: number): string {
 
 /** +8.200 ₺ / −1.350 ₺ */
 export function tlSigned(n: number): string {
-  return `${TL_SIGNED.format(Math.round(n)).replace('-', '−')} ₺`;
+  const rounded = Math.round(n);
+  if (rounded === 0) return '0 ₺';
+  return `${TL_SIGNED.format(rounded).replace('-', '−')} ₺`;
 }
 
 /** Piyasa fiyatı — kuruşlu. */
@@ -43,6 +45,11 @@ export function price(n: number): string {
 /** 18,4 g */
 export function grams(n: number): string {
   return `${DEC1.format(n)} g`;
+}
+
+/** Pool / HAS balances retain milligram visibility. */
+export function preciseGrams(n: number): string {
+  return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 3 }).format(n)} g`;
 }
 
 /** %19 */

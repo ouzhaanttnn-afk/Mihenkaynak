@@ -19,6 +19,8 @@ import { t } from '@ui/i18n';
 import { useEffect, useState } from 'react';
 
 import { MARKET_REGIME, WHOLESALE } from '@domain/balance';
+import { PERSONNEL_MONTHLY, PERSONNEL_SALARIES, PERSONNEL_UNLOCK_LEVELS, canSetPersonnel, personnelCount, personnelDaily, queueCapacity } from '@domain/v5-rules';
+
 import {
   LIQUIDITY_BAND_LABEL,
   channelMetrics,
@@ -33,7 +35,7 @@ import { marketSignals } from '@domain/overnight';
 import { registrySummary } from '@domain/customer-memory';
 import { evaluateUpgrade, growthSnapshot } from '@domain/store-growth';
 import { intentAlarm } from '@domain/intent';
-import { isBullion } from '@data/bullion';
+import { bullionMeta, isBullion } from '@data/bullion';
 import { spawnItem } from '@domain/item-spawn';
 import {
   creditLimit,
@@ -122,7 +124,10 @@ export function BusinessScreen() {
 
 function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
   const s = useGame();
+  const [pendingPersonnel, setPendingPersonnel] = useState<number | null>(null);
+  const [personnelOpen, setPersonnelOpen] = useState(false);
   const wealth = summarizeWealth({
+    market: s.market,
     store: s.store,
     inventory: s.inventory,
     items: s.items,
@@ -169,7 +174,7 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
               tone={wealth.realizedProfitToday >= 0 ? 'positive' : 'negative'}
             />
             <StatLine
-              label="Stok potansiyeli (realize değil)"
+              label="Stok net çıkış farkı (realize değil)"
               value={tlSigned(wealth.stockPotential)}
               tone={wealth.stockPotential >= 0 ? 'positive' : 'negative'}
             />
@@ -191,6 +196,43 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
 
         {/* Addendum §5 — gecelik pozisyon ve sonucu */}
         <OvernightPanel />
+        <div className="group">
+          <button
+            type="button"
+            className="personnelDisclosure"
+            onClick={() => setPersonnelOpen((open) => !open)}
+            aria-expanded={personnelOpen}
+            aria-controls="personnel-controls"
+          >
+            <span className="personnelDisclosure__icon"><IconBusiness size={18} /></span>
+            <span className="personnelDisclosure__copy">
+              <strong>Kuyruk Personeli</strong>
+              <small>{personnelCount(s.store)} personel · Kapasite {queueCapacity(s.store)} · Günlük {tl(personnelDaily(s.store))}</small>
+            </span>
+            <span className={`personnelDisclosure__chevron ${personnelOpen ? 'personnelDisclosure__chevron--open' : ''}`} aria-hidden="true">⌄</span>
+          </button>
+          {personnelOpen && <div className="group__body v5Controls personnelControls" id="personnel-controls">
+            <p>Personel {personnelCount(s.store)} · Bekleme kapasitesi {queueCapacity(s.store)}</p>
+            <p>Aylık {tl(PERSONNEL_MONTHLY[personnelCount(s.store)]!)} · Günlük {tl(personnelDaily(s.store))}</p>
+            <p>Maaşlar kişi başına eklenir: {PERSONNEL_SALARIES.map(salary => tl(salary)).join(' + ')} / ay.</p>
+            <p>Yalnız bekleme kapasitesini artırır; müşteri geliş hızını veya atölyeyi değiştirmez.</p>
+            {[0, 1, 2, 3].map(count => <button key={count} type="button" className="chip" aria-pressed={personnelCount(s.store) === count}
+              disabled={!canSetPersonnel(s.store, count)}
+              onClick={() => setPendingPersonnel(count)}>{count} personel{count > 0 ? ` · Sv ${PERSONNEL_UNLOCK_LEVELS[count]}` : ''}</button>)}
+            {pendingPersonnel !== null && <div role="group" aria-label="Personel onayı">
+              <p>{pendingPersonnel} personel · aylık toplam {tl(PERSONNEL_MONTHLY[pendingPersonnel]!)}. Günlük gider kapanışta tahsil edilir.</p>
+              <button type="button" className="chip" onClick={() => { s.setPersonnelCount(pendingPersonnel); setPendingPersonnel(null); }}>Personeli Onayla</button>
+              <button type="button" className="chip" onClick={() => setPendingPersonnel(null)}>Vazgeç</button>
+            </div>}
+          </div>}
+        </div>
+        <div className="group">
+          <h2 className="group__title">Günlük Akış</h2>
+          <div className="group__body v5Controls">
+            <p>Kaçırılan Misafir: {s.missedGuestCountToday}</p>
+            {s.lastDayReport && <p>Gün {s.lastDayReport.day}: {s.lastDayReport.missedGuestCountToday ?? 0} misafir kaçırıldı · Gider {tl(s.lastDayReport.overhead)} (personel dahil).</p>}
+          </div>
+        </div>
 
         {/*
           §10 — ROTALAR YUKARI ALINDI.
@@ -299,10 +341,58 @@ function BusinessRoot({ onOpen }: { onOpen: (r: Route) => void }) {
             />
             <StatLine
               label="Tedarik limiti"
-              value={`${tl(s.store.supplier.limit)} · ${s.store.supplier.terms} gün vade`}
+              value={`${tl(Math.max(0, creditLimit(s.store) - usedLimit(s.store.supplier)))} kullanılabilir · ${creditTermDays(s.store)} gün vade`}
             />
           </Collapsible>
 
+        {/* İkincil rotalar (GDD 23.9.1) */}
+        <div className="group">
+          <h2 className="group__title">Rotalar</h2>
+          <div className="group__body">
+            <MenuLine
+              title="Piyasa"
+              sub={`${MARKET_REGIME[s.market.regime].label} · ${s.market.assets.length} varlık`}
+              icon={<IconLiquidity size={17} />}
+              onPress={() => onOpen('market')}
+            />
+            <MenuLine
+              title="İşlem Defteri"
+              sub={`${s.ledger.deals.length} kayıt · vaka özetleri`}
+              icon={<IconReason size={17} />}
+              onPress={() => onOpen('journal')}
+            />
+            <MenuLine
+              title="Toptancı Hesabı"
+              sub={supplierSub(s)}
+              icon={<IconWholesale size={17} />}
+              onPress={() => onOpen('wholesaler')}
+            />
+            <MenuLine
+              title="Esnaf Ağı"
+              sub={networkSub(s)}
+              icon={<IconTrust size={17} />}
+              onPress={() => onOpen('network')}
+            />
+            <MenuLine
+              title="Kayıt"
+              sub="Gün sonunda otomatik · elle kaydet veya geri yükle"
+              icon={<IconReason size={17} />}
+              onPress={() => onOpen('save')}
+            />
+            <MenuLine
+              title="Mağaza"
+              sub={storeSub(s)}
+              icon={<IconBusiness size={17} />}
+              onPress={() => onOpen('store')}
+            />
+            <MenuLine
+              title="Kariyer / Yetenekler"
+              sub={`Seviye ${s.store.level} · ${s.store.xp}/${s.store.xpToNext} XP`}
+              icon={<IconBusiness size={17} />}
+              onPress={() => onOpen('career')}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -542,11 +632,24 @@ function SupplyRow({ probe, today }: { probe: ItemInstance; today: number }) {
     isteyen oraya kendisi çıkar.
   */
   const [quantity, setQuantity] = useState(1);
+  // Pahalı alım tek dokunuşla geçmez: ikinci dokunuş onaydır.
+  const [confirming, setConfirming] = useState(false);
 
   const lot = supplyOffer(probe, quantity, s.market, s.store);
   if (!lot) return null;
 
   const terms = financeTerms(s.store, lot.total, today);
+  const expensive = lot.total >= Math.max(100_000, Math.round(s.store.cash * 0.2));
+
+  const buy = () => {
+    if (expensive && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    s.buyFromWholesaler(lot.templateId, lot.quantity);
+    setConfirming(false);
+    setQuantity(1);
+  };
 
   return (
     <div className="lotRow">
@@ -576,23 +679,35 @@ function SupplyRow({ probe, today }: { probe: ItemInstance; today: number }) {
             min={1}
             max={lot.maxQuantity}
             value={quantity}
-            onChange={(e) => setQuantity(Number(e.target.value))}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setQuantity(Number.isFinite(next) ? Math.min(lot.maxQuantity, Math.max(1, next)) : 1);
+              setConfirming(false);
+            }}
           />
         </label>
         {suggested !== quantity && suggested > 0 && (
-          <button type="button" className="miniBtn" onClick={() => setQuantity(suggested)}>
+          <button type="button" className="miniBtn" onClick={() => {
+            setQuantity(suggested);
+            setConfirming(false);
+          }}>
             {suggested} adet sığar
           </button>
         )}
         <button
           type="button"
           className="lotRow__buy"
-          onClick={() => s.buyFromWholesaler(lot.templateId, lot.quantity)}
+          onClick={buy}
           disabled={!!terms.blockedReason}
         >
-          {terms.blockedReason ?? 'Al'}
+          {terms.blockedReason ?? (confirming ? `${tl(lot.total)} ödemeyi onayla` : 'Al')}
         </button>
       </div>
+      {confirming && (
+        <p className="lotRow__warning" role="status">
+          Bu alım yüksek tutarlı. Nakit/vadeli dağılımını kontrol edip bir kez daha onayla.
+        </p>
+      )}
     </div>
   );
 }
@@ -607,7 +722,8 @@ function LiquidateRow({ position, item }: { position: InventoryPosition; item: I
   const [quantity, setQuantity] = useState(position.quantity);
   const [slices, setSlices] = useState(1);
 
-  const qty = Math.min(position.quantity, Math.max(1, quantity));
+  const gramPool = position.poolId === '24K_GRAM_GOLD_POOL';
+  const qty = Math.min(position.quantity, Math.max(gramPool ? .001 : 1, quantity));
   const quote = quoteLiquidation(
     { itemId: position.itemId, quantity: qty },
     s.items,
@@ -642,12 +758,13 @@ function LiquidateRow({ position, item }: { position: InventoryPosition; item: I
       <div className="lotRow__terms">{quote.rationale}</div>
 
       <div className="lotRow__controls">
-        {position.quantity > 1 && (
+        {(gramPool || position.quantity > 1) && (
           <label className="lotRow__field">
-            <span>Adet</span>
+            <span>{gramPool ? 'Gram' : position.poolId === '22K_INVESTMENT_BANGLE_POOL' ? '10 g birim' : 'Adet'}</span>
             <input
               type="number"
-              min={1}
+              min={gramPool ? .001 : 1}
+              step={gramPool ? .001 : 1}
               max={position.quantity}
               value={qty}
               onChange={(e) => setQuantity(Number(e.target.value))}
@@ -705,9 +822,19 @@ function networkSub(s: ReturnType<typeof useGame.getState>): string {
  */
 function NetworkRoute({ onBack }: { onBack: () => void }) {
   const s = useGame();
+  const [filter, setFilter] = useState<'all' | 'bullion' | 'credit'>('all');
   const today = s.market.day;
   const debt = networkDebt(s.network);
   const ceiling = networkDebtCeiling(s.network);
+  const visibleMembers = [...s.network]
+    .filter((member) =>
+      filter === 'bullion'
+        ? buysBullion(member)
+        : filter === 'credit'
+          ? networkLoanOffer(member, s.network, 0, today).maxAmount > 0
+          : true,
+    )
+    .sort((a, b) => b.trust - a.trust);
 
   return (
     <div className="page">
@@ -739,8 +866,16 @@ function NetworkRoute({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        {s.network.map((member) => (
-          <NetworkMemberCard key={member.id} member={member} today={today} />
+        <div className="networkFilters" role="tablist" aria-label="Esnaf ağı filtresi">
+          {([['all', 'Tümü'], ['bullion', 'Altın alan'], ['credit', 'Borç verebilen']] as const).map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={filter === id} className={`chip ${filter === id ? 'chip--active' : ''}`} onClick={() => setFilter(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {visibleMembers.map((member, index) => (
+          <NetworkMemberCard key={member.id} member={member} today={today} defaultOpen={index === 0} />
         ))}
       </div>
     </div>
@@ -750,12 +885,15 @@ function NetworkRoute({ onBack }: { onBack: () => void }) {
 function NetworkMemberCard({
   member,
   today,
+  defaultOpen,
 }: {
   member: TradeNetworkMember;
   today: number;
+  defaultOpen: boolean;
 }) {
   const s = useGame();
   const [amount, setAmount] = useState(0);
+  const [expanded, setExpanded] = useState(defaultOpen);
 
   const offer = networkLoanOffer(member, s.network, amount || 0, today);
   const canBuy = buysBullion(member);
@@ -771,13 +909,17 @@ function NetworkMemberCard({
     .filter((r) => r.offer !== null && r.offer.quantity > 0);
 
   return (
-    <div className="group">
+    <details
+      className="group networkMember"
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
       {/*
         §8 ağın tamamı ilişki üzerine kurulu: kimden borç alacağın, kime mal
         vereceğin ilişkiye bakıyor. Portre o ilişkinin muhatabını gösterir —
         72 px, paketin portre bandının alt ucu.
       */}
-      <h2 className="group__title group__title--withPortrait">
+      <summary className="group__title group__title--withPortrait">
         <Art
           art={merchantArt(member.id, member.displayName)}
           size={72}
@@ -787,7 +929,8 @@ function NetworkMemberCard({
         <span>
           {member.displayName} · ilişki {member.trust}/100
         </span>
-      </h2>
+        <span className="networkMember__summary">{tl(member.cashOnHand)} · {buysBullion(member) ? 'altın alır' : 'hizmet ağı'}</span>
+      </summary>
       <div className="group__body">
         <StatLine label="Kasasındaki nakit" value={tl(member.cashOnHand)} />
 
@@ -906,7 +1049,7 @@ function NetworkMemberCard({
           ))
         )}
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -1066,6 +1209,18 @@ function StoreRoute({ onBack }: { onBack: () => void }) {
                     tone={g.met ? 'positive' : 'warning'}
                   />
                 ))}
+                {evaluation.gates.some((g) => !g.met && g.key === 'supplierTrust') && (
+                  <p className="emptyNote">
+                    Toptancı güveni 100 üzerindendir. Anlamlı alışlar güveni {WHOLESALE.tradeTrustCap}
+                    {'’'}e kadar büyütür; üstü için vade alıp zamanında ödemek gerekir.
+                  </p>
+                )}
+                {evaluation.gates.some((g) => !g.met && g.key === 'reputation') && (
+                  <p className="emptyNote">
+                    Semt itibarı 100 üzerindendir. İyi kapanan işlemler yükseltir; kırıcı teklif ve
+                    müşteriyi kaçırmak düşürür.
+                  </p>
+                )}
               </div>
 
               {/*
@@ -1147,6 +1302,21 @@ function MarketRoute({ onBack }: { onBack: () => void }) {
   // §5.2 — sinyaller karar desteğidir; yön garanti etmez.
   const signals = marketSignals(market, selectors.position(s));
   const alarm = intentAlarm(s.intentTelemetry);
+  const goldPosition = s.inventory.reduce(
+    (sum, position) => {
+      const item = s.items[position.itemId];
+      const meta = item ? bullionMeta(item.templateId) : null;
+      if (!meta || item?.metal !== 'gold') return sum;
+      return {
+        cost: sum.cost + position.costBasis,
+        grams: sum.grams + meta.unitWeightGrams * position.quantity,
+      };
+    },
+    { cost: 0, grams: 0 },
+  );
+  const averageGoldCost = goldPosition.grams > 0
+    ? Math.round(goldPosition.cost / goldPosition.grams)
+    : null;
 
   return (
     <div className="page">
@@ -1229,6 +1399,14 @@ function MarketRoute({ onBack }: { onBack: () => void }) {
                 <div>
                   <div className="assetRow__name">{asset.label}</div>
                   <div className="assetRow__unit">{asset.unit}</div>
+                  {asset.history.length > 1 && (
+                    <div className="assetRow__range num">
+                      Band {price(Math.min(...asset.history))}–{price(Math.max(...asset.history))}
+                    </div>
+                  )}
+                  {asset.id === 'goldGram' && averageGoldCost !== null && (
+                    <div className="assetRow__range num">Stok ort. {price(averageGoldCost)}/g</div>
+                  )}
                 </div>
 
                 <Sparkline points={asset.history} />

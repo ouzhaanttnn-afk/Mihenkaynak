@@ -273,7 +273,7 @@ describe('talep ağırlıkları', () => {
     const agirlik = (id: string) =>
       weightedBuyDemandPool(1).find((r) => r.value === id)?.weight ?? 0;
     // Gramaj büyüdükçe alıcı azalır.
-    expect(agirlik('bracelet_22k_plain_100')).toBeLessThan(agirlik('bracelet_22k_plain_10'));
+    expect(agirlik('investment_bangle_22k_100')).toBeLessThan(agirlik('investment_bangle_22k_10'));
     expect(agirlik('gram_gold_100')).toBeLessThan(agirlik('gram_gold_1'));
   });
 

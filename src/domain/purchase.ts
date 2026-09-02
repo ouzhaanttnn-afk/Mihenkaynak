@@ -23,21 +23,24 @@
  */
 
 import { DAY, PURCHASE, START } from './balance';
+import { poolForItem, poolForTemplate, poolUnitGrams, validQuantity } from './stock-pools';
+import { customerPriceBand, isCrafted } from './customer-pricing';
+import { roundMoney } from './v5-rules';
 import { costBasisForUnits } from './settlement';
-import { bullionMeta, isBullion } from '@data/bullion';
+import { bullionMeta, isBullion, RETAIL_BULLION_CATALOG } from '@data/bullion';
 import { getArchetype } from '@data/archetypes';
 import { templatesForTier } from './item-spawn';
-import { weightedBuyDemandPool } from './sales-catalog';
-import { FAMILY_LABEL, getTemplate } from '@data/item-templates';
+import { demandWeightFor } from './sales-catalog';
+import { getTemplate } from '@data/item-templates';
 import { bullionUnitValue, gramsFor, priceForChannel, CHANNEL_LABEL_TR } from './channels';
 import { trueValue } from './valuation';
+import { creditLimit, usedLimit } from './wholesaler';
 import { Rng, deriveSeed } from './rng';
 import type { DayCharacter } from './intent';
 import type {
   Customer,
   CustomerDemand,
   InventoryPosition,
-  ItemFamily,
   ItemInstance,
   MarketState,
   Money,
@@ -61,7 +64,7 @@ import type {
 export function spawnDemand(
   rootSeed: number,
   spawnIndex: number,
-  archetypeId: Customer['archetype'],
+  _archetypeId: Customer['archetype'],
   character: DayCharacter,
   /**
    * Mağaza kademesi — işçilikli talep havuzunu sınırlar. Kademe 1
@@ -72,32 +75,27 @@ export function spawnDemand(
    * Dükkânda ŞU AN bulunan şablon kimlikleri ve semt itibarı.
    *
    * İtibar yükseldikçe talep bunlara kayar: tanınan dükkâna insanlar ne
-   * sattığını bilerek gelir. Verilmezse kayırma yoktur ve havuz bugünkü
-   * gibi kör dağılır — eski çağrılar ve testler etkilenmez.
+   * sattığını bilerek gelir. Verilmezse kayırma yoktur ve havuz kör dağılır.
    */
   stocked?: { templateIds: readonly string[]; reputation: number },
+  /** UPDATEv5 — talebin BÜYÜKLÜĞÜNÜ dükkânın karşılayabileceğine bağlar. */
+  store?: StoreState,
+  market?: MarketState,
 ): CustomerDemand {
   const rng = new Rng(deriveSeed(rootSeed, 'customer/demand', spawnIndex));
-  const archetype = getArchetype(archetypeId);
 
   /*
-   * UPDATEv2 §18 — TALEP HAVUZU SATIŞ KATALOĞUNDAN TÜRER.
+   * TALEP HAVUZU: UPDATEv5 ORTAK PERAKENDE KATALOĞU + AĞIRLIK + STOK KAYIRMASI
    *
-   * Eskiden burada `rng.chance(character.bullionBias)` ile sarrafiye/işçilikli
-   * karması çekiliyor, işçilikli çıkarsa müşteri kolye/bilezik istiyordu.
-   * Ama dükkânın kolye tedarik edecek bir yolu yok: talep doğru eşleşse bile
-   * karşılanamıyordu. Havuz artık `sellableTemplates`ten gelir; orada bugün
-   * yalnız sarrafiye var, dolayısıyla satın alma talebi de yalnız sarrafiyedir.
-   *
-   * `bullionBias` ÇEKİLMEYE DEVAM EDİYOR (ve gün karakteri hacmi hâlâ eğiyor):
-   * bu çekiliş kaldırılsaydı deterministik akış kayar ve aynı tohum farklı bir
-   * müşteri üretirdi. Sonucu artık talebin AİLESİNİ değil, yalnız hacim
-   * eğilimini besliyor — havuz zaten tek aile taşıyor.
+   * Üç kural üst üste biner ve üçü de ölçülerek eklendi:
+   *  1. KAYNAK (v5)  — müşteri yalnız ortak perakende kataloğundan ürün ister.
+   *     İşçilikli takı alış/servis/ekspertizde kalır.
+   *  2. AĞIRLIK      — talep düz dağılırsa 1 g ile 100 g külçe eşit sıklıkta
+   *     istenir; semtin ekmeği ise çeyrektir. `DEMAND_WEIGHTS` bunu düzeltir.
+   *  3. STOK KAYIRMASI — itibar yükseldikçe talep dükkânın ELİNDEKİ mala
+   *     kayar; tanınan dükkâna insanlar ne sattığını bilerek gelir.
    */
-  const catalog = stockAffinityPool(weightedBuyDemandPool(storeTier), stocked);
-  rng.chance(character.bullionBias); // akış konumu korunur (bkz. yukarı)
-
-  const wantsBullion = catalog.length > 0;
+  const wantsBullion = true;
 
   // §4.1 toplu sipariş — gün karakterinden gelir, niyet payından değil.
   const isBulk = wantsBullion && rng.chance(character.bulkOrderChance);
@@ -106,17 +104,56 @@ export function spawnDemand(
   let quantity = 1;
 
   if (wantsBullion) {
+    const tierCatalog = RETAIL_BULLION_CATALOG.filter(
+      (id) => getTemplate(id).minTier <= storeTier,
+    );
+
+    /*
+      UPDATEv5 BÜTÇE SÜZGECİ — erken oyunda 100 gramlık anlamsız sipariş yok.
+
+      Bu bir fiyat motoru DEĞİLDİR: mevcut spot ve ürün metadatasından
+      yalnızca talebin BÜYÜKLÜĞÜ için yaklaşık bir tedarik bütçesi türetilir.
+    */
+    const headroom = store
+      ? store.cash + Math.max(0, creditLimit(store) - usedLimit(store.supplier))
+      : Number.POSITIVE_INFINITY;
+    const budgetShare = isBulk ? 0.42 : 0.24 + Math.max(0, storeTier - 1) * 0.035;
+    const demandBudget = Math.max(60_000, headroom * budgetShare);
+    const estimatedUnit = (id: string) => {
+      const meta = bullionMeta(id);
+      if (!meta || !market) return 0;
+      return Math.round(
+        meta.unitWeightGrams * meta.unitPurity * market.goldSpot * (1 + meta.premiumRatio),
+      );
+    };
+    const affordableCatalog = market
+      ? tierCatalog.filter((id) => estimatedUnit(id) <= demandBudget)
+      : tierCatalog;
+    const sellable = affordableCatalog.length > 0 ? affordableCatalog : tierCatalog;
+
     // Ağırlıklı çekiliş: talep çeyrekte yığılır, 100 g külçede seyrelir.
-    // `pickWeighted` de tek çekiliş harcar; akış konumu korunur.
-    templateId = rng.pickWeighted(catalog);
+    // `pickWeighted` de `pick` gibi TEK çekiliş harcar; akış konumu korunur.
+    const weighted = stockAffinityPool(
+      sellable.map((id) => ({ value: id, weight: demandWeightFor(id) })),
+      stocked,
+    );
+    templateId = rng.pickWeighted(weighted);
     const meta = bullionMeta(templateId);
     const band = isBulk ? meta?.bulkVolumeBand : meta?.volumeBand;
     const [lo, hi] = band ?? [1, 2];
-    quantity = Math.max(1, Math.round(rng.range(lo, hi) * character.volumeScale));
+    const rolledQuantity = Math.max(1, Math.round(rng.range(lo, hi) * character.volumeScale));
+    const unitEstimate = estimatedUnit(templateId);
+    const affordableQuantity = unitEstimate > 0 ? Math.max(1, Math.floor(demandBudget / unitEstimate)) : rolledQuantity;
+    quantity = Math.min(rolledQuantity, affordableQuantity);
   }
 
   // §4.1 kısmi karşılama: toplu müşteri stok yetmezse azıyla da çıkabilir.
-  const acceptsPartial = isBulk ? rng.chance(PURCHASE.bulkPartialChance) : quantity > 1;
+  const poolId = templateId ? poolForTemplate(templateId) : undefined;
+  if (poolId && poolId !== 'QUARTER_GOLD_POOL') {
+    quantity *= bullionMeta(templateId!)!.unitWeightGrams / poolUnitGrams(poolId);
+    templateId = poolId === '24K_GRAM_GOLD_POOL' ? 'gram_gold_1' : 'investment_bangle_22k_10';
+  }
+  const acceptsPartial = poolId === '22K_INVESTMENT_BANGLE_POOL' ? false : isBulk ? rng.chance(PURCHASE.bulkPartialChance) : quantity > 1;
   const minQuantity = acceptsPartial
     ? Math.max(1, Math.ceil(quantity * PURCHASE.partialFloorShare))
     : quantity;
@@ -147,7 +184,7 @@ export function spawnDemand(
    */
   let families: string[] = wantsBullion
     ? []
-    : archetype.preferredFamilies.filter((f) => f !== 'bullion').slice(0, 2);
+    : getArchetype(_archetypeId).preferredFamilies.filter((f: string) => f !== 'bullion').slice(0, 2);
 
   /*
    * BU DAL ARTIK ULAŞILMAZ olmalı: katalog boş kalmadıkça `wantsBullion`
@@ -180,16 +217,16 @@ export function spawnDemand(
 
   return {
     families,
+    poolId,
     wantsBullion,
     templateId,
     quantity,
     isBulk,
     acceptsPartial,
     minQuantity,
-    summary: demandSummary(templateId, families, quantity, isBulk),
-    alternativesLabel: wantsBullion
-      ? ''
-      : families.map((f) => FAMILY_LABEL[f as ItemFamily] ?? f).join(' / '),
+    summary: poolId === '24K_GRAM_GOLD_POOL' ? `${quantity} gram altın` :
+      poolId === '22K_INVESTMENT_BANGLE_POOL' ? `${quantity * 10} gram 22 ayar işçiliksiz bilezik` : demandSummary(templateId, families, quantity, isBulk),
+    alternativesLabel: '',
   };
 }
 
@@ -207,12 +244,7 @@ function demandSummary(
   // Buraya yalnız hiçbir şablonun eşleşmediği hâlde düşülür; aile listesi
   // son çare olarak kalır ama artık oyuncunun dilinde yazılır.
 
-  if (families.length > 0) {
-    // Aileler ekrana İÇ ADIYLA değil, oyuncunun dilinde çıkar (v1.1 §7):
-    // "bullion / classic arıyor" değil, "sarrafiye / klasik takı arıyor".
-    const labels = families.map((f) => FAMILY_LABEL[f as ItemFamily] ?? f);
-    return `${labels.join(' / ')} arıyor`;
-  }
+  if (families.length > 0) return 'Katalog ürünü arıyor';
   return 'Vitrine bakıyor';
 }
 
@@ -245,11 +277,13 @@ function demandSummary(
 export type DemandMatch = 'exact' | 'family' | 'off';
 
 export function matchDemand(demand: CustomerDemand, item: ItemInstance): DemandMatch {
-  // Somut ürün istendiyse ikame yok: ya o üründür ya da alakasızdır.
-  if (demand.templateId) {
-    return item.templateId === demand.templateId ? 'exact' : 'off';
-  }
-
+  if (demand.targetInventoryItemId) return item.id === demand.targetInventoryItemId && isCrafted(item) && item.location === 'display' ? 'exact' : 'off';
+  if (demand.poolId) return poolForItem(item) === demand.poolId ? 'exact' : 'off';
+  if (demand.templateId && item.templateId === demand.templateId) return 'exact';
+  // UPDATEv1: Somut bir ürün isteyen müşteriye yalnız o SKU sunulur.
+  // "Bilezik" talebine gram altın ya da başka bir bilezik önermek hem
+  // metni hem de stok kararını anlamsızlaştırıyordu.
+  if (demand.templateId) return 'off';
   if (demand.wantsBullion) return isBullion(item.templateId) ? 'family' : 'off';
 
   const template = getTemplate(item.templateId);
@@ -281,10 +315,13 @@ export function offerableStock(
     if (position.location !== 'display' && position.location !== 'backStock') continue;
     const item = items[position.itemId];
     if (!item) continue;
-    // KATMAN 1 — uyumsuz ürün listeye hiç girmez. Eskiden "Aradığı değil"
-    // etiketiyle gösteriliyor ve yine de seçilebiliyordu (§2'nin ana şikâyeti).
+    // KATMAN 1 (§2) — uyumsuz ürün listeye HİÇ girmez.
     if (!isProductCompatible(demand, item)) continue;
-    rows.push({ position, item, match: matchDemand(demand, item) });
+    // Vitrin talebi yalnız vitrindeki o kalemle karşılanır.
+    if (demand.targetInventoryItemId && position.location !== 'display') continue;
+    const match = matchDemand(demand, item);
+    if (match === 'off') continue;
+    rows.push({ position, item, match });
   }
   return rows.sort(
     (a, b) => rank[a.match] - rank[b.match] || b.position.currentValue - a.position.currentValue,
@@ -349,7 +386,7 @@ export function quotePackage(
   // Kanal motoru BİRİM fiyatlar. Paketin birim adil değeri üzerinden
   // fiyatlayıp adetle çarpmak, §6'nın hacim katmanının gerçekten çalışmasını
   // sağlar: 40 adet, 1 adedin 40 katı DEĞİLDİR.
-  const unitFair = Math.round(fair / units);
+  const unitFair = fair / units;
   const quote = priceForChannel({
     item: first,
     market,
@@ -359,12 +396,22 @@ export function quotePackage(
     baseUnitValue: unitFair,
     relationship: customer.trust,
   });
+  const bulkDiscount =
+    channel === 'bulkCustomer' && Number.isInteger(units)
+      ? Math.min(
+          PURCHASE.bulkUnitDiscountMax,
+          Math.max(1, units - PURCHASE.bulkChannelThreshold + 1) *
+            PURCHASE.bulkUnitDiscountPerExtraUnit,
+        )
+      : 0;
 
   return {
     fair,
-    suggested: quote.unitPrice * units,
+    suggested: roundMoney(quote.totalPrice * (1 - bulkDiscount)),
     channel,
-    rationale: `${CHANNEL_LABEL_TR[channel]} · ${quote.rationale}`,
+    rationale: `${CHANNEL_LABEL_TR[channel]} · ${quote.rationale}${
+      bulkDiscount > 0 ? ` · Hacim indirimi %${(bulkDiscount * 100).toFixed(1)}` : ''
+    }`,
   };
 }
 
@@ -411,6 +458,27 @@ export function stockAffinityPool(
 
 export function purchaseCeiling(customer: Customer, fair: Money): Money {
   return Math.min(customer.budget, Math.round(fair * customer.purchaseCeilingRatio));
+}
+
+export function packagePriceBand(lines: PackageLine[], items: Record<string, ItemInstance>, market: MarketState) {
+  let min = 0, max = 0, reference = 0;
+  for (const line of lines) {
+    const item = items[line.itemId];
+    const band = item && customerPriceBand(item, market, 'shopSells', line.quantity);
+    if (!band) return undefined;
+    min += band.min; max += band.max; reference += band.reference;
+  }
+  return lines.length ? { min: roundMoney(min), max: roundMoney(max), reference } : undefined;
+}
+
+export function showcaseStock(inventory: InventoryPosition[], items: Record<string, ItemInstance>) {
+  return inventory.filter(p => p.location === 'display' && p.quantity >= 1 && !!items[p.itemId] &&
+    items[p.itemId]!.location === 'display' && isCrafted(items[p.itemId]!) && items[p.itemId]!.buyCost !== null);
+}
+export function showcaseDemand(item: ItemInstance): CustomerDemand {
+  return { targetInventoryItemId: item.id, families: [item.family], wantsBullion: false,
+    templateId: item.templateId, quantity: 1, minQuantity: 1, acceptsPartial: false, isBulk: false,
+    summary: `★ Vitrindeki ${item.displayName} ile ilgileniyor`, alternativesLabel: '' };
 }
 
 /**
@@ -488,13 +556,21 @@ export function repricePackage(
   /*
    * KATMAN 3 (§2) — DEĞERLEMEYE UYUMSUZ KALEM GİRMEZ.
    *
-   * Paket her değişiklikte buradan yeniden türetilir, yani bu tek satır
-   * hem fiyatı hem `units`, `fulfilment` ve `packageCost`u korur. Uyumsuz
-   * bir kalem herhangi bir yoldan listeye girse bile fiyata dönüşemez.
+   * Paket her değişiklikte buradan yeniden türetilir; bu tek süzgeç hem
+   * fiyatı hem `units`, `fulfilment` ve `packageCost`u korur. UPDATEv5
+   * ayrıca havuz miktarının geçerliliğini ve talep adedini de sınar.
    */
-  const clean = lines.filter(
-    (l) => l.quantity > 0 && !!items[l.itemId] && isProductCompatible(session.demand, items[l.itemId]!),
-  );
+  const clean = lines.filter((l) => {
+    const item = items[l.itemId];
+    if (!item || !isProductCompatible(session.demand, item)) return false;
+    const position = inventory.find((p) => p.itemId === l.itemId);
+    return (
+      !!position &&
+      validQuantity(position, l.quantity) &&
+      l.quantity <= session.demand.quantity &&
+      matchDemand(session.demand, item) !== 'off'
+    );
+  });
   const units = packageUnits(clean);
   const quote = quotePackage(clean, session.demand, customer, market, items);
 

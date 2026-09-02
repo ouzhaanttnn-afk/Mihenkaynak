@@ -18,6 +18,8 @@ import {
   defaultProfile,
   normalizeAvatarId,
   normalizeProfile,
+  normalizeShopBaseName,
+  shopDisplayName,
 } from './profile';
 
 describe('kuyumcu adı doğrulaması', () => {
@@ -34,6 +36,13 @@ describe('kuyumcu adı doğrulaması', () => {
   it('araya sıkışmış tekrar eden boşlukları teke indirir', () => {
     const r = checkJewelerName('Ahmet     Usta');
     expect(r.ok && r.value).toBe('Ahmet Usta');
+  });
+
+  it('Kuyumculuk ekini yalnız temel ad olarak saklar ve gösterimde bir kez ekler', () => {
+    expect(normalizeShopBaseName('  Alvera Kuyumculuk  ')).toBe('Alvera');
+    expect(checkJewelerName('Alvera Kuyumculuk')).toEqual({ ok: true, value: 'Alvera' });
+    expect(shopDisplayName('Alvera')).toBe('Alvera Kuyumculuk');
+    expect(shopDisplayName('Alvera Kuyumculuk')).toBe('Alvera Kuyumculuk');
   });
 
   it('boş ad kaydedilemez', () => {

@@ -449,7 +449,7 @@ describe('Ekspertiz müşterisi', () => {
         }
       }
     }
-    expect(seen).toBeGreaterThan(20);
+    expect(seen).toBeGreaterThan(10); // v5 surprise pool is 20%, not legacy 24%.
   });
 });
 

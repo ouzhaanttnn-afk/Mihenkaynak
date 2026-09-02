@@ -15,7 +15,8 @@ import { describe, expect, it } from 'vitest';
 import { customerIntentLine, customerRequestLine, spokenNameOf } from './intent-line';
 import { customerBuyDemandPool } from '@domain/sales-catalog';
 import { spawnCustomer } from '@domain/customer-spawn';
-import { PLAIN_BRACELET_GRAMS, getTemplate, plainBraceletId } from '@data/item-templates';
+import { getTemplate } from '@data/item-templates';
+import { INVESTMENT_BANGLE_WEIGHTS, investmentBangleTemplateId, bullionMeta } from '@data/bullion';
 import { dayCharacter } from '@domain/intent';
 import { createMarketForDay } from '@domain/market';
 import type { CustomerDemand } from '@domain/types';
@@ -192,6 +193,10 @@ describe('niyet cümlesi gizli gerçeği sızdırmaz (GDD 6.6)', () => {
       }
       const demandQty = c.demand?.quantity;
       if (demandQty !== undefined) rest = rest.split(String(demandQty)).join('');
+      const meta = c.demand?.templateId ? bullionMeta(c.demand.templateId) : null;
+      if (meta) rest = rest.split(String(meta.unitWeightGrams).replace('.', ',')).join('');
+      const bangleWeight = c.demand?.templateId?.match(/^investment_bangle_22k_(\d+)$/)?.[1];
+      if (bangleWeight) rest = rest.split(bangleWeight).join('').replace('22 ayar', 'ayar');
       expect(rest, `${line} ← fiyat benzeri sayı`).not.toMatch(/\d{3,}/);
     });
   });
@@ -254,7 +259,7 @@ function braceletDemand(grams: number, quantity = 1): CustomerDemand {
   return {
     families: ['bullion'],
     wantsBullion: true,
-    templateId: plainBraceletId(grams),
+    templateId: investmentBangleTemplateId(grams),
     quantity,
     isBulk: false,
     acceptsPartial: false,
@@ -272,7 +277,7 @@ describe('UPDATEv3 §1 — bilezik talebinde KESİN GRAMAJ', () => {
   });
 
   it('sayıyla başladığı için başına "bir" eklenmez', () => {
-    for (const g of PLAIN_BRACELET_GRAMS) {
+    for (const g of INVESTMENT_BANGLE_WEIGHTS) {
       const line = customerRequestLine(braceletDemand(g, 1));
       expect(line.startsWith('Bir '), `${g} g cümlesi "Bir" ile başlıyor`).toBe(false);
       expect(line).toContain(`${g} gram`);
@@ -286,7 +291,7 @@ describe('UPDATEv3 §1 — bilezik talebinde KESİN GRAMAJ', () => {
   });
 
   it('her gramajın kendi cümlesi vardır — şablon eklenip cümlesi unutulamaz', () => {
-    for (const g of PLAIN_BRACELET_GRAMS) {
+    for (const g of INVESTMENT_BANGLE_WEIGHTS) {
       const line = customerRequestLine(braceletDemand(g, 1));
       // Katalog adına ("22 Ayar Yatırım Bileziği (20 g)") düşmüş olmamalı.
       expect(line, `${g} g katalog adına düşmüş`).not.toContain('Yatırım Bileziği');

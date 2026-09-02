@@ -21,12 +21,8 @@
  * bu satıra hiç girmez.
  */
 
-import {
-  PLAIN_BRACELET_GRAMS,
-  getTemplate,
-  plainBraceletId,
-} from '@data/item-templates';
-import { isBullion } from '@data/bullion';
+import { getTemplate } from '@data/item-templates';
+import { INVESTMENT_BANGLE_WEIGHTS, investmentBangleTemplateId, isBullion } from '@data/bullion';
 import type { Customer, CustomerDemand, ItemInstance } from '@domain/types';
 
 /** Ziynet sarrafiyede adet, ürünün kendi adıyla sayılır: "3 Çeyrek Altın". */
@@ -80,6 +76,29 @@ function sellVerb(items: ItemInstance[]): string {
   return allBullion ? 'bozdurmak istiyor' : 'satmak istiyor';
 }
 
+/** Müşterinin ağzındaki doğal ürün adı; katalog etiketini birebir okumaz. */
+function requestedPhrase(templateId: string, name: string, quantity: number): string {
+  const bangle = /^investment_bangle_22k_(\d+)$/.exec(templateId);
+  if (bangle) {
+    const product = `${bangle[1]} gram 22 ayar işçiliksiz bilezik`;
+    return quantity > 1 ? `${quantity} adet ${product}` : product;
+  }
+  const gram = /^gram_gold_(.+)$/.exec(templateId);
+  if (gram) {
+    const weight = gram[1]!.replace('_', ',');
+    return quantity > 1 ? `${quantity} adet ${weight} gram altın` : `${weight} gram altın`;
+  }
+  const articleNames: Record<string, string> = {
+    quarter_gold: 'çeyrek altın',
+    half_gold: 'yarım altın',
+    full_gold: 'tam altın',
+    ata_gold: 'Ata lira',
+  };
+  const natural = articleNames[templateId];
+  if (natural && quantity === 1) return `Bir ${natural}`;
+  return countPhrase(name, quantity, templateId);
+}
+
 /**
  * Şeritte gösterilecek niyet cümlesi.
  *
@@ -97,6 +116,8 @@ export function customerIntentLine(customer: Customer, items: ItemInstance[]): s
       // Talebin özeti zaten oyuncunun dilinde ("10 adet Çeyrek Altın").
       const demand = customer.demand;
       if (!demand) return 'Dükkandan ürün almak istiyor';
+      if (demand.targetInventoryItemId) return demand.summary;
+      if (demand.poolId) return `${demand.summary} almak istiyor`;
 
       if (demand.templateId) {
         /*
@@ -110,7 +131,9 @@ export function customerIntentLine(customer: Customer, items: ItemInstance[]): s
           SPOKEN_NAME[demand.templateId] ??
           getTemplate(demand.templateId)?.displayName ??
           demand.templateId;
-        const phrase = countPhrase(name, demand.quantity, demand.templateId);
+        // Havuz ürünlerinde (gram altın, yatırım bileziği) katalog adı değil
+        // konuşma dili kullanılır: "90 gram 22 ayar işçiliksiz bilezik".
+        const phrase = requestedPhrase(demand.templateId, name, demand.quantity);
         const bulk = demand.isBulk ? 'toplu olarak ' : '';
         return `${bulk}${phrase} almak istiyor`;
       }
@@ -171,7 +194,7 @@ const SPOKEN_NAME: Record<string, string> = {
     yani şablon eklenip cümlesi unutulamaz.
   */
   ...Object.fromEntries(
-    PLAIN_BRACELET_GRAMS.map((g) => [plainBraceletId(g), `${g} gram 22 ayar işçiliksiz bilezik`]),
+    INVESTMENT_BANGLE_WEIGHTS.map((g) => [investmentBangleTemplateId(g), `${g} gram 22 ayar işçiliksiz bilezik`]),
   ),
 };
 

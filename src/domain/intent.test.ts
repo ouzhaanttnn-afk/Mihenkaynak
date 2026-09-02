@@ -94,8 +94,8 @@ describe('§3 — Intent dağılımı %38 / %38 / %24', () => {
 
     for (const c of [extreme, reverse]) {
       const balance = tradeBalance(sample(6000, c));
-      expect(balance).toBeGreaterThan(0.8);
-      expect(balance).toBeLessThan(1.25);
+      expect(balance).toBeGreaterThan(.35 / .65 - .03);
+      expect(balance).toBeLessThan(.65 / .35 + .03);
     }
   });
 

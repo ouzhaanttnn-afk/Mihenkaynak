@@ -28,6 +28,7 @@
  */
 
 import { WHOLESALE } from './balance';
+import { roundMoney } from './v5-rules';
 import { bullionMeta, isBullion } from '@data/bullion';
 import {
   bullionUnitValue,
@@ -107,14 +108,18 @@ export function quoteLiquidation(
   const position = inventory.find((p) => p.itemId === line.itemId);
   if (!item || !position) return null;
 
-  const quantity = Math.max(1, Math.min(position.quantity, Math.round(line.quantity)));
+  const gramPool = position.poolId === '24K_GRAM_GOLD_POOL';
+  if (!Number.isFinite(line.quantity) || line.quantity <= 0) return null;
+  const quantity = Math.min(position.quantity, gramPool ? Math.round(line.quantity * 1000) / 1000 : Math.floor(line.quantity));
+  if (quantity <= 0) return null;
   const meta = bullionMeta(item.templateId);
   const capacityPerSlice = channelCapacity('wholesaler', meta, market);
   const baseUnitValue = isBullion(item.templateId)
     ? bullionUnitValue(item, market)
     : trueValue(item, market);
 
-  const slices = splitQuantity(quantity, Math.max(1, Math.round(sliceCount))).map((q) => {
+  const amounts = gramPool ? splitQuantity(Math.round(quantity * 1000), Math.max(1, Math.round(sliceCount))).map(mg => mg / 1000) : splitQuantity(quantity, Math.max(1, Math.round(sliceCount)));
+  const slices = amounts.map((q) => {
     const quote = priceForChannel({
       item,
       market,
@@ -132,7 +137,7 @@ export function quoteLiquidation(
     };
   });
 
-  const gross = slices.reduce((sum, s) => sum + s.total, 0);
+  const gross = roundMoney(slices.reduce((sum, s) => sum + s.total, 0));
 
   // §4.2 karşılaştırması ÖLÇÜLÜR, varsayılmaz: aynı hacmi tezgâha yığsaydık
   // ne alırdık? Fark negatif çıkabilir ve çıktığında gizlenmez.
@@ -152,7 +157,7 @@ export function quoteLiquidation(
     quantity,
     slices,
     gross,
-    costBasis: Math.round(unitCostBasis(position) * quantity),
+    costBasis: unitCostBasis(position) * quantity,
     grams: gramsFor(item, quantity),
     capacityPerSlice,
     edgeVsCounter,
@@ -456,7 +461,7 @@ export function supplyOffer(
     quantity: units,
     maxQuantity,
     unitPrice: quote.unitPrice,
-    total: quote.unitPrice * units,
+    total: quote.totalPrice,
     grams: gramsFor(item, units),
   };
 }

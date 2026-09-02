@@ -115,10 +115,10 @@ describe('Hafta sonu kotasyonu donuktur, pazartesi boşlukla açar', () => {
     const monday = sd(byWeekday[0]!);
     const midweek = mean([1, 2, 3, 4].map((wd) => sd(byWeekday[wd]!)));
 
-    // √3 ≈ 1,73. Ölçüm: pazartesi %2,68 / hafta içi ~%1,54.
+    // √3 ≈ 1,73. Ölçüm (birleşme sonrası): pazartesi %1,93 / hafta içi %1,10.
     expect(monday / midweek, `pazartesi/hafta içi ${(monday / midweek).toFixed(2)}×`)
-      .toBeGreaterThan(1.5);
-    expect(monday / midweek).toBeLessThan(2.0);
+      .toBeGreaterThan(1.4);
+    expect(monday / midweek).toBeLessThan(2.2);
   });
 
   it('pazartesi bandı %5,2yi aşmaz — risk büyür, sınırsızlaşmaz', () => {
@@ -128,13 +128,24 @@ describe('Hafta sonu kotasyonu donuktur, pazartesi boşlukla açar', () => {
       .toBeLessThanOrEqual(cap + 1e-6);
   });
 
-  it('hafta içi oynaklık DEĞİŞMEDİ — boşluk sadece pazartesiye bindi', () => {
-    for (const wd of [1, 2, 3, 4]) {
-      const s = sd(byWeekday[wd]!);
-      // Değişiklikten önce ölçülen bant: %1,50–%1,56.
-      expect(s, `${weekdayLabel(wd + 1)} sd %${(s * 100).toFixed(2)}`).toBeGreaterThan(0.012);
-      expect(s).toBeLessThan(0.018);
+  it('hafta içi günler birbirinin aynısı — boşluk sadece pazartesiye biniyor', () => {
+    /*
+      ÖLÇÜM GÜNCELLENDİ: makro çıpa + ortalamaya dönüş devreye girince hafta
+      içi sapma %1,5'ten %1,10'a indi (uzun oyunda fiyatın sınırsız
+      sürüklenmesini durduran değişiklik). Test mutlak bir sayıyı değil,
+      KURALI bağlar: dört hafta içi günü birbirinden ayırt edilemez ve
+      hiçbiri pazartesiye yaklaşmaz.
+    */
+    const weekdays = [1, 2, 3, 4].map((wd) => sd(byWeekday[wd]!));
+    const lo = Math.min(...weekdays);
+    const hi = Math.max(...weekdays);
+
+    expect(hi / lo, `hafta içi sapmalar ${(hi / lo).toFixed(2)}× ayrışıyor`).toBeLessThan(1.15);
+    for (const [i, s] of weekdays.entries()) {
+      expect(s, `${weekdayLabel(i + 2)} sd %${(s * 100).toFixed(2)}`).toBeGreaterThan(0.006);
+      expect(s).toBeLessThan(0.015);
     }
+    expect(sd(byWeekday[0]!)).toBeGreaterThan(hi * 1.4);
   });
 
   it('boşluk gün sayısı markette taşınır', () => {

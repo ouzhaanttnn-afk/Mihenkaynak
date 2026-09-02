@@ -23,10 +23,29 @@ beforeEach(() => {
   useGame.setState({ pauseDepth: 0 });
 });
 
-/** Aranan hafta gününe kadar oynamadan ilerler: gelen müşteriyi geri çevirir. */
+/**
+ * Aranan hafta gününe kadar oynamadan ilerler: gelen müşteriyi geri çevirir.
+ *
+ * UPDATEv5 GÜN RAPORU ZAMANI DURDURUR (`dayReportOpen`). Panel açık kalırken
+ * `tick` hiçbir şey yapmaz; testin günleri ilerletebilmesi için raporu
+ * oyuncu gibi kapatması gerekir. Bu kapatılmadığında döngü 300.000 adım
+ * boşa dönüyordu (ölçüldü: her test ~32 sn sürüp "gün üretilemedi" diyordu).
+ */
 function runUntilWeekday(target: number): void {
   for (let step = 0; step < 300_000; step += 1) {
     const s = useGame.getState();
+    /*
+      RAPOR ÖNCE KAPANIR, HEDEF SONRA SINANIR.
+
+      `advanceDay` günü ilerletip raporu AYNI ANDA açıyor. Hedef önce
+      sınanırsa döngü rapor açıkken döner; testin ardından çağırdığı
+      `advanceDay` `dayReportOpen` kapısından geri döner ve `lastDayClose`
+      bir ÖNCEKİ günü gösterir (ölçüldü: 'Cuma' beklenirken 'Perşembe').
+    */
+    if (s.dayReportOpen) {
+      useGame.getState().startNewDay();
+      continue;
+    }
     if (weekdayOf(s.market.day) === target && s.market.clockMinutes < 11 * 60) return;
     if (s.activeDeal) {
       useGame.getState().finishDeal();
@@ -44,6 +63,7 @@ function customersOnCurrentDay(): number {
 
   for (let step = 0; step < 300_000; step += 1) {
     const s = useGame.getState();
+    if (s.dayReportOpen) break;
     if (s.market.day !== startDay) break;
     if (s.activeDeal) {
       useGame.getState().finishDeal();
@@ -88,7 +108,7 @@ describe('Hafta sonu fiyatı donuk kalır (store)', () => {
 
     for (let i = 0; i < 4_000; i += 1) {
       const before = useGame.getState();
-      if (before.market.day !== startDay) break;
+      if (before.dayReportOpen || before.market.day !== startDay) break;
       if (before.activeDeal) {
         useGame.getState().finishDeal();
         continue;

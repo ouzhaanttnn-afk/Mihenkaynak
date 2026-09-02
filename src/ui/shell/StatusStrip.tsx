@@ -1,12 +1,13 @@
 /**
- * A — Durum Şeridi (GDD 23.9.2, 52 px)
+ * A — Durum Şeridi (UPDATEv1, 64–72 px)
  * "Seviye/XP, Gün-Saat, Nakit + kompakt 1x/2x/4x hız kontrolü."
  *
  * GDD 23.6: "Kompakt; ekranı domine etmez. 4x rewarded state ayrı kart açmaz."
  */
 
 import { SPEED_STEPS, type SpeedStep } from '@domain/balance';
-import { IconLock, IconPencil, IconVideo, BrandMark } from '@ui/icons';
+import { weekdayLabel, weekdayShort } from '@domain/calendar';
+import { IconLock, IconPencil, BrandMark } from '@ui/icons';
 import { Art } from '@ui/Art';
 import { avatarArt } from '@ui/assets';
 import { clock, tlBare } from '@ui/format';
@@ -23,6 +24,7 @@ interface Props {
   onUnlock4x: () => void;
   /** Kuyumcunun adı ve portresi — yalnız görünüm. */
   profile: PlayerProfile;
+  profileFrame?: string;
   onEditProfile: () => void;
 }
 
@@ -34,6 +36,7 @@ export function StatusStrip({
   onSpeed,
   onUnlock4x,
   profile,
+  profileFrame,
   onEditProfile,
 }: Props) {
   const xpRatio = Math.min(1, store.xp / Math.max(1, store.xpToNext));
@@ -44,7 +47,7 @@ export function StatusStrip({
         PROFİL ALANI — avatar + kuyumcu adı + düzenleme kalemi, tek düğme.
 
         NEDEN AD SEVİYE SATIRININ ÜSTÜNE İSTİFLENDİ:
-        Şerit 52 px ve 360 px genişlikte ÖLÇÜLDÜĞÜNDE tam doluydu — artan
+        Şerit 390 px genişlikte ÖLÇÜLDÜĞÜNDE tam doluydu — artan
         yer 0 px. Adı yeni bir sütun olarak eklemek, tek esneyen blok olan
         saati 37 px'in altına iterdi ve "Gün 1" iki satıra kırılırdı (bu
         kırılma daha önce yaşandı ve geri alındı).
@@ -63,7 +66,7 @@ export function StatusStrip({
         onClick={onEditProfile}
         aria-label={`${t('strip.editProfile', 'Profili düzenle')} — ${profile.jewelerName}`}
       >
-        <span className="profileChip__avatar">
+        <span className={`profileChip__avatar ${profileFrame ? `profileChip__avatar--${profileFrame}` : ''}`}>
           <Art
             art={avatarArt(profile.avatarId)}
             /* CSS 56 px'e sabitliyor; öznitelik onunla aynı kalsın. */
@@ -96,8 +99,13 @@ export function StatusStrip({
         </span>
       </button>
 
-      <div className="statusStrip__clock">
+      <div
+        className="statusStrip__clock"
+        aria-label={`Gün ${market.day}, ${weekdayLabel(market.day)}, saat ${clock(market.clockMinutes)}`}
+      >
         <div className="statusStrip__day">{t('strip.day', 'Gün')} {market.day}</div>
+        {/* Haftanın günü: hafta sonu boşluğu takvimi okunur kılmadan anlaşılmaz. */}
+        <div className="statusStrip__weekday">{weekdayShort(market.day)}</div>
         <div className="statusStrip__time num">{clock(market.clockMinutes)}</div>
       </div>
 
@@ -131,9 +139,9 @@ export function StatusStrip({
 }
 
 /**
- * GDD 26.2 — "1x/2x temel erişimdir; 4x isteğe bağlı rewarded video ile
- * geçici açılır." Rewarded CTA'da oyun içi fayda adı kullanılır ve video
- * gerekliliği küçük bir simgeyle belirtilir.
+ * 1x/2x temel erişimdir; 4x isteğe bağlı açılır. Bu prototip gerçek bir
+ * reklam sağlayıcısına bağlı olmadığı için arayüz "video izle" iddiasında
+ * bulunmaz; kilit yalnız hızın henüz açılmadığını anlatır.
  */
 function SpeedControl({
   speed,
@@ -165,11 +173,11 @@ function SpeedControl({
               .join(' ')}
             onClick={() => (isLocked ? onUnlock() : onSpeed(step))}
             aria-pressed={isActive}
-            aria-label={isLocked ? `${step}x hızı aç — video izle` : `${step}x hız`}
-            title={isLocked ? `${step}x Hızı Aç · video` : `${step}x hız`}
+            aria-label={isLocked ? `${step}x hızı aç` : `${step}x hız`}
+            title={isLocked ? `${step}x Hızı Aç` : `${step}x hız`}
           >
             {step}x
-            {isLocked && (unlocked ? <IconLock size={9} /> : <IconVideo size={10} />)}
+            {isLocked && <IconLock size={9} />}
           </button>
         );
       })}

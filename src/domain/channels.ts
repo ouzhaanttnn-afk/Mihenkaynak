@@ -27,6 +27,8 @@
 import { CHANNEL, MARKET_REGIME } from './balance';
 import { bullionMeta, CRAFTED_DEFAULT, type BullionMeta, type LiquidityClass } from '@data/bullion';
 import { spotFor } from './market';
+import { customerPriceBand } from './customer-pricing';
+import { roundMoney } from './v5-rules';
 import type {
   ItemInstance,
   MarketState,
@@ -60,9 +62,9 @@ export interface PricingResult {
   side: TradeSide;
   quantity: number;
 
-  /** Birim başına nihai fiyat. */
+  /** Yuvarlanmamış birim fiyatı; final ödeme totalPrice alanındadır. */
   unitPrice: Money;
-  /** quantity × unitPrice. */
+  /** Merkezi TL yuvarlaması uygulanmış quantity × unitPrice. */
   totalPrice: Money;
 
   /**
@@ -123,6 +125,18 @@ export function priceForChannel(input: PricingInput): PricingResult {
   const profile = CHANNEL[channel];
   const capacityLimit = channelCapacity(channel, meta, market);
   const direction = side === 'shopBuys' ? -1 : 1;
+  const customerBand = (channel === 'retailCustomer' || channel === 'bulkCustomer')
+    ? customerPriceBand(item, market, side) : null;
+  if (customerBand) {
+    // Final customer spread REPLACES the legacy stack of channel premiums.
+    const unitPrice = side === 'shopBuys' ? customerBand.min : customerBand.max;
+    const spreadRatio = Math.abs(unitPrice - customerBand.reference) / Math.max(1, customerBand.reference);
+    return { channel, side, quantity, unitPrice, totalPrice: roundMoney(unitPrice * quantity),
+      spreadRatio, priceImpact: 0,
+      breakdown: { product: 0, volume: 0, channel: spreadRatio, regime: 0, volatility: 0, relationship: 0 },
+      capacityLimit, exceedsCapacity: quantity > capacityLimit,
+      rationale: 'Güncel HAS referansı ve müşteri alış-satış bandı.' };
+  }
 
   // --- 1. ÜRÜN: likidite, standartlık, piyasa derinliği (§6 "Ürün") ---
   const productWidth = productSpread(meta);
@@ -180,7 +194,7 @@ export function priceForChannel(input: PricingInput): PricingResult {
 
   const unitPrice = Math.max(
     1,
-    Math.round(baseUnitValue * (1 + priceImpact + direction * shopMargin)),
+    baseUnitValue * (1 + priceImpact + direction * shopMargin),
   );
 
   const bias = profile.makerBias;
@@ -189,7 +203,7 @@ export function priceForChannel(input: PricingInput): PricingResult {
     side,
     quantity,
     unitPrice,
-    totalPrice: unitPrice * quantity,
+    totalPrice: roundMoney(unitPrice * quantity),
     spreadRatio: round4(shopMargin),
     priceImpact: round4(priceImpact),
     // Döküm marja TOPLANIR: product + volume + channel + regime + volatility
@@ -409,7 +423,7 @@ export function bullionUnitValue(item: ItemInstance, market: MarketState): Money
 
   // GDD 6.2: net gram × gerçek saflık × spot. Prim ticari katmandır.
   const metal = meta.unitWeightGrams * meta.unitPurity * spotFor(market, item.metal);
-  return Math.round(metal * (1 + meta.premiumRatio));
+  return metal;
 }
 
 /** Bir işlemin gram karşılığı — telemetri ve kanal raporları için (§4.1). */

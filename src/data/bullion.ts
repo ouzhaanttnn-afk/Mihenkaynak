@@ -15,7 +15,7 @@
  */
 
 import type { TradeChannel } from '@domain/types';
-import { PLAIN_BRACELET_GRAMS, plainBraceletId } from '@data/item-templates';
+import { MARKET_BASE } from '@domain/balance';
 
 /** §4 "likidite sınıfı" — ürünün ne kadar kolay nakde döndüğü. */
 export type LiquidityClass = 'high' | 'medium' | 'low';
@@ -60,6 +60,13 @@ export interface BullionMeta {
    * darphane/tanınırlık payı. Ata gibi ürünlerde daha yüksektir.
    */
   premiumRatio: number;
+}
+
+/** UPDATEv3 — satılabilir yatırım bileziği gramajlarının tek kaynağı. */
+export const INVESTMENT_BANGLE_WEIGHTS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
+
+export function investmentBangleTemplateId(weight: number): string {
+  return `investment_bangle_22k_${weight}`;
 }
 
 /**
@@ -149,8 +156,8 @@ export const BULLION_META: BullionMeta[] = [
   },
   {
     templateId: 'quarter_gold',
-    unitWeightGrams: 1.75,
-    unitPurity: 0.916,
+    unitWeightGrams: MARKET_BASE.quarterGoldWeight,
+    unitPurity: 0.922,
     liquidityClass: 'high',
     volumeBand: [1, 6],
     bulkVolumeBand: [15, 90],
@@ -215,6 +222,18 @@ export const BULLION_META: BullionMeta[] = [
     marketSensitivity: 1,
     premiumRatio: 0.005,
   },
+  ...INVESTMENT_BANGLE_WEIGHTS.map((weight): BullionMeta => ({
+    templateId: investmentBangleTemplateId(weight),
+    unitWeightGrams: weight,
+    unitPurity: 0.922,
+    liquidityClass: 'high',
+    volumeBand: [1, 2],
+    bulkVolumeBand: [2, 8],
+    channelFit: ['retailCustomer', 'bulkCustomer', 'wholesaler', 'tradeNetwork'],
+    marketSensitivity: 1,
+    // İşçilik ve tasarım primi yok; fiyat yalnız metal + mevcut kanal makasıdır.
+    premiumRatio: 0,
+  })),
 ];
 
 /*
@@ -237,26 +256,13 @@ export const BULLION_META: BullionMeta[] = [
  * alınır, 100 g'lik tek başına büyük tutar bağlar.
  * ═══════════════════════════════════════════════════════════════════════════
  */
-const PLAIN_BRACELET_META: BullionMeta[] = PLAIN_BRACELET_GRAMS.map((g) => {
-  // Ağır bilezik daha az adette döner; bant gramajla daralır.
-  const retailTop = g <= 20 ? 3 : g <= 50 ? 2 : 1;
-  const bulkBand: [number, number] = g <= 20 ? [4, 20] : g <= 50 ? [2, 10] : [2, 6];
-
-  return {
-    templateId: plainBraceletId(g),
-    unitWeightGrams: g,
-    /* 22 ayar = 916/1000. Ziynetle aynı saflık, farkı primsiz olması. */
-    unitPurity: 0.916,
-    liquidityClass: g <= 50 ? 'high' : 'medium',
-    volumeBand: [1, retailTop],
-    bulkVolumeBand: bulkBand,
-    channelFit: ['retailCustomer', 'bulkCustomer', 'wholesaler', 'tradeNetwork'],
-    marketSensitivity: 1,
-    premiumRatio: 0,
-  };
-});
-
-BULLION_META.push(...PLAIN_BRACELET_META);
+/**
+ * UPDATEv2/v3 tek doğruluk kaynağı: oyuncunun tedarik edip müşteriye
+ * satabildiği katalog. Talep üretimi ve Stok > Sarrafiye Al bunu paylaşır.
+ */
+export const RETAIL_BULLION_CATALOG = BULLION_META
+  .filter((meta) => meta.channelFit.includes('retailCustomer'))
+  .map((meta) => meta.templateId);
 
 export const BULLION_BY_TEMPLATE = new Map(BULLION_META.map((m) => [m.templateId, m]));
 

@@ -105,9 +105,10 @@ export function InspectStage({ item, knowledge, testResults, market }: Props) {
           */}
           {unitView && (
             <Field
-              label="Birim fiyat"
+              label="Piyasa birim referansı"
               value={`${tlBare(unitView.unitPrice)} ${unitView.unit}`}
-              status="verified"
+              status="partial"
+              statusLabel="referans"
             />
           )}
           {fields.includes('weight') && (
@@ -115,6 +116,7 @@ export function InspectStage({ item, knowledge, testResults, market }: Props) {
               label="Ağırlık"
               value={weightVerified ? grams(shownWeight) : `~${grams(shownWeight)}`}
               status={weightStatus}
+              statusLabel={isBullion(item.templateId) && weightStatus === 'partial' ? 'beyan' : undefined}
             />
           )}
           {fields.includes('purity') && (
@@ -122,6 +124,7 @@ export function InspectStage({ item, knowledge, testResults, market }: Props) {
               label={purityVerified ? 'Ayar' : 'Beyan ayarı'}
               value={KARAT_LABEL[shownKarat]}
               status={purityStatus}
+              statusLabel={isBullion(item.templateId) && purityStatus === 'partial' ? 'beyan' : undefined}
             />
           )}
           {fields.includes('coreIntegrity') && (
@@ -193,17 +196,19 @@ function Field({
   label,
   value,
   status,
+  statusLabel,
 }: {
   label: string;
   value: string;
   status: FieldKnowledge['status'];
+  statusLabel?: string;
 }) {
   return (
     <div className="field">
       <span className="field__label">{label}</span>
       <span className="field__value">
         <span className="num">{value}</span>{' '}
-        <span className={`status status--${status}`}>{STATUS_TEXT[status]}</span>
+        <span className={`status status--${status}`}>{statusLabel ?? STATUS_TEXT[status]}</span>
       </span>
     </div>
   );

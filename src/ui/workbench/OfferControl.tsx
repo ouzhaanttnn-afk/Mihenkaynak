@@ -44,6 +44,19 @@ interface Props {
   unitLabel?: string | null;
 }
 
+/**
+ * HTML range adımını min değerine göre uygular. Böylece ekranda yazan teklif
+ * ile tarayıcının gerçekte göndereceği slider değeri hiçbir zaman ayrışmaz.
+ */
+export function snapOffer(value: Money, min: Money, max: Money, step: Money): Money {
+  const safeStep = Math.max(1, Math.round(step));
+  const safeMin = Math.round(min);
+  const safeMax = Math.max(safeMin, Math.round(max));
+  const lastStep = safeMin + Math.floor((safeMax - safeMin) / safeStep) * safeStep;
+  const clamped = Math.min(lastStep, Math.max(safeMin, Math.round(value)));
+  return safeMin + Math.round((clamped - safeMin) / safeStep) * safeStep;
+}
+
 export function OfferControl({
   value,
   min,
@@ -54,7 +67,7 @@ export function OfferControl({
   disabled,
   unitLabel,
 }: Props) {
-  const clamp = (n: number) => Math.min(max, Math.max(min, Math.round(n)));
+  const normalizedValue = snapOffer(value, min, max, step);
 
   return (
     <div className="offer">
@@ -62,23 +75,23 @@ export function OfferControl({
         <button
           type="button"
           className="offer__nudge"
-          onClick={() => onChange(clamp(value - step))}
-          disabled={disabled || value <= min}
+          onClick={() => onChange(snapOffer(normalizedValue - step, min, max, step))}
+          disabled={disabled || normalizedValue <= min}
           aria-label="Teklifi azalt"
         >
           −
         </button>
 
         <span className="offer__amount num">
-          {tlBare(value)}
+          {tlBare(normalizedValue)}
           <span className="offer__currency">₺</span>
         </span>
 
         <button
           type="button"
           className="offer__nudge"
-          onClick={() => onChange(clamp(value + step))}
-          disabled={disabled || value >= max}
+          onClick={() => onChange(snapOffer(normalizedValue + step, min, max, step))}
+          disabled={disabled || normalizedValue >= max}
           aria-label="Teklifi artır"
         >
           +
@@ -93,8 +106,8 @@ export function OfferControl({
         min={min}
         max={max}
         step={step}
-        value={value}
-        onChange={(e) => onChange(clamp(Number(e.target.value)))}
+        value={normalizedValue}
+        onChange={(e) => onChange(snapOffer(Number(e.target.value), min, max, step))}
         disabled={disabled}
         aria-label="Teklif tutarı"
       />

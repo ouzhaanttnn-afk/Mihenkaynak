@@ -31,14 +31,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import {
-  ITEM_TEMPLATES,
-  PLAIN_BRACELET_GRAMS,
-  getTemplate,
-  plainBraceletId,
-  type ItemTemplate,
-} from '@data/item-templates';
-import { isBullion } from '@data/bullion';
+import { ITEM_TEMPLATES, getTemplate, type ItemTemplate } from '@data/item-templates';
+import { INVESTMENT_BANGLE_WEIGHTS, investmentBangleTemplateId, isBullion } from '@data/bullion';
 
 /**
  * Toptancı tezgâhının taşıdığı standart sarrafiye.
@@ -63,14 +57,14 @@ const SUPPLIER_CATALOG_IDS = [
   /*
     UPDATEv3 §1 — 22 AYAR İŞÇİLİKSİZ YATIRIM BİLEZİĞİ.
 
-    Kimlikler ELLE YAZILMAZ, `PLAIN_BRACELET_GRAMS`ten türer. §1 "15 g, 25 g
+    Kimlikler ELLE YAZILMAZ, `INVESTMENT_BANGLE_WEIGHTS`ten türer. §1 "15 g, 25 g
     gibi 10'un katı olmayan gramajları satılabilir kataloğa ekleme" diyor;
     listeyi tek kaynaktan türetmek o kuralı ihlal edilebilir bir yerde
     bırakmaz. Aynı sebeple 8/14/18 ayar ve işçilikli/taşlı 22 ayar bilezikler
     buraya HİÇ girmez: onlar sarrafiye değil (`isBullion` false) ve
     `sellableToCustomer`ın ilk kapısında zaten elenirler.
   */
-  ...PLAIN_BRACELET_GRAMS.map(plainBraceletId),
+  ...INVESTMENT_BANGLE_WEIGHTS.map(investmentBangleTemplateId),
 ] as const;
 
 export type SupplierCatalogId = (typeof SUPPLIER_CATALOG_IDS)[number];
@@ -149,19 +143,32 @@ const DEMAND_WEIGHTS: Record<string, number> = {
 
   // 22 ayar işçiliksiz yatırım bileziği (UPDATEv3 §1). Gramaj büyüdükçe
   // alıcı azalır: 10–30 g takılır ve hediye edilir, 90–100 g yatırımdır.
-  bracelet_22k_plain_10: 6,
-  bracelet_22k_plain_20: 5,
-  bracelet_22k_plain_30: 4,
-  bracelet_22k_plain_40: 2.5,
-  bracelet_22k_plain_50: 2,
-  bracelet_22k_plain_60: 1.5,
-  bracelet_22k_plain_70: 1,
-  bracelet_22k_plain_80: 0.8,
-  bracelet_22k_plain_90: 0.6,
-  bracelet_22k_plain_100: 0.5,
+  investment_bangle_22k_10: 6,
+  investment_bangle_22k_20: 5,
+  investment_bangle_22k_30: 4,
+  investment_bangle_22k_40: 2.5,
+  investment_bangle_22k_50: 2,
+  investment_bangle_22k_60: 1.5,
+  investment_bangle_22k_70: 1,
+  investment_bangle_22k_80: 0.8,
+  investment_bangle_22k_90: 0.6,
+  investment_bangle_22k_100: 0.5,
 };
 
 const DEFAULT_DEMAND_WEIGHT = 1;
+
+/**
+ * Tek bir şablonun talep ağırlığı.
+ *
+ * UPDATEv5 sonrası talep havuzunun KAYNAĞI ortak perakende kataloğu oldu
+ * (`RETAIL_BULLION_CATALOG` + kademe + bütçe süzgeci). Ağırlık tablosu ise
+ * hâlâ gerekli: kaynak listeyi düz çekmek 1 g külçe ile 100 g külçeyi eşit
+ * sıklıkta istetiyordu, oysa semtin ekmeği çeyrektir. Havuzu bu dosya
+ * kurmayınca ağırlığı tek tek sormak gerekiyor — fonksiyon bunun içindir.
+ */
+export function demandWeightFor(templateId: string): number {
+  return DEMAND_WEIGHTS[templateId] ?? DEFAULT_DEMAND_WEIGHT;
+}
 
 /**
  * Talep havuzu, ağırlıklarıyla. `Rng.pickWeighted` tek çekiliş harcar —

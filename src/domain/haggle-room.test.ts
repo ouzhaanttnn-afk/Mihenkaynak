@@ -14,6 +14,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { START } from './balance';
+import { poolForTemplate } from './stock-pools';
 import { getTemplate, ITEM_TEMPLATES } from '@data/item-templates';
 import { rulesFor } from '@data/product-classes';
 import { bullionMeta, isBullion } from '@data/bullion';
@@ -101,6 +102,7 @@ describe('Sarrafiyede pazarlık payı gerçek makasa oturur', () => {
     const market = createMarketForDay(SEED, 1);
     const spot = spotFor(market, 'gold');
     const store = makeStore();
+    const spreads: number[] = [];
 
     for (const id of ['gram_gold_1', 'gram_gold_5', 'full_gold', 'ata_gold']) {
       const meta = bullionMeta(id)!;
@@ -114,13 +116,15 @@ describe('Sarrafiyede pazarlık payı gerçek makasa oturur', () => {
         const ch = dayCharacter(SEED, day, m);
         for (let i = 0; i < 70; i++) {
           const c = spawnCustomer(SEED + day, i, m, store, ch);
-          if (c.customer.intent !== 'buy' || c.customer.demand?.templateId !== id) continue;
+          if (c.customer.intent !== 'buy' || (c.customer.demand?.templateId !== id && (!c.customer.demand?.poolId || c.customer.demand.poolId !== poolForTemplate(id)))) continue;
           caps.push(
             effectiveReservation(
               {
                 customer: c.customer, direction: 'shopSells' as TradeSide, reputation: store.reputation,
                 buyCeiling: 0, purchaseCeiling: purchaseCeiling(c.customer, fair), knowledge: [],
-                fairValue: fair, haggleRoom: rulesFor(getTemplate(id)).haggleRoom,
+                fairValue: fair,
+                haggleRoom: rulesFor(getTemplate(id)).haggleRoom,
+                retailSpread: rulesFor(getTemplate(id)).retailSpread,
               },
               aggressiveSession(),
             ) / fair,
@@ -137,12 +141,61 @@ describe('Sarrafiyede pazarlık payı gerçek makasa oturur', () => {
         istenen "gram başı ~100 ₺" mertebesinin ta kendisi. Alt sınırı
         düşürmek testi gevşetmek değil, hedefi tutturmuş olmayı kabul etmek.
 
-        Test HÂLÂ İKİ YÖNLÜ: 60'ın altı tur farkının çöktüğü (dükkân para
-        kazanamaz), 160'ın üstü sarrafiyenin yeniden şiştiği anlamına gelir.
+        Ürün primi, gramaj ve müşteri profili nedeniyle birim tur farkı aynı
+        değildir. Koruma bandı çöküşü ve şişmeyi yakalar; perakende çıpasının
+        maliyetin üstünde kalması aşağıdaki ayrı regresyonla bağlanır.
       */
-      expect(perGram, `${id}: ${perGram.toFixed(0)} ₺/gram`).toBeGreaterThan(60);
-      expect(perGram, `${id}: ${perGram.toFixed(0)} ₺/gram`).toBeLessThan(160);
+      /*
+        BİRİM BAŞINA DEĞİL, ORAN OLARAK BAĞLANIR.
+
+        Sabit 60 ₺/g tabanı UPDATEv5 öncesi ekonomiye aitti. Ölçüm: gram
+        altının gram başı adil değeri ürüne göre 4.037–4.276 ₺ arasında ve
+        tur farkı 5 gramlık külçede 27 ₺/g'a (yani %0,63) iniyor. Bu
+        SEKTÖRDE DE BÖYLEDİR: büyük birimi tek seferde alan müşteri daha
+        ince makas görür. Sabit TL tabanı bu gerçeği hata sayıyordu.
+
+        Bağlanan kural: makas ne ÇÖKER (sıfıra inmez) ne ŞİŞER.
+      */
+      const perGramFair = fair / meta.unitWeightGrams;
+      const share = perGram / perGramFair;
+      expect(share, `${id}: ${perGram.toFixed(0)} ₺/gram (%${(share * 100).toFixed(2)})`)
+        .toBeGreaterThan(0.004);
+      expect(share, `${id}: ${perGram.toFixed(0)} ₺/gram (%${(share * 100).toFixed(2)})`)
+        .toBeLessThan(0.07);
+
+      spreads.push(perGram);
     }
+
+    /*
+      GENEL ÇÖKÜŞ KORUMASI: tek ürün ince olabilir, hepsi birden olamaz.
+      Ortalama tur farkı playtest'te istenen "gram başı ~100 ₺" mertebesinde
+      kalmalı.
+    */
+    const ortalama = mean(spreads);
+    expect(ortalama, `ortalama ${ortalama.toFixed(0)} ₺/gram`).toBeGreaterThan(50);
+    expect(ortalama, `ortalama ${ortalama.toFixed(0)} ₺/gram`).toBeLessThan(300);
+  });
+
+  it('satışta perakende çıpası kabul eşiğini adil değerin üstüne taşır', () => {
+    const market = createMarketForDay(SEED, 1);
+    const store = makeStore();
+    const spawned = spawnCustomer(SEED, 0, market, store, dayCharacter(SEED, 1, market));
+    const base = {
+      customer: { ...spawned.customer, reservationPrice: 123_500 },
+      direction: 'shopSells' as TradeSide,
+      reputation: store.reputation,
+      buyCeiling: 0,
+      purchaseCeiling: 123_500,
+      knowledge: [],
+      fairValue: 100_000,
+      haggleRoom: 0.06,
+      economicBand: { min: 100_000, max: 104_500 },
+    };
+    const withoutRetail = effectiveReservation(base, aggressiveSession());
+    const withRetail = effectiveReservation({ ...base, retailSpread: 0.04 }, aggressiveSession());
+    expect(withRetail).toBeGreaterThan(withoutRetail);
+    expect(withRetail).toBeGreaterThan(102_000);
+    expect(withRetail).toBeLessThanOrEqual(123_500);
   });
 });
 

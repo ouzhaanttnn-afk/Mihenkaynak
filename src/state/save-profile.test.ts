@@ -11,11 +11,12 @@ import { describe, expect, it } from 'vitest';
 
 import { deserialize, serialize, type SaveFile } from './save';
 import { defaultProfile } from '@domain/profile';
+import { createMarketForDay, stepMarketIntraday } from '@domain/market';
 import { createLedger } from '@domain/settlement';
 import { emptyTelemetry } from '@domain/intent';
 import { START } from '@domain/balance';
 import type { GameState } from './gameStore';
-import type { StoreState } from '@domain/types';
+import type { MarketState, StoreState } from '@domain/types';
 
 function makeStore(): StoreState {
   return {
@@ -67,6 +68,15 @@ describe('profil kayıtla birlikte taşınır', () => {
     const back = deserialize(serialize(state));
     expect(progressOf(back as never)).toBe(progressOf(state as never));
   });
+
+  it('gün içi piyasa snapshotını yeniden zar atmadan korur', () => {
+    const state = makeState();
+    const intraday = stepMarketIntraday(createMarketForDay(state.seed, 6), 777);
+
+    const back = deserialize(serialize({ ...state, market: intraday }));
+
+    expect(back.market).toEqual(intraday);
+  });
 });
 
 describe('ESKİ KAYITLAR BOZULMAZ', () => {
@@ -80,6 +90,22 @@ describe('ESKİ KAYITLAR BOZULMAZ', () => {
   it('profil alanı olmayan kayıt yüklenir ve varsayılana düşer', () => {
     const back = deserialize(legacySave());
     expect(back.profile).toEqual(defaultProfile());
+  });
+
+  it('eski piyasa snapshotı fiyatı sıfırlanmadan yeni takvime taşınır', () => {
+    const state = makeState();
+    const snapshot = createMarketForDay(state.seed, 6);
+    const file = serialize({ ...state, market: snapshot });
+    const legacy = file.market as Partial<MarketState>;
+    delete legacy.dayOpen;
+    delete legacy.marketOpen;
+    delete legacy.gapDays;
+    delete legacy.lastIntradayStepIndex;
+
+    const back = deserialize(file);
+    expect(back.market.goldSpot).toBe(snapshot.goldSpot);
+    expect(back.market.marketOpen).toBe(false);
+    expect(back.market.dayOpen?.goldSpot).toBe(snapshot.goldSpot);
   });
 
   it('eski kaydın para/seviye/XP/güven/stok değerleri aynen gelir', () => {

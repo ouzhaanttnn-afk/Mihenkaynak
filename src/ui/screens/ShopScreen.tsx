@@ -18,14 +18,16 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { DAY, NEGOTIATION } from '@domain/balance';
 import { isShopOpen, weekdayLabel } from '@domain/calendar';
+import { shopDisplayName } from '@domain/profile';
 import { effectiveCeiling, suggestedChannel } from '@domain/thesis';
 import { isTerminal } from '@domain/negotiation';
 import { liquidityRatio } from '@domain/settlement';
 import { toolsForLevel } from '@data/tools';
+import { getArchetype } from '@data/archetypes';
 import { getServiceType } from '@data/service-types';
 import { expectedCompletionDay, findQuote } from '@domain/service';
 import { activeLine, canEnterStage, selectors, useGame } from '@state/gameStore';
-import { minSaleOffer, offerableStock } from '@domain/purchase';
+import { minSaleOffer, offerableStock, showcaseStock } from '@domain/purchase';
 import { FAMILY_LABEL, TEMPLATE_BY_ID } from '@data/item-templates';
 import {
   bullionUnitValue,
@@ -33,7 +35,7 @@ import {
   marketReferenceSell,
   unitPriceView,
 } from '@domain/channels';
-import { isBullion } from '@data/bullion';
+import { isBullion, RETAIL_BULLION_CATALOG } from '@data/bullion';
 import { CLASS_LABEL, flowPolicy, isToolRelevant, transactionClass } from '@domain/transaction-class';
 
 import { CustomerStrip } from '@ui/shell/CustomerStrip';
@@ -63,9 +65,17 @@ import {
   QuoteStage,
 } from '@ui/workbench/ServiceStages';
 import { PackageStage, StockPickStage, fulfilmentText } from '@ui/workbench/PurchaseStages';
-import { OfferControl, liquidityImpact, type OfferImpact } from '@ui/workbench/OfferControl';
+import {
+  OfferControl,
+  liquidityImpact,
+  snapOffer,
+  type OfferImpact,
+} from '@ui/workbench/OfferControl';
 
 import {
+  IconClock,
+  IconCash,
+  IconCollection,
   IconCounter,
   IconDensity,
   IconGesture,
@@ -77,8 +87,9 @@ import {
   IconReject,
   IconScale,
   IconSend,
-  IconSettings,
+  IconSun,
   IconSpectrometer,
+  IconStock,
   IconTouchstone,
   IconVideo,
   IconWarning,
@@ -87,9 +98,12 @@ import {
 import { Art } from '@ui/Art';
 import { NAV_ART, customerArt } from '@ui/assets';
 import { customerIntentLine } from '@ui/intent-line';
-import { shopDisplayName } from '@domain/profile';
 import { t } from '@ui/i18n';
-import { clock, pct, tl, tlSigned, tonWord } from '@ui/format';
+import { clock, pct, tl, tlSigned, tonWord, preciseGrams } from '@ui/format';
+import { queueCapacity } from '@domain/v5-rules';
+import { poolForItem, poolForTemplate } from '@domain/stock-pools';
+import { customerPriceBand } from '@domain/customer-pricing';
+import { BullionCatalog } from '@ui/screens/StockScreen';
 import { offerUnitLabel } from '@ui/offer-view';
 import type {
   DealLine,
@@ -123,6 +137,7 @@ export function ShopScreen() {
   // Teklif tutarı — aşama değiştikçe alış tavanına göre yeniden konumlanır.
   const ceiling = line ? effectiveCeiling(line.thesisOptions, line.selectedThesis) : 0;
   const [offer, setOffer] = useState<Money>(0);
+  const [stageNotice, setStageNotice] = useState<string | null>(null);
 
   const offerBounds = useMemo(() => {
     if (!line?.band) return { min: 0, max: 0, step: 100 };
@@ -149,16 +164,22 @@ export function ShopScreen() {
     return { min, max, step: Math.max(baseStep, epsilonStep) };
   }, [line?.band, ceiling]);
 
-  // Pazarlığa girildiğinde teklifi tavana yakın makul bir yerden başlat.
+  // Pazarlığa girildiğinde teklifi slider'ın gerçekten göstereceği değere
+  // yerleştir. Ham kanal önerisini state'te bırakmak ekranda snap'lenmiş başka
+  // bir rakam gösterirken submit/kâr hesabında eski rakamı kullanıyordu.
   useEffect(() => {
-    if (deal?.stage === 'negotiate' && offer === 0 && ceiling > 0) {
-      setOffer(Math.round(ceiling * 0.9));
+    if (deal?.stage !== 'negotiate' || offer !== 0) return;
+    if (deal.purchase) {
+      setOffer(purchaseStartingOffer(deal.purchase));
+    } else if (ceiling > 0) {
+      setOffer(snapOffer(ceiling * 0.9, offerBounds.min, offerBounds.max, offerBounds.step));
     }
-  }, [deal?.stage, ceiling, offer]);
+  }, [deal?.stage, deal?.purchase, ceiling, offer, offerBounds]);
 
   // Yeni kalem / yeni müşteri → teklif sıfırlanır.
   useEffect(() => {
     setOffer(0);
+    setStageNotice(null);
   }, [deal?.dealId, deal?.activeLineId]);
 
   // Gün akışı: aktif pazarlık yokken saat ilerler (store.tick bunu denetler).
@@ -182,6 +203,7 @@ export function ShopScreen() {
         onSpeed={s.setSpeed}
         onUnlock4x={s.unlock4x}
         profile={s.profile}
+        profileFrame={s.playerMarket.equipped.profileFrame}
         onEditProfile={s.openProfile}
       />
 
@@ -198,11 +220,25 @@ export function ShopScreen() {
       />
 
       {deal && (
+        <>
         <StageStrip
           flow={deal.flow}
           current={stage}
           canEnter={(target) => canEnterStage(useGame.getState(), target)}
-          onSelect={s.setStage}
+          onSelect={(target) => {
+            if (
+              deal.flow === 'trade' &&
+              stage === 'inspect' &&
+              (target === 'thesis' || target === 'negotiate') &&
+              item &&
+              transactionClass(item) !== 'fast'
+            ) {
+              setStageNotice('Değerleme atlandı · teklif aralığı daha belirsiz ve riskli olabilir.');
+            } else {
+              setStageNotice(null);
+            }
+            s.setStage(target);
+          }}
           /*
             Standart sarrafiyede (Gram / Çeyrek / Yarım / Tam / Ata) rasyonel
             bir çıkış planı SEÇİMİ yoktur — çeyreğin nereye gideceği bellidir.
@@ -218,9 +254,11 @@ export function ShopScreen() {
           */
           skipStages={item && transactionClass(item) === 'fast' ? ['thesis'] : []}
         />
+        {stageNotice && <div className="stageNotice" role="status">{stageNotice}</div>}
+        </>
       )}
 
-      <main className="workbench">
+      <main className={`workbench ${!deal ? 'workbench--idle' : ''} ${s.playerMarket.equipped.shopTheme ? `workbench--${s.playerMarket.equipped.shopTheme}` : ''}`}>
         <div className="wb">
           {/* Çoklu ürün kalem şeridi — dikey scroll yerine yatay pill (GDD 23.13) */}
           {deal && deal.lines.length > 1 && (
@@ -256,6 +294,13 @@ export function ShopScreen() {
                 selectedThesis={null}
                 thesisOptions={[]}
                 band={null}
+                saleAccounting={deal.purchase.demand.targetInventoryItemId ? {
+                  acquisitionCost: deal.purchase.packageCost,
+                  metalValue: deal.purchase.lines.reduce((sum, row) => {
+                    const item = s.items[row.itemId];
+                    return sum + (item ? customerPriceBand(item, s.market, 'shopSells', row.quantity)?.reference ?? 0 : 0);
+                  }, 0),
+                } : undefined}
                 verifiedFields={0}
                 totalFields={0}
                 liquidityAfter={salePreview(
@@ -394,6 +439,7 @@ export function ShopScreen() {
           ctx={selectors.coachContext(s)}
           // Atlama kararı bir kez sorulur: hiç ders görmemiş oyuncuya.
           showSkip={s.seenLessons.length === 0}
+          queuePriority={!deal && s.queue.length > 0}
           onDismiss={() => s.dismissLesson(lesson.id)}
           onSkipAll={s.skipOnboarding}
         />
@@ -409,10 +455,14 @@ export function ShopScreen() {
       {deal && <ContextualToolRail liquidity={liquidity} />}
 
       {/* §B3/§B4 — gün kapanışının onayı ve kalıcı raporu. */}
-      {s.dayCloseAsk && <DayCloseConfirm />}
+      {s.dayCloseConfirmOpen && <DayCloseConfirm />}
       {s.lastDayClose && <DayCloseReport />}
 
       <ShopDock offer={offer} setOffer={setOffer} bounds={offerBounds} liquidity={liquidity} />
+
+      {s.stockCatalogOpen && (
+        <QuickStockSheet onClose={() => s.setStockCatalogOpen(false)} />
+      )}
     </>
   );
 }
@@ -435,6 +485,38 @@ function isRepeatOffer(session: NegotiationSession, amount: Money): boolean {
   return Math.abs(amount - last) / Math.max(1, last) < NEGOTIATION.repeatEpsilon;
 }
 
+/**
+ * HIZLI STOK SAYFASI — Dükkan ekranından çıkmadan ilk sarrafiyeyi almak.
+ *
+ * Yeni oyuncunun ilk duvarı "satacak malım yok" ama katalog başka sekmede
+ * duruyordu. Sayfa, Stok ekranının GERÇEK kataloğunu paylaşır; ayrı bir
+ * fiyat ya da ikinci bir alım yolu yoktur.
+ */
+function QuickStockSheet({ onClose }: { onClose: () => void }) {
+  const cash = useGame((s) => s.store.cash);
+
+  return (
+    <div className="quickStockScrim" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="quickStockSheet" role="dialog" aria-modal="true" aria-labelledby="quick-stock-title">
+        <header className="quickStockSheet__head">
+          <span>
+            <span className="quickStockSheet__eyebrow">Hızlı Stok</span>
+            <h2 id="quick-stock-title">İlk Sarrafiyeni Al</h2>
+          </span>
+          <button type="button" className="quickStockSheet__close" onClick={onClose} aria-label="Hızlı stok ekranını kapat">×</button>
+        </header>
+        <p className="quickStockSheet__intro">Dükkan ekranından ayrılmadan satılabilir sarrafiye oluştur. Kullanılabilir nakit: <strong>{tl(cash)}</strong></p>
+        <div className="quickStockSheet__scroll">
+          <BullionCatalog />
+        </div>
+        <button type="button" className="quickStockSheet__done" onClick={onClose}>Alımı Bitir</button>
+      </section>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // IDLE — müşteri yok (GDD 23.10.1)
 // ---------------------------------------------------------------------------
@@ -451,6 +533,17 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
 
   const alerts: { key: string; title: string; detail: string; tone: string; Icon: typeof IconWarning }[] =
     [];
+  const shopOpen = isShopOpen(s.market.day);
+
+  if (!shopOpen) {
+    alerts.push({
+      key: 'closed',
+      title: 'Dükkân bugün kapalı',
+      detail: `${weekdayLabel(s.market.day)} · müşteri gelmez; piyasa cuma kapanışında donuk.`,
+      tone: 'warning',
+      Icon: IconClock,
+    });
+  }
 
   if (s.market.activeEvent) {
     alerts.push({
@@ -489,59 +582,16 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
   */
   const position = selectors.position(s);
   const metalShare = Math.round(position.metalShare * 100);
-  const stockCount = s.inventory.reduce((n, p) => n + p.quantity, 0);
+  const stockCount = s.inventory.length;
 
   return (
-    <div className={`idle ${coaching ? 'idle--coaching' : ''}`}>
+    <div className={`idle ${coaching ? 'idle--coaching' : ''} ${s.queue.length > 0 ? 'idle--hasQueue' : ''}`}>
       {/*
         Dükkanın kimlik görseli, başlıkla AYNI SATIRDA.
         Bu ekranın "çok yer kapladığı" daha önce bildirilmişti; görsel bu
         yüzden yeni bir blok açmaz, zaten var olan iki metin satırının
         yüksekliğine (64 px) oturur ve toplam yüksekliği artırmaz.
       */}
-      <div className="idle__head">
-        <Art
-          art={NAV_ART.shop}
-          size={64}
-          decorative
-          className="idle__art art--onDark"
-          fallback={null}
-        />
-        <div className="idle__headText">
-          {/*
-            UPDATEv3 §2 — başlık artık SABİT DEĞİL, profilden türer.
-            `store.name` okunmuyor: o alan kayıtta "MIHENKAYNAK Kuyumculuk"
-            diye TÜRETİLMİŞ hâliyle duruyordu ve §2 yalnız temel ismin
-            saklanmasını istiyor. Ek gösterimde ekleniyor.
-          */}
-          <h2 className="idle__title">{shopDisplayName(s.profile.jewelerName)}</h2>
-          <p className="idle__sub">
-            Gün {s.market.day} · {weekdayLabel(s.market.day)} · Semt itibarı{' '}
-            {Math.round(s.store.reputation)}
-          </p>
-        </div>
-
-        {/*
-          AYARLARIN ANA EKRAN GİRİŞİ.
-
-          Durum şeridine KONULMADI ve bu ölçülerek karar verildi: 390 px'te
-          şeridin yatay bütçesinde 44 px'lik bir hedefe yer yok, sıkıştırmak
-          dükkân adını üç noktaya indiriyordu. Kimlik satırının sağ ucu ise
-          boş duruyordu ve zaten "bu dükkân senin" diyen satır orası.
-
-          Ayarların tam hâli her zaman İşletme > Ayarlar'da; burası kısa yol.
-        */}
-        <button
-          type="button"
-          className="idle__settings"
-          onClick={() => s.openBusinessRoute('settings')}
-          aria-label={t('settings.title', 'Ayarlar')}
-          title={t('settings.title', 'Ayarlar')}
-        >
-          <IconSettings size={20} />
-        </button>
-      </div>
-
       {/*
         POZİSYON PANELİ.
 
@@ -554,31 +604,90 @@ function IdleWorkbench({ coaching }: { coaching: boolean }) {
         Gizli gerçek sızmaz (GDD 6.6): buradaki hiçbir sayı tek bir ürünün
         gerçeğini açmaz; hepsi zaten oyuncunun kendi stoğunun toplamıdır.
       */}
-      <button type="button" className="position" onClick={() => s.setTab('stock')}>
-        <span className="position__cell">
-          <span className="position__label">Nakit</span>
-          <span className="position__value num">{tl(s.store.cash)}</span>
-        </span>
-        <span className="position__cell">
-          <span className="position__label">Stok Değeri</span>
-          <span className="position__value num">{tl(position.metalValue)}</span>
-        </span>
-        <span className="position__cell">
-          <span className="position__label">Stok</span>
-          <span className="position__value num">
-            {stockCount} <span className="position__unit">adet</span>
-          </span>
-        </span>
+      <section className="shopOverview" aria-label="Dükkan kimliği ve mali durum">
+        <div className="idle__head">
+          <Art
+            art={NAV_ART.shop}
+            size={56}
+            decorative
+            className="idle__art art--onDark"
+            fallback={null}
+          />
+          <div className="idle__headText">
+            <h2 className="idle__title">
+              {shopDisplayName(s.profile.jewelerName)}
+              {s.playerMarket.equipped.shopBadge && <span className="idle__badge" title="Market profil rozeti">◆</span>}
+            </h2>
+            <p className="idle__sub">
+              Gün {s.market.day} · {weekdayLabel(s.market.day)} · Semt itibarı {Math.round(s.store.reputation)}
+            </p>
+          </div>
 
-        {/* Nakit–altın dengesi tek çubukta; sarrafın asıl gerilimi bu. */}
-        <span className="position__bar" aria-hidden="true">
-          <span className="position__barFill" style={{ width: `${metalShare}%` }} />
-        </span>
-        <span className="position__legend">
-          Altın %{metalShare} · Nakit %{100 - metalShare}
-          <span className="position__go">Stok ›</span>
-        </span>
-      </button>
+          {/*
+            AYARLARIN ANA EKRAN GİRİŞİ.
+
+            Durum şeridine KONULMADI ve bu ölçülerek karar verildi: 390 px'te
+            şeridin yatay bütçesinde 44 px'lik bir hedefe yer yok, sıkıştırmak
+            dükkân adını üç noktaya indiriyordu. Kimlik satırının sağ ucu ise
+            boş duruyordu ve zaten "bu dükkân senin" diyen satır orası.
+          */}
+          <button
+            type="button"
+            className="idle__settings"
+            onClick={() => s.openBusinessRoute('settings')}
+            aria-label={t('settings.title', 'Ayarlar')}
+            title={t('settings.title', 'Ayarlar')}
+          >
+            <IconSun size={16} />
+          </button>
+        </div>
+
+        <button type="button" className="position" onClick={() => s.setTab('stock')}>
+          <span className="position__cell">
+            <span className="position__icon" aria-hidden="true"><IconCash size={15} /></span>
+            <span className="position__copy">
+              <span className="position__label">Nakit</span>
+              <span className="position__value num">{tl(s.store.cash)}</span>
+            </span>
+          </span>
+          <span className="position__cell">
+            <span className="position__icon" aria-hidden="true"><IconCollection size={15} /></span>
+            <span className="position__copy">
+              <span className="position__label">Stok Değeri</span>
+              <span className="position__value num">{tl(position.metalValue)}</span>
+            </span>
+          </span>
+          <span className="position__cell">
+            <span className="position__icon" aria-hidden="true"><IconStock size={15} /></span>
+            <span className="position__copy">
+              <span className="position__label">Stok</span>
+              <span className="position__value num">
+                {stockCount === 0 ? 'Stok yok' : `${stockCount} ürün`}
+              </span>
+            </span>
+          </span>
+
+          {/* Nakit–altın dengesi tek çubukta; sarrafın asıl gerilimi bu. */}
+          <span className="position__bar" aria-hidden="true">
+            <span className="position__barFill" style={{ width: `${metalShare}%` }} />
+          </span>
+          <span className="position__legend">
+            Altın %{metalShare} · Nakit %{100 - metalShare}
+            <span className="position__go">Stok ›</span>
+          </span>
+        </button>
+      </section>
+
+      {!s.inventory.some(p => {
+        const item = s.items[p.itemId];
+        return item && p.quantity > 0 && (p.location === 'backStock' || p.location === 'display') && RETAIL_BULLION_CATALOG.includes(item.templateId) && (!poolForTemplate(item.templateId) || !!poolForItem(item));
+      }) && showcaseStock(s.inventory, s.items).length === 0 && (
+        <div className="alert">
+          <span>Satacak ürünün yok. Satış yapabilmek için önce stok oluştur.</span>
+          <button type="button" className="chip" onClick={s.openStockCatalog}>İlk Stoğunu Al</button>
+        </div>
+      )}
+      {s.queue.length > 0 && <WaitingCustomerQueue />}
 
       {alerts.length > 0 && (
         <div className="alerts">
@@ -629,67 +738,19 @@ function OperationArea() {
   const s = useGame();
   const head = s.queue[0];
 
-  // --- BEKLEYEN MÜŞTERİLER ---
-  if (head) {
-    /*
-      KUYRUĞUN TAMAMI ALT ALTA.
+  /*
+    KUYRUK BURADA ÇİZİLMEZ — `WaitingCustomerQueue` çiziyor.
 
-      Önce yalnız ilk müşteri gösteriliyordu ve şeritteki "Bekleyen: 3
-      müşteri" sayısı, altındaki tek kartla çelişiyordu: oyuncu kimin
-      beklediğini görmeden gününü planlıyordu.
+    İki bileşen de kuyruğu render ediyordu ve ekranda aynı müşteri ARKA
+    ARKAYA İKİ KEZ görünüyordu: bir kez açılır listenin içinde, bir kez de
+    altında büyük kart olarak (390 × 844'te ölçüldü). Açılır liste hem
+    kompakt hem de kuyruğun tamamını "1/4" diye sayıyor; karşılama düğmesi
+    de onda. Bu yüzden tekrar eden büyük kart kaldırıldı.
 
-      SIRADAKİLER TIKLANMAZ ve bu bilinçli: `greetCustomer` her zaman
-      kuyruğun BAŞINI alır. Sıradaki kartı düğme yapmak, dokunduğu kişiden
-      başkasını karşılayan bir düğme olurdu. Onlar bilgi satırıdır; sıra
-      numarası da bunu söyler.
-    */
-    const rest = s.queue.slice(1);
-
-    return (
-      <div className="opQueue">
-        <button type="button" className="op op--waiting" onClick={s.greetCustomer}>
-          <Art
-            art={customerArt(head.customer.displayName)}
-            /* CSS 76 px'e sabitliyor; öznitelik onunla aynı kalsın ki görsel
-               yüklenmeden önce yer ayırması doğru olsun (layout shift yok). */
-            size={76}
-            decorative
-            className="op__avatar art--portrait"
-            fallback={
-              <span className="op__initial">{head.customer.displayName.charAt(0)}</span>
-            }
-          />
-          <span className="op__body">
-            <span className="op__title">{head.customer.displayName}</span>
-            <span className="op__line">{customerIntentLine(head.customer, head.items)}</span>
-            <span className="op__meta">Dükkan {clock(DAY.closeMinutes)}'da kapanıyor</span>
-          </span>
-          <span className="op__cta" aria-hidden="true">
-            Karşıla ›
-          </span>
-        </button>
-
-        {rest.map((entry, i) => (
-          <div key={entry.customer.id} className="op op--queued">
-            <Art
-              art={customerArt(entry.customer.displayName)}
-              size={48}
-              decorative
-              className="op__avatar op__avatar--small art--portrait"
-              fallback={
-                <span className="op__initial">{entry.customer.displayName.charAt(0)}</span>
-              }
-            />
-            <span className="op__body">
-              <span className="op__title op__title--small">{entry.customer.displayName}</span>
-              <span className="op__line">{customerIntentLine(entry.customer, entry.items)}</span>
-            </span>
-            <span className="op__queuePos">{i + 2}. sıra</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
+    `OperationArea` artık yalnız kuyruğun BOŞ olduğu durumları anlatır:
+    dükkân kapalı ya da sakin.
+  */
+  if (head) return null;
 
   /*
     PAZAR — DÜKKÂN KAPALI (calendar.ts · isShopOpen).
@@ -740,6 +801,79 @@ function OperationArea() {
   );
 }
 
+/**
+ * Bekleme kuyruğu mevcut FIFO davranışını görünür kılar. Yalnız ilk müşteri
+ * karşılanabilir; sonraki kartlar sırayı bozacak sahte bir eylem sunmaz.
+ */
+function WaitingCustomerQueue() {
+  const queue = useGame((s) => s.queue);
+  const capacity = useGame((s) => queueCapacity(s.store));
+  const greetCustomer = useGame((s) => s.greetCustomer);
+  const [expanded, setExpanded] = useState(false);
+  const visibleQueue = expanded ? queue : queue.slice(0, 1);
+
+  return (
+    <section className="waitingQueue" aria-labelledby="waiting-queue-title">
+      <button
+        type="button"
+        className="waitingQueue__head"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        aria-controls="waiting-customer-list"
+      >
+        <span className="waitingQueue__heading">
+          <strong id="waiting-queue-title">Bekleyen Müşteriler</strong>
+          <small>{expanded ? 'Kuyruğu daralt' : queue.length > 1 ? `${queue.length - 1} müşteriyi daha göster` : 'Sıradaki müşteri'}</small>
+        </span>
+        <span className="waitingQueue__count">
+          {queue.length}/{capacity}
+          <span className={`waitingQueue__chevron ${expanded ? 'waitingQueue__chevron--open' : ''}`} aria-hidden="true">⌄</span>
+        </span>
+      </button>
+
+      <div className="waitingQueue__list" id="waiting-customer-list">
+        {visibleQueue.map(({ customer, items }, index) => {
+          const archetype = getArchetype(customer.archetype);
+          const isNext = index === 0;
+
+          return (
+            <article
+              key={customer.id}
+              className={`waitingCustomer ${isNext ? 'waitingCustomer--next' : ''}`}
+            >
+              <Art
+                art={customerArt(customer.displayName)}
+                size={42}
+                decorative
+                className="waitingCustomer__avatar art--portrait"
+                fallback={<span className="waitingCustomer__initial">{customer.displayName[0]}</span>}
+              />
+
+              <div className="waitingCustomer__body">
+                <div className="waitingCustomer__identity">
+                  <strong>{customer.displayName}</strong>
+                  <span>{isNext ? 'Şimdi' : `${index + 1}. sırada`}</span>
+                </div>
+                <p>{customerIntentLine(customer, items)}</p>
+                <div className="waitingCustomer__meta">
+                  <span>{archetype.demeanor}</span>
+                  <span>Bekliyor</span>
+                </div>
+              </div>
+
+              {isNext && (
+                <button type="button" className="waitingCustomer__greet" onClick={greetCustomer}>
+                  Karşıla
+                </button>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Bağlamsal Araç Rayı — aşamaya göre içerik (GDD 23.11)
 // ---------------------------------------------------------------------------
@@ -750,7 +884,12 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
   const line = deal ? activeLine(deal) : undefined;
 
   if (!deal || !line) {
-    return <ToolRail items={[]} emptyLabel="Müşteri karşılandığında araçlar burada" />;
+    // Kuyruk doluyken boş araç rayının hiçbir eylemi yoktu; buna rağmen
+    // 56 px yer ayırıp kısa/safe-area'lı telefonlarda ilk müşteri kartını
+    // kesiyordu. Kuyruk kararın kendisidir. Müşteri karşılanınca aktif işlem
+    // rayı aynı fiziksel konumunda yeniden görünür.
+    if (s.queue.length > 0) return null;
+    return <ToolRail items={[]} idle emptyLabel="Müşteri karşılandığında araçlar burada" />;
   }
 
   const railItem = s.items[line.itemId];
@@ -922,7 +1061,7 @@ function ContextualToolRail({ liquidity }: { liquidity: number }) {
           // GDD 23.11 — "Locked araç görünüyorsa kilit nedeni kısa metinle
           // açıklanır." Dokunmatikte tooltip yoktur; nedeni toast ile söyle.
           onLockedPress: () => s.notify(`${tool.name}: ${lockReason}`, 'info'),
-          disabled: tool.cost > s.store.cash,
+          disabled: used || tool.cost > s.store.cash,
           badge: tool.cost > 0 ? `${tool.cost}₺` : undefined,
           };
         });
@@ -1115,19 +1254,22 @@ function ShopDock({
       atölye ve toptancı sekmeleri açık kalır; pazar bir planlama günüdür.
     */
     const shopOpen = isShopOpen(s.market.day);
+
     if (!shopOpen) {
       return (
         <DecisionDock
+          idle
           summaryLabel={weekdayLabel(s.market.day)}
           summaryValue="Dükkân kapalı"
-          primary={{ label: 'Günü Bitir', onPress: s.askDayClose }}
-          secondary={[{ label: 'Stok', onPress: () => s.setTab('stock') }]}
+          primary={{ label: 'Günü Bitir', onPress: s.requestDayClose }}
+          secondary={[{ label: 'Stoka Bak', onPress: () => s.setTab('stock') }]}
         />
       );
     }
 
     return (
       <DecisionDock
+        idle
         summaryLabel="Kuyruk"
         summaryValue={hasQueue ? `${s.queue.length} müşteri bekliyor` : 'Müşteri bekleniyor'}
         primary={{
@@ -1135,7 +1277,7 @@ function ShopDock({
           onPress: s.greetCustomer,
           disabled: !hasQueue,
         }}
-        secondary={[{ label: 'Günü Bitir', onPress: s.askDayClose }]}
+        secondary={[{ label: 'Günü Bitir', onPress: s.requestDayClose }]}
       />
     );
   }
@@ -1453,7 +1595,7 @@ function PurchaseDock({
           summaryValue={
             count === 0
               ? 'Henüz ürün seçilmedi'
-              : `${count} adet · ${tl(purchase.packageFairValue)} adil değer`
+              : `${purchase.demand.poolId === '24K_GRAM_GOLD_POOL' ? preciseGrams(count) : purchase.demand.poolId === '22K_INVESTMENT_BANGLE_POOL' ? preciseGrams(count * 10) : `${count} adet`} · ${tl(purchase.packageFairValue)} adil değer`
           }
           primary={{
             label: 'Paketi Değerle',
@@ -1489,7 +1631,7 @@ function PurchaseDock({
           primary={{
             label: 'Pazarlığa Geç',
             onPress: () => {
-              setOffer(purchase.suggestedPrice);
+              setOffer(purchaseStartingOffer(purchase));
               s.setStage('negotiate');
             },
             /*
@@ -1567,20 +1709,27 @@ function PurchaseDock({
           ]}
         >
           {!isFinal && (
-            <OfferControl
-              value={offer}
-              onChange={setOffer}
-              min={bounds.min}
-              max={bounds.max}
-              step={bounds.step}
-              impacts={impacts}
-              disabled={isTerminal(session.state)}
-              unitLabel={offerUnitLabel(
-                purchase.lines.map((l) => s.items[l.itemId]).filter(Boolean) as ItemInstance[],
-                purchase.lines.filter((l) => s.items[l.itemId]).map((l) => l.quantity),
-                offer,
+            <>
+              {profit < 0 && (
+                <p className="dock__lossWarning" role="status">
+                  Zararına satış · maliyetin {tl(Math.abs(profit))} altında
+                </p>
               )}
-            />
+              <OfferControl
+                value={offer}
+                onChange={setOffer}
+                min={bounds.min}
+                max={bounds.max}
+                step={bounds.step}
+                impacts={impacts}
+                disabled={isTerminal(session.state)}
+                unitLabel={offerUnitLabel(
+                  purchase.lines.map((l) => s.items[l.itemId]).filter(Boolean) as ItemInstance[],
+                  purchase.lines.filter((l) => s.items[l.itemId]).map((l) => l.quantity),
+                  offer,
+                )}
+              />
+            </>
           )}
         </DecisionDock>
       );
@@ -1622,6 +1771,13 @@ function purchaseBounds(purchase: NonNullable<GameStateDeal>['purchase']) {
   const max = Math.max(min + 1000, Math.round(fair * 1.6));
   const span = max - min;
   return { min, max, step: span > 200_000 ? 500 : span > 40_000 ? 100 : 50 };
+}
+
+/** Ekranda görülen, kâr hesabında kullanılan ve gönderilen ilk fiyat TEK değer. */
+function purchaseStartingOffer(purchase: NonNullable<GameStateDeal>['purchase']): Money {
+  if (!purchase) return 0;
+  const bounds = purchaseBounds(purchase);
+  return snapOffer(purchase.suggestedPrice, bounds.min, bounds.max, bounds.step);
 }
 
 /** Satışta ilişki etiketi: fiyat adil değerin ne kadar üstünde (GDD 23.12). */
@@ -1920,6 +2076,9 @@ function buildPackageReference(
     const refView = unitPriceView(single, Math.round(totalReference / units));
     const offerView = unitPriceView(single, Math.round(offer / units));
     const showTotal = units > 1 || (refView.perGram && refView.gramsPerPiece > 1);
+    const amountLabel = refView.perGram
+      ? `${(units * refView.gramsPerPiece).toLocaleString('tr-TR')} g`
+      : `${units} adet`;
 
     return {
       direction: 'shopSells' as const,
@@ -1927,7 +2086,7 @@ function buildPackageReference(
       unitOffer: offerView.unitPrice,
       unit: refView.unit,
       showTotal,
-      totalLabel: `${units} adet · piyasa ${Math.round(totalReference).toLocaleString('tr-TR')} ₺`,
+      totalLabel: `${amountLabel} · piyasa ${Math.round(totalReference).toLocaleString('tr-TR')} ₺`,
       totalReference: Math.round(totalReference),
       totalOffer: offer,
     };

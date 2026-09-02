@@ -116,7 +116,7 @@ export function CustomerStrip({ customer, record, queueLength, lineCount, brough
  * Sabır göstergesi. GDD 11.3 — "matematiksel skor oyuncuya gösterilmez".
  * Beş nokta; renk düşük sabırda uyarıya döner.
  */
-function PatienceDots({ value, max }: { value: number; max: number }) {
+export function PatienceDots({ value, max }: { value: number; max: number }) {
   const ratio = Math.max(0, Math.min(1, value / Math.max(1, max)));
   const filled = Math.ceil(ratio * 5);
   const tone = ratio <= 0.2 ? 'critical' : ratio <= 0.45 ? 'low' : 'on';

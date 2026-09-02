@@ -10,6 +10,12 @@
  */
 
 import { create } from 'zustand';
+import { poolSupplyQuote, poolSupplyItem } from '@domain/pool-supply';
+import { queueCapacity, toMg, canSetPersonnel } from '@domain/v5-rules';
+import { tradeHas, meltToHas } from '@domain/has-account';
+import { customerPriceBand, isCrafted } from '@domain/customer-pricing';
+import { packagePriceBand, showcaseStock } from '@domain/purchase';
+import { validQuantity } from '@domain/stock-pools';
 
 import {
   DAY,
@@ -39,6 +45,7 @@ import {
 import {
   createPurchaseSession,
   isProductCompatible,
+  matchDemand,
   maxPackageLines,
   minSaleOffer,
   offerableStock,
@@ -118,6 +125,7 @@ import {
   type QuoteContext,
 } from '@domain/service';
 import { getTool } from '@data/tools';
+import { getServiceType } from '@data/service-types';
 import { makeId } from '@domain/rng';
 import {
   createRecord,
@@ -231,9 +239,20 @@ import { loadSettings, persistSettings } from './settings-store';
 import { playSfx, syncAudioSettings } from '@ui/audio';
 import { vibrate } from '@ui/haptics';
 import { setLocale } from '@ui/i18n';
-import { getServiceType } from '@data/service-types';
 import { customerRequestLine } from '@ui/intent-line';
-import { clearSave, persistProfile, readSave, writeSave } from './save';
+import {
+  defaultPlayerMarket,
+  equipMarketProduct,
+  lifestyleDailyExpense,
+  purchaseMarketProduct,
+  type PlayerMarketState,
+} from '@domain/marketplace';
+import {
+  defaultSkillProgress,
+  toolWithSkillBonuses,
+  type SkillProgress,
+} from '@domain/skill-tree';
+import { clearSave, isStorageAvailable, persistProfile, readSave, writeSave } from './save';
 import type {
   ActiveDeal,
   AppraisalSession,
@@ -277,6 +296,21 @@ export interface ToastMessage {
   id: string;
   text: string;
   tone: 'info' | 'positive' | 'negative';
+}
+
+export interface ServiceDeliverySummary {
+  jobId: string;
+  jobName: string;
+  customerName: string;
+  succeeded: boolean;
+  fee: Money;
+  compensation: Money;
+  cashDelta: Money;
+  netContribution: Money;
+  trustDelta: number;
+  reputationDelta: number;
+  risk: number;
+  message: string;
 }
 
 export interface GameState {
@@ -331,7 +365,10 @@ export interface GameState {
     errorRisk: number;
     lateDays: number;
   } | null;
-
+  /** Oyun içi TL ile alınan kozmetik ve şahsi prestij varlıkları. */
+  playerMarket: PlayerMarketState;
+  /** Gelecekteki yetenek ağacının kalıcı mekanik kademeleri. */
+  skillProgress: SkillProgress;
   /** Profil düzenleme penceresi açık mı (yalnız arayüz durumu). */
   profileOpen: boolean;
 
@@ -367,6 +404,20 @@ export interface GameState {
 
   /** Kapıda bekleyen müşteriler. */
   queue: { customer: Customer; items: ItemInstance[] }[];
+  missedGuestCountToday: number;
+  lastDayReport: import('@domain/settlement').DayReport | null;
+  dayCloseConfirmOpen: boolean;
+  dayReportOpen: boolean;
+  requestDayClose: () => void;
+  cancelDayClose: () => void;
+  startNewDay: () => void;
+  stockCatalogOpen: boolean;
+  openStockCatalog: () => void;
+  setStockCatalogOpen: (open: boolean) => void;
+  setPersonnelCount: (count: number) => void;
+  tradeHas: (side: 'buy' | 'sell', grams: number, txId: string) => void;
+  meltStock: (itemId: string) => void;
+  displayStock: (itemId: string) => void;
   /** Bir sonraki müşterinin geleceği oyun dakikası. */
   nextCustomerAtMinutes: number;
 
@@ -386,6 +437,7 @@ export interface GameState {
 
   /** Atölyedeki tüm servis işleri (GDD 28.2 ServiceJob). */
   jobs: ServiceJob[];
+  lastServiceDelivery: ServiceDeliverySummary | null;
   /** Deterministik iş kimliği için artan sayaç. */
   jobCounter: number;
 
@@ -420,6 +472,8 @@ export interface GameState {
   pushPause: () => void;
   popPause: () => void;
   triggerCustomerRush: () => void;
+  buyMarketProduct: (productId: string) => boolean;
+  equipMarketProduct: (productId: string) => boolean;
 
   tick: (deltaRealSeconds: number) => void;
   /**
@@ -446,6 +500,7 @@ export interface GameState {
   issueReport: () => void;
   declineAppraisal: () => void;
   deliverJob: (jobId: string) => void;
+  dismissServiceDelivery: () => void;
 
   // --- Müşteri alış akışı (GDD 23.23 · Addendum §3, §4.1) ---
   togglePackageItem: (itemId: string) => void;
@@ -461,6 +516,7 @@ export interface GameState {
 
   // --- Toptancı (Addendum §4.2, §7) ---
   liquidateToWholesaler: (itemId: string, quantity: number, sliceCount: number) => void;
+  buyPoolStock: (templateId: string, quantity: number) => void;
   buyFromWholesaler: (templateId: string, quantity: number) => void;
   repaySupplier: (invoiceId: string) => void;
 
@@ -527,10 +583,12 @@ export interface GameState {
   /**
    * Gün kapatma onayı bekliyor mu (§B3).
    * Kazara kapatmayı önler; modal açıkken oyun zamanı durur.
+   *
+   * UPDATEv5 ONAY PENCERESİ TEK OLDU: `requestDayClose` / `cancelDayClose` /
+   * `startNewDay`. Eski `dayCloseAsk` çifti kaldırıldı — iki ayrı onay
+   * mekanizması aynı anda açılabiliyor ve biri `pauseDepth` sayacını asılı
+   * bırakabiliyordu.
    */
-  dayCloseAsk: boolean;
-  askDayClose: () => void;
-  cancelDayClose: () => void;
 
   /** GDD 19.2 — mağaza kademesini yükseltir. */
   upgradeStore: () => void;
@@ -560,6 +618,9 @@ function createInitialStore(): StoreState {
     backStockSlots: START.backStockSlots,
     workshopCapacity: START.workshopCapacity,
     staff: [],
+    personnelCount: 0,
+    hasBalanceMg: 0,
+    hasCostBasis: 0,
     supplier: {
       trust: START.supplierTrust,
       limit: START.supplierLimit,
@@ -666,7 +727,8 @@ export const useGame = create<GameState>((set, get) => {
     profile: defaultProfile(),
     lastDelivery: null,
     lastDayClose: null,
-    dayCloseAsk: false,
+    playerMarket: defaultPlayerMarket(),
+    skillProgress: defaultSkillProgress(),
     profileOpen: false,
     pauseDepth: 0,
     pendingBusinessRoute: null,
@@ -681,9 +743,15 @@ export const useGame = create<GameState>((set, get) => {
     lastOvernight: null,
 
     queue: [],
+    missedGuestCountToday: 0,
+    lastDayReport: null,
+    dayCloseConfirmOpen: false,
+    dayReportOpen: false,
+    stockCatalogOpen: false,
     nextCustomerAtMinutes: DAY.openMinutes + 3,
 
     jobs: [],
+    lastServiceDelivery: null,
     jobCounter: 0,
 
     activeCustomer: null,
@@ -698,6 +766,43 @@ export const useGame = create<GameState>((set, get) => {
 
     // -----------------------------------------------------------------------
     setTab: (tab) => set({ tab }),
+    // Ana Dükkan'daki hızlı alım, oyuncuyu bağlamından koparmadan sheet açar.
+    // Stok ekranındaki aynı katalog kendi açılır tezgâhı olarak yaşamaya devam eder.
+    openStockCatalog: () => set({ stockCatalogOpen: true }),
+    setStockCatalogOpen: (stockCatalogOpen) => set({ stockCatalogOpen }),
+    setPersonnelCount: (count) => {
+      const s = get();
+      if (!canSetPersonnel(s.store, count)) return;
+      set({ store: { ...s.store, personnelCount: count } });
+      writeSave(get());
+    },
+    tradeHas: (side, grams, txId) => {
+      const s = get();
+      if (!Number.isFinite(grams) || Math.abs(toMg(grams) / 1000 - grams) > 1e-9) return;
+      const outcome = tradeHas(economyOf(s), s.market, side, toMg(grams), txId);
+      if (!outcome.applied) { pushToast(set, get, outcome.reason ?? 'İşlem uygulanmadı.', 'negative'); return; }
+      set(economyToState(outcome.state));
+      writeSave(get());
+      pushToast(set, get, 'HAS işlemi kaydedildi.', 'positive');
+    },
+    meltStock: (itemId) => {
+      const s = get();
+      const outcome = meltToHas(economyOf(s), s.market, itemId);
+      if (!outcome.applied) { pushToast(set, get, outcome.reason ?? 'Eritilemedi.', 'negative'); return; }
+      set(economyToState(outcome.state));
+      writeSave(get());
+      pushToast(set, get, 'Ürün eritildi; karşılığı HAS bakiyesine eklendi.', 'positive');
+    },
+    displayStock: (itemId) => {
+      const s = get();
+      const item = s.items[itemId];
+      const pos = s.inventory.find(p => p.itemId === itemId);
+      if (!item || !pos || pos.location === 'workshop' || !isCrafted(item) || item.buyCost === null ||
+          s.inventory.filter(p => p.location === 'display').length >= s.store.displaySlots) return;
+      set({ items: { ...s.items, [itemId]: { ...item, location: 'display', thesis: 'retail' } },
+        inventory: s.inventory.map(p => p.itemId === itemId ? { ...p, location: 'display', thesis: 'retail' } : p) });
+      writeSave(get());
+    },
 
     setSpeed: (speed) => {
       // GDD 26.2 — 1x/2x temel erişim; 4x yalnız rewarded ile geçici açılır.
@@ -733,7 +838,17 @@ export const useGame = create<GameState>((set, get) => {
      * yine de burada son bir kez süzülür ki bozuk bir ad kayda giremesin.
      */
     dismissDelivery: () => set({ lastDelivery: null }),
-    dismissDayClose: () => set({ lastDayClose: null }),
+    /*
+      GÜN RAPORUNU KAPATMAK = YENİ GÜNE BAŞLAMAK.
+
+      Panel açıkken `dayReportOpen` zamanı donduruyor. Yalnız `lastDayClose`
+      temizlenseydi panel kaybolur ama saat asılı kalırdı — ölçülen hata
+      tam olarak buydu. Kapanış tek kapıdan geçer.
+    */
+    dismissDayClose: () => {
+      set({ lastDayClose: null });
+      if (get().dayReportOpen) get().startNewDay();
+    },
 
     /*
       §B3 — GÜNÜ KAPATMAK ONAY İSTER.
@@ -741,15 +856,6 @@ export const useGame = create<GameState>((set, get) => {
       hiçbir uyarı olmadan. Onay penceresi açıkken oyun zamanı durur; pause
       sayacı modal kalıbının kendisi.
     */
-    askDayClose: () => {
-      get().pushPause();
-      set({ dayCloseAsk: true });
-    },
-    cancelDayClose: () => {
-      set({ dayCloseAsk: false });
-      get().popPause();
-    },
-
     openProfile: () => set({ profileOpen: true }),
     closeProfile: () => set({ profileOpen: false }),
 
@@ -780,6 +886,31 @@ export const useGame = create<GameState>((set, get) => {
       pushToast(set, get, 'Müşteri akını başladı — geliş aralığı kısaldı.', 'info');
     },
 
+    buyMarketProduct: (productId) => {
+      const s = get();
+      const outcome = purchaseMarketProduct(economyOf(s), s.playerMarket, productId, s.market.day);
+      if (!outcome.applied) {
+        pushToast(set, get, outcome.reason ?? 'Market satın alımı yapılamadı.', 'negative');
+        return false;
+      }
+      set({ ...economyToState(outcome.economy), playerMarket: outcome.playerMarket });
+      writeSave(get());
+      pushToast(set, get, 'Market ürünü koleksiyonuna eklendi.', 'positive');
+      return true;
+    },
+
+    equipMarketProduct: (productId) => {
+      const next = equipMarketProduct(get().playerMarket, productId);
+      if (!next) {
+        pushToast(set, get, 'Bu ürün kullanılamıyor.', 'negative');
+        return false;
+      }
+      set({ playerMarket: next });
+      writeSave(get());
+      pushToast(set, get, 'Kozmetik görünüm uygulandı.', 'positive');
+      return true;
+    },
+
     // -----------------------------------------------------------------------
     tick: (deltaRealSeconds) => {
       const s = get();
@@ -793,10 +924,13 @@ export const useGame = create<GameState>((set, get) => {
        * açık olurdu — profil düzenlerken gün dönmesi tam olarak öyle bir
        * hataydı.
        *
-       * Hız DEĞİŞTİRİLMEZ, yalnız ilerleme durur; modal kapanınca oyuncunun
-       * seçtiği hız kendiliğinden kaldığı yerden devam eder.
+       * İKİ MEKANİZMA DA GEÇERLİ: `pauseDepth` iç içe modalleri sayar
+       * (aç/kapa dengeli olduğu sürece), UPDATEv5'in adlandırılmış
+       * pencereleri ise sayaç tutmadan kendi durumlarını söyler. Biri
+       * unutulursa diğeri hâlâ durdurur.
        */
       if (s.pauseDepth > 0) return;
+      if (s.profileOpen || s.dayCloseConfirmOpen || s.dayReportOpen) return;
 
       // Aktif pazarlık sırasında saat ilerlemez: oyuncu düşünürken müşteri
       // sabrı gerçek zamanla erimez (GDD 11 — refleks oyunu değildir).
@@ -811,7 +945,7 @@ export const useGame = create<GameState>((set, get) => {
       }
 
       const market = stepMarketIntraday(s.market, clock);
-      let { queue, nextCustomerAtMinutes, spawnCounter } = s;
+      let { queue, nextCustomerAtMinutes, spawnCounter, missedGuestCountToday } = s;
       let telemetry = s.intentTelemetry;
 
       /*
@@ -821,8 +955,12 @@ export const useGame = create<GameState>((set, get) => {
         gün devretmeye devam eder — yalnız müşteri gelmez. Günü tamamen
         atlamak, oyuncunun stok/atölye/toptancı kararlarını da elinden almak
         olurdu; pazar bir PLANLAMA günüdür, kayıp bir gün değil.
+
+        Kuyruk sınırı burada DEĞİL, aşağıda: UPDATEv5'te kapasite personele
+        bağlı (`queueCapacity`) ve dolu kuyrukta ziyaret üretilmeye devam
+        eder — kişi kuyruğa girmez, "kaçırılan misafir" sayacı artar.
       */
-      if (isShopOpen(s.market.day) && clock >= nextCustomerAtMinutes && queue.length < 3) {
+      if (isShopOpen(s.market.day) && clock >= nextCustomerAtMinutes) {
         const spawned = spawnCustomer(
           s.seed,
           spawnCounter,
@@ -846,8 +984,14 @@ export const useGame = create<GameState>((set, get) => {
             oyun uzamaz, yorulur.
           */
           stockedTemplateIds(s),
+          // UPDATEv5 — vitrindeki TEKİL kalemi hedefleyen talep için canlı stok.
+          { inventory: s.inventory, items: s.items },
         );
-        queue = [...queue, spawned];
+        const valid = spawned.customer.intent === 'buy' ? !!spawned.customer.demand : spawned.items.length > 0;
+        if (valid) {
+          if (queue.length < queueCapacity(s.store)) queue = [...queue, spawned];
+          else missedGuestCountToday += 1;
+        }
         spawnCounter += 1;
         telemetry = recordIntent(telemetry, spawned.customer.intent, spawned.fromDynamicPool);
 
@@ -879,6 +1023,7 @@ export const useGame = create<GameState>((set, get) => {
         nextCustomerAtMinutes,
         spawnCounter,
         intentTelemetry: telemetry,
+        missedGuestCountToday,
       });
     },
 
@@ -887,8 +1032,14 @@ export const useGame = create<GameState>((set, get) => {
       const s = get();
       if (s.activeDeal && !isDealFinished(s.activeDeal)) return;
 
-      const head = s.queue[0];
+      let head = s.queue[0];
       if (!head) return;
+      const targetId = head.customer.demand?.targetInventoryItemId;
+      if (targetId && !showcaseStock(s.inventory, s.items).some(p => p.itemId === targetId)) {
+        // Regenerate the SAME spawn's standard demand; no extra arrival/count.
+        const demand = head.customer.demand?.fallbackDemand;
+        if (demand) head = { ...head, customer: { ...head.customer, demand } };
+      }
 
       /*
        * UPDATEv2 §18 — KARŞILANAMAZ TALEP GÜVENLİ KAPANIR.
@@ -1223,6 +1374,7 @@ export const useGame = create<GameState>((set, get) => {
 
       set({
         ...economyToState({ ...outcome.state, items, ledger }),
+        toasts: s.toasts.filter((toast) => !toast.text.includes('servis işi teslime hazır')),
         jobs: s.jobs.map((j) =>
           j.jobId === jobId ? { ...j, result: 'delivered' as const } : j,
         ),
@@ -1250,10 +1402,34 @@ export const useGame = create<GameState>((set, get) => {
           errorRisk: job.risk,
           lateDays: Math.max(0, s.market.day - job.promisedDay),
         },
+        /*
+          UPDATEv5 İKİNCİ ÖZET — Atölye ekranının kendi satırı.
+
+          `lastDelivery` işlem masasının kalıcı sonuç panelini besler;
+          bu ise Atölye listesinin üstündeki teslim şeridini. Aynı olayın
+          iki ayrı yüzeyi olduğu için ikisi de yazılır; ikisi de aynı
+          `applyTransaction` başarısından sonra doğar, uydurma sayı yok.
+        */
+        lastServiceDelivery: {
+          jobId: job.jobId,
+          jobName: `${getServiceType(job.type).label} · ${job.itemName}`,
+          customerName: job.customerName,
+          succeeded: delivery.succeeded,
+          fee: delivery.succeeded ? job.fee : 0,
+          compensation: delivery.succeeded ? 0 : job.compensation,
+          cashDelta: delivery.cashDelta,
+          netContribution: delivery.netContribution,
+          trustDelta: delivery.trustDelta,
+          reputationDelta: delivery.reputationDelta,
+          risk: job.risk,
+          message: delivery.message,
+        },
       });
 
       pushToast(set, get, delivery.message, delivery.succeeded ? 'positive' : 'negative');
     },
+
+    dismissServiceDelivery: () => set({ lastServiceDelivery: null }),
 
     // -----------------------------------------------------------------------
     // Ekspertiz / danışma akışı (GDD 23.23 · İncele → Test → Rapor/Ücret → Sonuç)
@@ -1421,8 +1597,12 @@ export const useGame = create<GameState>((set, get) => {
       const item = s.items[line.itemId];
       if (!item) return;
 
-      const tool = getTool(toolId);
+      const tool = toolWithSkillBonuses(getTool(toolId), s.skillProgress);
       if (tool.unlockLevel > s.store.level) return;
+      if (line.testResults.some((test) => test.toolId === tool.id)) {
+        pushToast(set, get, `${tool.name} bu üründe zaten uygulandı.`, 'info');
+        return;
+      }
       if (tool.cost > s.store.cash) {
         pushToast(set, get, 'Bu test için yeterli nakit yok.', 'negative');
         return;
@@ -1509,11 +1689,6 @@ export const useGame = create<GameState>((set, get) => {
       const deal = s.activeDeal;
       const customer = s.activeCustomer;
       if (!deal || !customer || !deal.purchase) return;
-      if (packageLocked(deal)) {
-        pushToast(set, get, 'Pazarlık başladı; paket artık değiştirilemez.', 'negative');
-        return;
-      }
-
       /*
        * KATMAN 2 (§2) — UYUMSUZ ÜRÜN PAKETE GİREMEZ.
        *
@@ -1521,10 +1696,21 @@ export const useGame = create<GameState>((set, get) => {
        * güvenmek yetmez: eski bir kayıt, çift tıklama yarışı ya da doğrudan
        * çağrı bu fonksiyona uyumsuz bir kalem sokabilir. §2 "yalnızca
        * kullanıcı arayüzünde filtre uygulama" diyor; kapı burada da var.
+       *
+       * İKİ SÜZGEÇ DE ÇALIŞIR: `matchDemand` havuz/vitrin kimliğini,
+       * `isProductCompatible` değerleme uyumunu sınar.
        */
       const candidate = s.items[itemId];
-      if (candidate && !isProductCompatible(deal.purchase.demand, candidate)) {
+      if (!candidate || matchDemand(deal.purchase.demand, candidate) === 'off') {
+        pushToast(set, get, 'Bu ürün müşterinin talebiyle eşleşmiyor.', 'negative');
+        return;
+      }
+      if (!isProductCompatible(deal.purchase.demand, candidate)) {
         pushToast(set, get, 'Müşterinin istediği ürün bu değil.', 'negative');
+        return;
+      }
+      if (packageLocked(deal)) {
+        pushToast(set, get, 'Pazarlık başladı; paket artık değiştirilemez.', 'negative');
         return;
       }
 
@@ -1553,6 +1739,9 @@ export const useGame = create<GameState>((set, get) => {
       if (!deal?.purchase) return;
       if (packageLocked(deal)) return;
 
+      const candidate = s.items[itemId];
+      if (!candidate || matchDemand(deal.purchase.demand, candidate) === 'off') return;
+
       const position = s.inventory.find((p) => p.itemId === itemId);
       if (!position) return;
 
@@ -1561,7 +1750,8 @@ export const useGame = create<GameState>((set, get) => {
       if (qtyItem && !isProductCompatible(deal.purchase.demand, qtyItem)) return;
 
       // Stokta olmayan adedi satmak stok uydurmaktır (GDD 34.4).
-      const capped = Math.max(0, Math.min(position.quantity, Math.round(quantity)));
+      const capped = Math.max(0, Math.min(position.quantity, deal.purchase.demand.quantity, position.poolId === '24K_GRAM_GOLD_POOL' ? toMg(quantity) / 1000 : Math.floor(quantity)));
+      if (capped > 0 && !validQuantity(position, capped)) return;
       const next =
         capped <= 0
           ? deal.purchase.lines.filter((l) => l.itemId !== itemId)
@@ -1598,6 +1788,8 @@ export const useGame = create<GameState>((set, get) => {
       const haggle = haggleContext(deal, line, s);
 
       const ctx = {
+        economicBand: isPurchase ? packagePriceBand(deal.purchase!.lines, s.items, s.market) :
+          (s.items[line.itemId] ? customerPriceBand(s.items[line.itemId]!, s.market, 'shopBuys') ?? undefined : undefined),
         customer,
         direction: (isPurchase ? 'shopSells' : 'shopBuys') as TradeSide,
         reputation: s.store.reputation,
@@ -1670,6 +1862,13 @@ export const useGame = create<GameState>((set, get) => {
     // -----------------------------------------------------------------------
     finishDeal: () => {
       const s = get();
+      if (
+        s.activeDeal?.flow === 'purchase' &&
+        s.activeDeal.purchase &&
+        s.activeDeal.purchase.lines.length === 0
+      ) {
+        pushToast(set, get, 'Talep karşılanamadı · stok ve nakit değişmedi.', 'info');
+      }
       // GDD 10.2 — ziyaret KAPANIRKEN deftere yazılır. İşlem içinde oynayan
       // güveni kaydetmeden müşteriyi göndermek, güveni ekonomik varlık değil
       // geçici bir sayı yapardı (GDD 10).
@@ -1895,10 +2094,27 @@ export const useGame = create<GameState>((set, get) => {
       syncAudioSettings(next);
       setLocale(next.locale);
     },
-
+    /** Three canonical cash-only counter families; transaction revalidates quote, cash and physical space. */
+    buyPoolStock: (templateId, quantity) => {
+      const s = get();
+      const quote = poolSupplyQuote(templateId, quantity, s.market, s.store);
+      if (!quote) return;
+      const id = `poolbuy_${s.market.day}_${s.ledger.appliedTxIds.length}`;
+      const item = { ...poolSupplyItem(templateId), id: `${id}_item`,
+        buyCost: quote.totalPrice / quantity, acquiredDay: s.market.day, location: 'backStock' as const };
+      const outcome = applyTransaction({ ...economyOf(s), market: s.market }, {
+        txId: id, dealId: id, day: s.market.day, cashDelta: -quote.totalPrice,
+        poolPurchase: { quantity }, itemsIn: [item], itemsOut: [],
+        trustDelta: 0, reputationDelta: 0, xpDelta: 0, label: `${item.displayName} ortak havuz tedariki`,
+      });
+      if (!outcome.applied) { pushToast(set, get, outcome.reason ?? 'Alım uygulanamadı.', 'negative'); return; }
+      set(economyToState({ ...outcome.state, inventory: revalueInventory(outcome.state.inventory, outcome.state.items, thesisContext(s)) }));
+      writeSave(get());
+      pushToast(set, get, `Sarrafiye alındı · ${fmt(quote.totalPrice)}`, 'positive');
+    },
     /**
-     * §7 — toptancıdan mal alır. Nakit yetmezse kalanı VADEYE yazılır;
-     * koşullar işlem öncesi hesaplanır ve burada aynen uygulanır.
+     * §7 — other wholesale routes retain their existing financed lot system.
+     * It is deliberately separate from the three-family cash counter above.
      */
     buyFromWholesaler: (templateId, quantity) => {
       const s = get();
@@ -1949,7 +2165,7 @@ export const useGame = create<GameState>((set, get) => {
         id: `${probe.id}_${seq}_${i}`,
         // Vade farkı maliyet tabanına BİNER: finanse edilmiş malın gerçek
         // maliyeti daha yüksektir ve kâr hesabı bunu görmek zorundadır.
-        buyCost: Math.round((amount + terms.financeCost) / units),
+        buyCost: (amount + terms.financeCost) / units,
         acquiredDay: s.market.day,
         location: 'backStock' as const,
       }));
@@ -2255,6 +2471,26 @@ export const useGame = create<GameState>((set, get) => {
       );
     },
 
+    requestDayClose: () => {
+      const s = get();
+      if (s.dayReportOpen || (s.activeDeal && !isDealFinished(s.activeDeal))) return;
+      set({ dayCloseConfirmOpen: true });
+    },
+    cancelDayClose: () => set({ dayCloseConfirmOpen: false }),
+    startNewDay: () => {
+      const s = get();
+      if (!s.dayReportOpen) return;
+
+      // Aynı ayrım: geçici hatada panel açık kalır, kalıcı hatada kapanır.
+      if (!writeSave({ ...s, dayReportOpen: false })) {
+        if (isStorageAvailable()) {
+          pushToast(set, get, 'Kayıt yazılamadı; gün özeti açık tutuldu.', 'negative');
+          return;
+        }
+        pushToast(set, get, 'Kayıt yazılamadı; ilerleme bu cihazda saklanmıyor.', 'negative');
+      }
+      set({ dayReportOpen: false });
+    },
     advanceDay: () => {
       const s = get();
 
@@ -2264,7 +2500,6 @@ export const useGame = create<GameState>((set, get) => {
         bırakmasına yol açıyordu — oyun kapanış panelinin arkasında donuk
         kalırdı.
       */
-      if (s.dayCloseAsk) s.popPause();
 
       /*
         VİTRİN SATIŞI — gün kapanmadan ÖNCE çözülür.
@@ -2337,7 +2572,26 @@ export const useGame = create<GameState>((set, get) => {
         if (out.applied) ekonomi = out.state;
       }
 
-      const { state: closed, report } = closeDay(ekonomi, s.market.day);
+      if (s.dayReportOpen) return;
+
+      /*
+        KAPANIŞ `ekonomi` ÜZERİNDEN YAPILIR, `economyOf(s)` ÜZERİNDEN DEĞİL.
+
+        `ekonomi` bu fonksiyonun başında vitrin satışlarını ve taşıma
+        maliyetini işlemiş hâldir. Kapanışı ham duruma bağlamak, günün
+        vitrin gelirini kasaya girmeden sildirirdi — vitrin kanalını
+        bağlamanın bütün anlamı bu paranın gerçekleşmesiydi.
+      */
+      const { state: closed, report, applied } = closeDay(
+        ekonomi,
+        s.market.day,
+        s.missedGuestCountToday,
+        lifestyleDailyExpense(s.playerMarket),
+      );
+      if (!applied) {
+        pushToast(set, get, 'Günlük gider karşılanamadı; gün kapatılmadı.', 'negative');
+        return;
+      }
       const nextDay = s.market.day + 1;
       const market = createMarketForDay(s.seed, nextDay, s.market);
 
@@ -2372,36 +2626,13 @@ export const useGame = create<GameState>((set, get) => {
       );
       const overnightOutcome = resolveOvernight(position, market);
 
-      set({
-        ...economyToState({ ...closed, store, inventory }),
-        ledger: { ...closed.ledger, realizedProfitToday: 0 },
-        jobs,
-        market,
-        // §3: her günün kendi karakteri var; havuz gün başında yeniden çekilir.
-        dayCharacter: dayCharacter(s.seed, market.day, market),
-        network,
-        overnight: position,
-        lastOvernight: overnightOutcome,
-        queue: [],
-        activeCustomer: null,
-        activeDeal: null,
-        nextCustomerAtMinutes: DAY.openMinutes + 3,
-        customerRushUntilMinutes: null,
-        // "Bugün" penceresi kapanır, toplam korunur; gün raporu aşağıda
-        // kapanmadan ÖNCEKİ defteri (`s.missedDemand`) okur.
-        missedDemand: rolloverDemandLog(s.missedDemand),
-      });
-
       /*
         §B4 — KAPANIŞ ARTIK TOAST DEĞİL, PANEL.
 
         Burada eskiden DÖRDE KADAR toast gönderiliyordu ama ekranda en fazla
-        ikisi durur (`pushToast` son üçü tutar, arayüz ikisini çizer). Yani
-        gecikmiş bir vade ya da esnaf borcu — oyuncunun en çok bilmesi
-        gereken iki şey — sessizce düşebiliyordu. Hepsi tek panelde toplandı
-        ve panel oyuncu kapatana kadar duruyor.
-
-        Tek toast kalıyor: paneli kaçırmayan kısa bir bildirim.
+        ikisi durur. Yani gecikmiş bir vade ya da esnaf borcu — oyuncunun en
+        çok bilmesi gereken iki şey — sessizce düşebiliyordu. Hepsi tek
+        panelde toplandı ve panel oyuncu kapatana kadar duruyor.
       */
       const warnings: string[] = [];
       if (networkOverdue.penalty > 0) {
@@ -2415,8 +2646,28 @@ export const useGame = create<GameState>((set, get) => {
         );
       }
 
-      set({
-        dayCloseAsk: false,
+      const nextState = {
+        ...economyToState({ ...closed, store, inventory }),
+        ledger: { ...closed.ledger, realizedProfitToday: 0 },
+        jobs,
+        market,
+        // §3: her günün kendi karakteri var; havuz gün başında yeniden çekilir.
+        dayCharacter: dayCharacter(s.seed, market.day, market),
+        network,
+        overnight: position,
+        lastOvernight: overnightOutcome,
+        queue: [],
+        missedGuestCountToday: 0,
+        lastDayReport: { ...report, overnightSummary: overnightOutcome.summary },
+        dayCloseConfirmOpen: false,
+        dayReportOpen: true,
+        activeCustomer: null,
+        activeDeal: null,
+        nextCustomerAtMinutes: DAY.openMinutes + 3,
+        customerRushUntilMinutes: null,
+        // "Bugün" penceresi kapanır, toplam korunur; gün raporu aşağıda
+        // kapanmadan ÖNCEKİ defteri (`s.missedDemand`) okur.
+        missedDemand: rolloverDemandLog(s.missedDemand),
         lastDayClose: {
           day: report.day,
           weekday: weekdayLabel(report.day),
@@ -2441,7 +2692,36 @@ export const useGame = create<GameState>((set, get) => {
           missedDemand: topMissedDemand(s.missedDemand, 3).filter((r) => r.today > 0),
           missedDemandTotal: missedToday(s.missedDemand),
         },
-      });
+      };
+
+      /*
+        CHECKPOINT — BAŞARISIZLIĞIN İKİ TÜRÜ AYRI ELE ALINIR (save.ts).
+
+        GEÇİCİ hata (depo var, kota dolu / doğrulama tutmadı): gün İLERLEMEZ.
+        Oyuncu yer açıp tekrar dener; sessiz ilerleme kaybı olmaz.
+
+        KALICI hata (depo hiç yok — gizli pencere, site verisi kapalı): gün
+        İLERLER ama sessizce değil. Burada beklemek oyuncuyu kilitlerdi:
+        ölçüldü, `localStorage` bulunmayan ortamda oyun gün 1'de 18:36'da
+        donuyor ve bir daha asla açılmıyordu.
+      */
+      const kayitTutuldu = writeSave({ ...s, ...nextState } as GameState);
+
+      if (!kayitTutuldu && isStorageAvailable()) {
+        pushToast(set, get, 'Gün kapatılamadı: kayıt doğrulanamadı. Tekrar deneyin.', 'negative');
+        return;
+      }
+
+      set(nextState);
+
+      if (!kayitTutuldu) {
+        pushToast(
+          set,
+          get,
+          'Gün kapandı ama kayıt yazılamadı. İlerlemen bu cihazda saklanmıyor.',
+          'negative',
+        );
+      }
 
       pushToast(
         set,
@@ -2470,11 +2750,6 @@ export const useGame = create<GameState>((set, get) => {
           'negative',
         );
       }
-
-      // GDD 28.1 — gün sonu checkpoint. Kaydın §11'e göre taşıdığı şeyler:
-      // rejim (seed'den yeniden türetilir), açık borçlar, vadeler, limitler
-      // ve pozisyonlar.
-      writeSave(get());
 
       const ready = jobs.filter((j) => j.result === 'success' || j.result === 'failed').length;
       if (ready > 0) {
@@ -2704,8 +2979,8 @@ function packageLocked(deal: ActiveDeal): boolean {
 function openingQuantity(s: GameState, purchase: PurchaseSession, itemId: string): number {
   const position = s.inventory.find((p) => p.itemId === itemId);
   if (!position) return 1;
-  const missing = Math.max(1, purchase.demand.quantity - purchase.units);
-  return Math.max(1, Math.min(position.quantity, missing));
+  const missing = Math.max(0, purchase.demand.quantity - purchase.units);
+  return Math.max(0, Math.min(position.quantity, missing));
 }
 
 /** Paketi yeniden fiyatlayıp state'e yazar — tek giriş noktası. */
@@ -2781,7 +3056,14 @@ function settlePurchase(
   if (!deal || !customer || !deal.purchase) return;
 
   const purchase = deal.purchase;
+  // Son güvenlik kapısı: bozuk/eski bir arayüz durumu yanlış ürünü
+  // transaction katmanına taşısa bile stok ve para değişmez.
+  if (purchase.lines.some((line) => {
+    const item = s.items[line.itemId];
+    return !item || matchDemand(purchase.demand, item) === 'off';
+  })) return;
   const accepted = state === 'ACCEPTED' && price > 0;
+  if (accepted && (purchase.fulfilment === 'none' || purchase.units > purchase.demand.quantity)) return;
 
   let economy = economyOf(s);
 
@@ -2814,6 +3096,7 @@ function settlePurchase(
     const tx: SettlementTransaction = {
       // Paket bazlı benzersiz kimlik → çift tap ve reload koruması (GDD 22.1).
       txId: `sale_${deal.dealId}`,
+      targetInventoryItemId: purchase.demand.targetInventoryItemId,
       dealId: deal.dealId,
       day: s.market.day,
       cashDelta: price,
@@ -2970,7 +3253,7 @@ function visitNote(outcome: VisitRecord['outcome'], volume: Money): string {
 // ---------------------------------------------------------------------------
 
 function economyOf(s: GameState): EconomyState {
-  return { store: s.store, inventory: s.inventory, items: s.items, ledger: s.ledger };
+  return { store: s.store, inventory: s.inventory, items: s.items, ledger: s.ledger, market: s.market };
 }
 
 function economyToState(e: EconomyState): Pick<GameState, 'store' | 'inventory' | 'items' | 'ledger'> {
@@ -3299,13 +3582,15 @@ function patienceComment(customer: Customer): string {
  * değişti). Her birinde telefonu titretmek geri bildirim değil, rahatsızlık
  * olurdu. Titreşim yalnız oyuncunun BEKLEDİĞİ bir sonuç geldiğinde.
  */
+// UI-only sequence: never consume the simulation RNG for notification IDs.
+let toastSequence = 0;
 function pushToast(
   set: (partial: Partial<GameState>) => void,
   get: () => GameState,
   text: string,
   tone: ToastMessage['tone'],
 ): void {
-  const id = `toast_${get().ledger.transactions.length}_${text.length}_${Date.now()}`;
+  const id = `toast_${Date.now()}_${++toastSequence}`;
   set({ toasts: [...get().toasts, { id, text, tone }].slice(-3) });
 
   const settings = get().settings;

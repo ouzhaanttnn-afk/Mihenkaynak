@@ -128,7 +128,6 @@ export function resolveOvernight(
   // Fiyat düşerken nakit tutmak bir kazanç değil, kaçınılmış bir zarardır;
   // onu "kâr" gibi göstermek nakdi sürekli üstün gösterirdi.
   const cashOpportunityCost = spotChange > 0 ? Math.round(position.cash * spotChange) : 0;
-
   const gapDays = nextMarket.gapDays ?? 0;
 
   return {

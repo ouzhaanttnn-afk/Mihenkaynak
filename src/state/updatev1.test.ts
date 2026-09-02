@@ -150,20 +150,20 @@ describe('Gün kapanışı onay ister ve raporu kalıcıdır', () => {
     const s = useGame.getState();
     const clockBefore = s.market.clockMinutes;
 
-    s.askDayClose();
+    s.requestDayClose();
     for (let i = 0; i < 200; i += 1) useGame.getState().tick(1);
 
-    expect(useGame.getState().dayCloseAsk).toBe(true);
+    expect(useGame.getState().dayCloseConfirmOpen).toBe(true);
     expect(useGame.getState().market.clockMinutes).toBe(clockBefore);
 
     useGame.getState().cancelDayClose();
-    expect(useGame.getState().dayCloseAsk).toBe(false);
+    expect(useGame.getState().dayCloseConfirmOpen).toBe(false);
     expect(useGame.getState().pauseDepth).toBe(0);
   });
 
   it('vazgeçmek günü DEĞİŞTİRMEZ', () => {
     const before = useGame.getState().market.day;
-    useGame.getState().askDayClose();
+    useGame.getState().requestDayClose();
     useGame.getState().cancelDayClose();
     expect(useGame.getState().market.day).toBe(before);
   });
@@ -171,12 +171,12 @@ describe('Gün kapanışı onay ister ve raporu kalıcıdır', () => {
   it('onaydan sonra kapanış raporu doldurulur ve duraklatma bırakılır', () => {
     const before = useGame.getState().market.day;
 
-    useGame.getState().askDayClose();
+    useGame.getState().requestDayClose();
     useGame.getState().advanceDay();
 
     const s = useGame.getState();
     expect(s.market.day).toBe(before + 1);
-    expect(s.dayCloseAsk).toBe(false);
+    expect(s.dayCloseConfirmOpen).toBe(false);
     // Duraklatma asılı kalırsa oyun panelin arkasında donar.
     expect(s.pauseDepth).toBe(0);
 
@@ -188,7 +188,7 @@ describe('Gün kapanışı onay ister ve raporu kalıcıdır', () => {
   });
 
   it('rapor oyuncu kapatana kadar durur — kendiliğinden kaybolmaz', () => {
-    useGame.getState().askDayClose();
+    useGame.getState().requestDayClose();
     useGame.getState().advanceDay();
     expect(useGame.getState().lastDayClose).not.toBeNull();
 
@@ -208,7 +208,7 @@ describe('Gün kapanışı onay ister ve raporu kalıcıdır', () => {
     */
     const oncekiToast = useGame.getState().toasts.length;
 
-    useGame.getState().askDayClose();
+    useGame.getState().requestDayClose();
     useGame.getState().advanceDay();
     const rapor = useGame.getState().lastDayClose!;
 
@@ -238,7 +238,14 @@ describe('Sarrafiye alışında karşı teklif adil değeri aşmaz (store yolu)'
     useGame.setState({ pauseDepth: 0 });
 
     let checked = 0;
-    for (let step = 0; step < 6000 && checked < 12; step += 1) {
+    for (let step = 0; step < 20_000 && checked < 12; step += 1) {
+      // UPDATEv5: gün raporu açıkken zaman durur. Oyuncu gibi kapatılmazsa
+      // döngü boşa döner ve tek bir pazarlık bile üretilmez.
+      if (useGame.getState().dayReportOpen) {
+        useGame.getState().startNewDay();
+        continue;
+      }
+
       useGame.getState().tick(1);
 
       const s = useGame.getState();

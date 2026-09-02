@@ -192,7 +192,7 @@ describe('GDD 31.3 — Kısmi çıkışta yalnız satılan miktar realize olur',
 
   it('stokta olandan fazlası çıkarılamaz — eksi adet üretilmez', () => {
     const after = removeUnits([position(item, 3, 7_000)], { itemId: item.id, quantity: 99 });
-    expect(after).toHaveLength(0);
+    expect(after).toEqual([position(item, 3, 7_000)]);
   });
 
   it('satılan adedin maliyet tabanı yalnız o adedin payıdır', () => {

@@ -292,6 +292,10 @@ export type CustomerIntent =
  * akışının girdisi kalem değil TALEPTİR.
  */
 export interface CustomerDemand {
+  /** UPDATEv5: one physical showcase object, never a substitutable template. */
+  targetInventoryItemId?: string;
+  fallbackDemand?: CustomerDemand;
+  poolId?: '24K_GRAM_GOLD_POOL' | '22K_INVESTMENT_BANGLE_POOL' | 'QUARTER_GOLD_POOL';
   /** Aradığı ürün aileleri. Boşsa esnek müşteri. */
   families: string[];
   /** Sarrafiye mi arıyor, işçilikli mi. */
@@ -529,6 +533,20 @@ export interface MarketState {
    * buradan bilir.
    */
   gapDays?: number;
+  /**
+   * Yaklaşık 100 açık günlük hafızayla fiyatı izleyen MAKRO ÇAPA.
+   *
+   * Günlük hareket saf rassal yürüyüştü ve uzun oyunda fiyat sınırsız
+   * sürükleniyordu. Çapa, ortalamaya dönüş kuvvetinin referansıdır.
+   * Eski kayıtlarda YOKTUR; başlangıç referanslarından geriye uyumlu kurulur.
+   */
+  macroAnchor?: { goldSpot: number; silverSpot: number; fxIndex: number };
+  /**
+   * Son uygulanmış 15 dakikalık gün içi kova. Aynı adımın tekrar
+   * bileşikleşmesini engeller — sekme arkaplandayken biriken tick'ler
+   * fiyatı iki kez oynatıyordu.
+   */
+  lastIntradayStepIndex?: number;
   /** QA aynı günü tekrar oynayabilsin diye (GDD 28.3). */
   seed: number;
 }
@@ -539,6 +557,9 @@ export interface MarketState {
 
 /** GDD 28.2 · InventoryPosition. */
 export interface InventoryPosition {
+  poolId?: CustomerDemand['poolId'];
+  quantityMg?: number;
+  averageCostPerUnit?: number;
   itemId: string;
   /**
    * Bu pozisyondaki ADET.
@@ -744,6 +765,10 @@ export interface AppraisalOutcome {
 
 /** GDD 28.2 · StoreState. */
 export interface StoreState {
+  /** Queue personnel are distinct from workshop staff/masters. */
+  personnelCount?: number;
+  hasBalanceMg?: number;
+  hasCostBasis?: number;
   name: string;
   cash: Money;
   reputation: Scale100;
@@ -830,6 +855,12 @@ export interface StockOut {
 }
 
 export interface SettlementTransaction {
+  /** Canonical pool intake: grams, quarters or 10g bangle units. */
+  poolPurchase?: { quantity: number };
+  hasDeltaMg?: number;
+  hasCostDelta?: number;
+  hasOperation?: 'buy' | 'sell' | 'melt';
+  targetInventoryItemId?: string;
   txId: string;
   dealId: string;
   day: GameDay;

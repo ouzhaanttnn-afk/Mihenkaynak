@@ -13,15 +13,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { START } from './balance';
+import { poolForTemplate } from './stock-pools';
 import { getTemplate, ITEM_TEMPLATES } from '@data/item-templates';
+import { RETAIL_BULLION_CATALOG, INVESTMENT_BANGLE_WEIGHTS, bullionMeta } from '@data/bullion';
 import { spawnCustomer } from './customer-spawn';
 import { dayCharacter } from './intent';
 import { spawnItem } from './item-spawn';
-import { isBullion } from '@data/bullion';
 import { createMarketForDay } from './market';
 import { matchDemand } from './purchase';
 import { daDe } from '@ui/format';
-import type { StoreState } from './types';
+import type { CustomerDemand, StoreState } from './types';
 
 const SEED = 20260828;
 
@@ -80,58 +81,26 @@ describe('Talep somut bir ürün adı taşır', () => {
     for (const d of all) {
       const name = getTemplate(d.templateId!)?.displayName;
       expect(names.has(name!), d.summary).toBe(true);
-      expect(d.summary).toContain(name!);
+      if (d.poolId === '24K_GRAM_GOLD_POOL') expect(d.summary).toContain(`${d.quantity} gram altın`);
+      else if (d.poolId === '22K_INVESTMENT_BANGLE_POOL') expect(d.summary).toContain(`${d.quantity * 10} gram 22 ayar işçiliksiz bilezik`);
+      else expect(d.summary).toContain(name!);
     }
   });
 
-  /*
-   * UPDATEv2 §18 — BU TEST TERSİNE ÇEVRİLDİ.
-   *
-   * Eskiden "işçilikli talepte de somut ad var" diye bağlanıyordu ve
-   * doğruydu: satın alma müşterisi kolye/bilezik isteyebiliyordu. Ama o
-   * talep hiçbir zaman karşılanamıyordu — dükkânın kolye tedarik yolu yok.
-   * Artık talep havuzu satış kataloğundan türüyor, dolayısıyla satın alma
-   * niyetinde işçilikli talep HİÇ üretilmemeli.
-   *
-   * Testin koruduğu asıl şey değişmedi: talep somut bir üründür ve tek bir
-   * ürüne saplanmaz. Yalnız hangi küme üzerinde ölçüldüğü değişti.
-   */
-  it('satın alma talebi işçilikli ürün İSTEMEZ', () => {
-    const crafted = all.filter((d) => !d.wantsBullion);
-    expect(crafted.length, `karşılanamaz talep üretildi: ${crafted.map((d) => d.summary).join(', ')}`).toBe(0);
-  });
-
-  it('sarrafiye talebi tek ürüne saplanmaz', () => {
-    const distinct = new Set(all.map((d) => d.templateId));
-    expect(distinct.size).toBeGreaterThan(1);
+  it('UPDATEv2 — bütün satın alma talepleri ortak perakende kataloğundan gelir', () => {
+    for (const d of all) {
+      expect(d.wantsBullion).toBe(true);
+      expect(RETAIL_BULLION_CATALOG).toContain(d.templateId);
+    }
   });
 });
 
-describe('Somut ad talebi İKAMEYE İZİN VERMEZ', () => {
-  /*
-   * UPDATEv1 §2 — BU BLOK TERSİNE ÇEVRİLDİ.
-   *
-   * Eski adı "Somut ad talebi DARALTMAZ" idi ve istenen ürün yerine aynı
-   * aileden başkasının sunulabilmesini ('family') koruyordu. §2 bunu açıkça
-   * kapatıyor (`allowSubstitution: false`) ve kabul kriteri olarak yazıyor:
-   * "5 gram altın talebinde 1 g ve 10 g ürünler görünmüyor."
-   *
-   * Yani korunan şey artık tersi: müşteri somut bir ürün istediyse BAŞKA
-   * hiçbir ürün o talebi karşılamaz.
-   */
-  it('istenen sarrafiye dışındaki sarrafiye talebi KARŞILAMAZ', () => {
-    const bullionDemands = demands().filter((d) => d.wantsBullion);
-    expect(bullionDemands.length).toBeGreaterThan(5);
-
-    let checked = 0;
-    for (const d of bullionDemands) {
-      const sibling = ITEM_TEMPLATES.find((t) => isBullion(t.id) && t.id !== d.templateId);
-      if (!sibling) continue;
-      const item = spawnItem(SEED, 1, sibling.id);
-      expect(matchDemand(d, item), `${d.summary} ← ${sibling.displayName}`).toBe('off');
-      checked++;
+describe('Somut ad talebi kesin ürüne daralır', () => {
+  it('istenen SKU dışında başka sarrafiye önerilmez', () => {
+    for (const d of demands()) {
+      const otherId = RETAIL_BULLION_CATALOG.find((id) => id !== d.templateId && (!d.poolId || poolForTemplate(id) !== d.poolId))!;
+      expect(matchDemand(d, spawnItem(SEED, 1, otherId))).toBe('off');
     }
-    expect(checked).toBeGreaterThan(3);
   });
 
   it('tam istenen ürün hâlâ en iyi eşleşmedir', () => {
@@ -141,14 +110,45 @@ describe('Somut ad talebi İKAMEYE İZİN VERMEZ', () => {
     }
   });
 
-  it('yalnız TAM istenen ürün kabul edilir', () => {
+  it('sarrafiye talebinde farklı gramaj ve tür kabul edilmez', () => {
     const bullion = demands().filter((d) => d.wantsBullion);
     expect(bullion.length).toBeGreaterThan(5);
     const gram5 = spawnItem(SEED, 3, 'gram_gold_5');
     for (const d of bullion) {
-      const expected = d.templateId === 'gram_gold_5' ? 'exact' : 'off';
+      const expected = d.poolId === '24K_GRAM_GOLD_POOL' || d.templateId === 'gram_gold_5' ? 'exact' : 'off';
       expect(matchDemand(d, gram5), `${d.summary} ← 5 g`).toBe(expected);
     }
+  });
+});
+
+describe('UPDATEv3 yatırım bileziği kataloğu', () => {
+  it('yalnız 10 gramın katı 10–100 g SKU üretir', () => {
+    const ids = RETAIL_BULLION_CATALOG.filter((id) => id.startsWith('investment_bangle_22k_'));
+    expect(ids).toHaveLength(INVESTMENT_BANGLE_WEIGHTS.length);
+    expect(ids.map((id) => Number(id.split('_').at(-1)))).toEqual([...INVESTMENT_BANGLE_WEIGHTS]);
+  });
+
+  it('işçiliksiz, taşsız ve yalnız 22 ayardır', () => {
+    for (const weight of INVESTMENT_BANGLE_WEIGHTS) {
+      const t = getTemplate(`investment_bangle_22k_${weight}`);
+      expect(t.nominalKarat).toBe('22K');
+      expect(t.weightBand).toEqual([weight, weight]);
+      expect(t.craftsmanshipRatioBand).toEqual([0, 0]);
+      expect(t.hasStone).toBe(false);
+      expect(bullionMeta(t.id)?.unitPurity).toBe(0.922);
+      expect(bullionMeta(t.id)?.premiumRatio).toBe(0);
+    }
+  });
+
+  it('20 g talebi 10 g ve 30 g bileziği kesin biçimde reddeder', () => {
+    const demand: CustomerDemand = {
+      families: [], wantsBullion: true, templateId: 'investment_bangle_22k_20',
+      quantity: 1, isBulk: false, acceptsPartial: false, minQuantity: 1,
+      summary: '20 g bilezik', alternativesLabel: '',
+    };
+    expect(matchDemand(demand, spawnItem(SEED, 20, 'investment_bangle_22k_20'))).toBe('exact');
+    expect(matchDemand(demand, spawnItem(SEED, 10, 'investment_bangle_22k_10'))).toBe('off');
+    expect(matchDemand(demand, spawnItem(SEED, 30, 'investment_bangle_22k_30'))).toBe('off');
   });
 });
 
