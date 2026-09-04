@@ -146,22 +146,8 @@ export function ShopScreen() {
     const min = Math.max(0, Math.round(line.band.min * 0.55));
     const max = Math.max(min + 1000, Math.round(Math.max(ceiling, line.band.max) * 1.15));
     const span = max - min;
-    const baseStep = span > 200_000 ? 500 : span > 40_000 ? 100 : 50;
-
-    /*
-      ADIM, "TEKRAR" EŞİĞİNDEN KÜÇÜK OLAMAZ.
-
-      Pazarlık makinesi %0,5'ten az değişen teklifi TEKRAR sayar ve yeni bir
-      cevap üretmez. 384.448 ₺'lik bir teklifte bu 1.922 ₺ eder; adım ise
-      500 ₺'ydi. Yani oyuncu artı düğmesine dört kez basıyor, üçünde hiçbir
-      şey değişmiyordu — rakam oynuyor ama motor için aynı teklif.
-
-      Ölçüldü ve düzeltildi: adım artık eşiğin üstüne yuvarlanıyor, böylece
-      HER basış gerçekten yeni bir teklif oluyor. Küçük tutarlarda eşik zaten
-      taban adımın altında kalır ve hiçbir şey değişmez.
-    */
-    const epsilonStep = Math.ceil((max * NEGOTIATION.repeatEpsilon) / baseStep) * baseStep;
-    return { min, max, step: Math.max(baseStep, epsilonStep) };
+    const step = span > 200_000 ? 500 : span > 40_000 ? 100 : 50;
+    return { min, max, step };
   }, [line?.band, ceiling]);
 
   // Pazarlığa girildiğinde teklifi slider'ın gerçekten göstereceği değere
@@ -475,14 +461,14 @@ export function ShopScreen() {
  * oyuncu ne olduğunu ancak birkaç turdan sonra fark ediyordu. Düğmeyi
  * kapatmak, bedeli ÖDEMEDEN önce söylüyor.
  *
- * Eşik motorun kendi eşiğidir (`repeatEpsilon`): arayüz "tekrar"ı, pazarlık
- * makinesinin saydığı şeyle aynı saymalı — yoksa düğme açık kalır ve teklif
- * yine tekrar sayılır.
+ * TAM EŞİTLİK: arayüz "tekrar"ı, pazarlık makinesinin (`negotiation.ts`)
+ * saydığı şeyle aynı saymalı — yoksa düğme açık kalır ve teklif yine tekrar
+ * sayılır. Eskiden burada da göreli bir yüzde eşiği vardı; pahalı kalemlerde
+ * bu, GERÇEKTEN farklı bir teklifi de "tekrar" diye kapatıyordu.
  */
 function isRepeatOffer(session: NegotiationSession, amount: Money): boolean {
   const last = session.offerHistory[session.offerHistory.length - 1];
-  if (last === undefined) return false;
-  return Math.abs(amount - last) / Math.max(1, last) < NEGOTIATION.repeatEpsilon;
+  return last !== undefined && amount === last;
 }
 
 /**

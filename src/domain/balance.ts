@@ -769,8 +769,6 @@ export const NEGOTIATION = {
   /** Aynı teklifi tekrar etmenin sabır cezası (GDD 11.4). */
   repeatOfferPatiencePenalty: 14,
   repeatOfferTrustPenalty: 5,
-  /** İki teklifi "aynı" saymak için göreli fark eşiği. */
-  repeatEpsilon: 0.005,
 
   /** Karşı teklif isteme maliyeti. */
   requestCounterPatienceCost: 9,
