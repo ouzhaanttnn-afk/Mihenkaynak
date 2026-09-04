@@ -85,6 +85,7 @@ export function OfferControl({
         <span className="offer__amount num">
           {tlBare(normalizedValue)}
           <span className="offer__currency">₺</span>
+          {unitLabel && <span className="offer__unit num">{unitLabel}</span>}
         </span>
 
         <button
@@ -97,8 +98,6 @@ export function OfferControl({
           +
         </button>
       </div>
-
-      {unitLabel && <div className="offer__unit num">{unitLabel}</div>}
 
       <input
         type="range"
