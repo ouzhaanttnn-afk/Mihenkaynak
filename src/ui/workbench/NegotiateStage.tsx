@@ -14,7 +14,6 @@
 
 import { TERM } from '@ui/terms';
 import { CHANNEL_SHORT } from '@domain/thesis';
-import { STATE_LABEL } from '@domain/negotiation';
 import { CONFIDENCE_LABEL } from '@domain/valuation';
 import { Art } from '@ui/Art';
 import { MOVE_ART, OFFER_TIER_ART, OFFER_TIER_LABEL, customerArt, offerTier } from '@ui/assets';
@@ -27,8 +26,6 @@ import type {
   ThesisOption,
   ValuationBand,
 } from '@domain/types';
-
-const STATE_ORDER: NegotiationSession['state'][] = ['OPEN', 'HARDENING', 'FINAL_OFFER'];
 
 /** Fiyat dışı hamlelerin oyuncuya görünen adı ve SVG karşılığı. */
 const MOVE_LABEL: Record<string, string> = {
@@ -193,7 +190,6 @@ export function NegotiateStage({
           />
         )}
         <p className="speech">“{message}”</p>
-        <StateBadge state={session.state} />
       </div>
 
       {counter !== null && (
@@ -451,31 +447,6 @@ export function NegotiateStage({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * Durum rozeti. GDD 11.1 durum makinesini görünür kılar; kapanış skoru
- * gösterilmez (GDD 11.3 — "matematiksel skor oyuncuya gösterilmez").
- */
-function StateBadge({ state }: { state: NegotiationSession['state'] }) {
-  const index = STATE_ORDER.indexOf(state);
-
-  return (
-    <div className="stateBadge">
-      <span className="stateBadge__label">Pazarlık</span>
-      <span className={`stateBadge__value stateBadge__value--${state}`}>
-        {STATE_LABEL[state]}
-      </span>
-      <span className={`stateBadge__dots stateBadge__value--${state}`}>
-        {STATE_ORDER.map((_, i) => (
-          <span
-            key={i}
-            className={`stateBadge__dot ${i <= index ? 'stateBadge__dot--on' : ''}`}
-          />
-        ))}
-      </span>
     </div>
   );
 }
